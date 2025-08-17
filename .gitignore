@@ -1,0 +1,7 @@
+# Directories
+/.zig-cache
+/test_data
+
+# Files types
+/*.exe
+/*.pdb
