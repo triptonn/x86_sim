@@ -17,7 +17,8 @@ const DecodeError = error{ InvalidInstruction, InvalidRegister, NotYetImplemente
 //                                                                                      INSTRUCTION
 //                                        | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
 // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
-// MOV: register/memory to/from register  | 1 0 0 0 1 0|D|W | MOD| REG | R/M  |    (DISP-LO)    |    (DISP-HI)    |                 |                 |
+// MOV: register/memory to/from register  | 1 0 0 0 1 0|D|W | MOD| REG | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|              
+// MOV: immediate to register             | 1 0 1 1|w| reg  |       data      |   data if w=1   |<-----------------------XXX------------------------->|
 
 const MovInstructionCodes = enum(u8) {
     mov_regmem8_reg8        = 0b100010_0_0, // 0x88
@@ -156,6 +157,25 @@ fn decodeMove(input: [6]u8) DecodeError!struct { inst: []const u8, d: u1, w: u1,
 }
 
 pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+
+    const args_allocator = gpa.allocator();
+    const args = try std.process.argsAlloc(args_allocator);
+    defer std.process.argsFree(args_allocator, args);
+
+    if (args.len < 2) {
+        std.debug.print("Usage: x86sim <input_file>\n", .{});
+        std.debug.print("Examples:\n", .{});
+        std.debug.print("   > x86sim my_binary\n", .{});
+        std.debug.print("   > x86sim ./my_binary\n", .{});
+        std.debug.print("   > x86sim ../test_data/my_binary\n", .{});
+        std.process.exit(1);
+    }
+
+    const input_file_path = args[1];
+
+    const heap_allocator = std.heap.page_allocator;
     const open_mode = std.fs.File.OpenFlags{
         .mode = .read_only,
         .lock = .none,
@@ -163,22 +183,55 @@ pub fn main() !void {
         .allow_ctty = false,
     };
 
-    const path = "C:\\Users\\Student\\Documents\\Coding\\Zig\\x86_sim\\test_data\\part1\\";
-    const file_name = "listing_0037_single_register_mov";
+    const file = std.fs.cwd().openFile(input_file_path, open_mode) catch |err| {
+        switch (err) {
+            error.FileNotFound => {
+                std.debug.print("ERROR: Could not find file '{s}'\n", .{input_file_path});
+                std.process.exit(1);
+            },
+            error.AccessDenied => {
+                std.debug.print("ERROR: Access denies to file '{s}'\n", .{input_file_path});
+                std.process.exit(1);
+            },
+            else => {
+                std.debug.print("ERROR: Unable to open file '{s}': {any}\n", .{ input_file_path, err });
+                std.process.exit(1);
+            },
+        }
+    };
+    defer file.close();
 
-    // zig fmt: off
-    const file = try std.fs.openFileAbsolute(
-        path ++ file_name,
-        open_mode);
-    // zig fmt: on
+    std.debug.print("Simulating {s}\n", .{input_file_path});
 
     if (@TypeOf(file) != std.fs.File) {
         std.debug.print("Yeah, not goooood: {}\n", .{});
     }
 
+    const maxFileSizeBytes = 65535;
+
+    var activeByte: u16 = 0;
+    const file_contents = try file.readToEndAlloc(heap_allocator, maxFileSizeBytes);
+    var completed: bool = false;
+
+    while (!completed and activeByte < file_contents.len) : (activeByte += 2) {
+        const first_byte = file_contents[activeByte];
+        const second_byte = file_contents[activeByte + 1];
+
+        std.debug.print("byte{d}: {b:0>8}\n", .{ activeByte, first_byte });
+        std.debug.print("byte{d}: {b:0>8}\n", .{ activeByte + 1, second_byte });
+
+        if (activeByte == maxFileSizeBytes) {
+            completed = true;
+        }
+    }
+
+    // const file = try std.fs.openFileAbsolute(
+    //     path ++ file_name,
+    //     open_mode);
+
     const file_ptr = &file;
 
-    defer std.fs.File.close(file);
+    // defer std.fs.File.close(file);
 
     var input = [6]u8{ 0b0000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0000 };
 
