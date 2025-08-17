@@ -1,6 +1,7 @@
 # Directories
 /.zig-cache
 /test_data
+/zig-out
 
 # Files types
 /*.exe
