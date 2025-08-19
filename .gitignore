@@ -1,5 +1,6 @@
 # Directories
 /.zig-cache
+/doc
 /test_data
 /zig-out
 

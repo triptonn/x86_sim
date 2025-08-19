@@ -10,7 +10,7 @@
 
 const std = @import("std");
 
-const DecodeError = error{ InvalidInstruction, InvalidRegister, NotYetImplemented };
+// const DecodeError = error{ InvalidInstruction, InvalidRegister, NotYetImplemented };
 
 // zig fmt: off
 
@@ -18,14 +18,14 @@ const DecodeError = error{ InvalidInstruction, InvalidRegister, NotYetImplemente
 //                                        | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
 // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
 // MOV: register/memory to/from register  | 1 0 0 0 1 0|D|W | MOD| REG | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|              
-// MOV: immediate to register             | 1 0 1 1|w| reg  |       data      |   data if w=1   |<-----------------------XXX------------------------->|
+// MOV: immediate to register             | 1 0 1 1|W| reg  |       data      |   data if W=1   |<-----------------------XXX------------------------->|
 
-const InstructionSet = enum(u8) {
+const BinaryInstructions = enum(u8) {
     // MOV: register/memory to/from register
     mov_regmem8_reg8        = 0x88, // mod=0b00
-    mov_regmemreg16         = 0x89, // mod 0b01
-    mov_reg8_regmem8        = 0x8A, // mod 0b10
-    mov_reg16_regmem16      = 0x8B, // mod 0b11
+    mov_regmemreg16         = 0x89, // mod=0b01
+    mov_reg8_regmem8        = 0x8A, // mod=0b10
+    mov_reg16_regmem16      = 0x8B, // mod=0b11
 
     // MOV: immediate to register
     mov_immediate_AL        = 0xA0,
@@ -46,6 +46,37 @@ const InstructionSet = enum(u8) {
     mov_immediate_DI        = 0xAF,
 };
 
+// Error:
+// register / memory to / from register: 0x88, 0x89, 0x8A, 0x8B
+const DecodeMovError = error{
+    DecodeError,
+    NotYetImplementet,
+};
+
+// MovInstruction
+// register / memory to / from register: 0x88, 0x89, 0x8A, 0x8B
+const MovInstruction = struct{
+    mnemonic: []const u8,
+    d: DValue,
+    w: WValue,
+    mod: ModValue,
+    reg: RegValue,
+    rm: RmValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+};
+
+const DecodedMovPayloadIdentifier = enum{
+    err,
+    instruction,
+};
+
+// Payload:
+const DecodeMovPayload = union(DecodedMovPayloadIdentifier) {
+    err: DecodeMovError,
+    instruction: MovInstruction,
+};
+
 /// (* .memoryModeNoDisplacement has 16 Bit displacement if
 /// R/M = 110)
 const ModValue = enum(u2) {
@@ -57,7 +88,7 @@ const ModValue = enum(u2) {
 
 /// Field names represent W = 0, W = 1, as in Reg 000 with w = 0 is AL,
 /// with w = 1 it's AX
-const RegValues = enum(u3) {
+const RegValue = enum(u3) {
     ALAX = 0b000,
     CLCX = 0b001,
     DLDX = 0b010,
@@ -122,55 +153,70 @@ const ZValue = enum(u1) {
     clear               = 0b0,
     set                 = 0b1
 };
-
 // zig fmt: on
 
+// zig fmt: off
 /// Matching binary values against instruction- and register enum's. Returns names of the
 /// instructions and registers as strings in an []u8.
-fn decodeMove(mod: ModValue, input: [6]u8) DecodeError!struct { mnemonic: []const u8, d: u1, w: u1, mod: ModValue, reg: u3, rm: u3 } {
+fn decodeMov(
+    mod: ModValue,
+    rm: RmValue,
+    input: [6]u8
+) DecodeMovPayload {
+// zig fmt: on
     const mnemonic = "mov";
-    // std.debug.print("DEBUG: asm_name: {s}\n", .{asm_name});
-    // std.debug.print("DEBUG: mod: {b:0>2}\n", .{mod});
+    const _rm = rm;
+    const _mod = mod;
 
-    const temp_rm = input[1] << 5;
-    const rm: u3 = @intCast(temp_rm >> 5);
-
-    switch (mod) {
+    switch (_mod) {
         ModValue.memoryModeNoDisplacement => {
-            return DecodeError.NotYetImplemented;
+            if (_rm == RmValue.DHSI_DIRECT_ACCESS) {
+                // 2 byte displacement, second byte is most significant
+                return DecodeMovPayload{ .err = DecodeMovError.NotYetImplementet };
+            } else {
+                return DecodeMovPayload{ .err = DecodeMovError.NotYetImplementet };
+            }
         },
         ModValue.memoryMode8BitDisplacement => {
-            return DecodeError.NotYetImplemented;
+            return DecodeMovPayload{ .err = DecodeMovError.NotYetImplementet };
         },
         ModValue.memoryMode16BitDisplacement => {
-            return DecodeError.NotYetImplemented;
+            return DecodeMovPayload{ .err = DecodeMovError.NotYetImplementet };
         },
         ModValue.registerModeNoDisplacement => {
-            if (rm == 0b110) {
-                // 2 byte displacement, second byte is most significant
-                return DecodeError.NotYetImplemented;
-            } else {
-                var temp_d = input[0] >> 1;
-                temp_d = temp_d <<| 7;
-                temp_d = temp_d >> 7;
-                var temp_w = input[0] <<| 7;
-                temp_w = temp_w >> 7;
-                var temp_reg = input[1] >> 3;
-                temp_reg = temp_reg <<| 6;
-                temp_reg = temp_reg >> 6;
+            var temp_d = input[0] >> 1;
+            temp_d = temp_d <<| 7;
+            temp_d = temp_d >> 7;
+            var temp_w = input[0] <<| 7;
+            temp_w = temp_w >> 7;
+            var temp_reg = input[1] >> 3;
+            temp_reg = temp_reg <<| 6;
+            temp_reg = temp_reg >> 6;
 
-                std.debug.print("DEBUG: temp_reg: {b:0>3}\n", .{temp_reg});
+            std.debug.print("DEBUG: temp_reg: {b:0>3}\n", .{temp_reg});
 
-                const d: u1 = @intCast(temp_d);
-                const w: u1 = @intCast(temp_w);
-                const reg: u3 = @intCast(temp_reg);
+            const d: u1 = @intCast(temp_d);
+            const w: u1 = @intCast(temp_w);
+            const reg: u3 = @intCast(temp_reg);
 
-                std.debug.print("DEBUG: asm {s} d {b} w {b} mod {b:0>2} reg {b:0>3} rm {b:0>3}\n", .{
-                    mnemonic, d, w, mod, reg, rm,
-                });
-                return .{ .mnemonic = mnemonic, .d = d, .w = w, .mod = mod, .reg = reg, .rm = rm };
-                // No displacement (register mode)
-            }
+            std.debug.print("DEBUG: asm {s} d {b} w {b} mod {b:0>2} reg {b:0>3} rm {b:0>3}\n", .{
+                mnemonic, d, w, _mod, reg, _rm,
+            });
+
+            const result = DecodeMovPayload{
+                .instruction = MovInstruction{
+                    .mnemonic = mnemonic,
+                    .d = @enumFromInt(d),
+                    .w = @enumFromInt(w),
+                    .mod = _mod,
+                    .reg = @enumFromInt(reg),
+                    .rm = _rm,
+                    .disp_lo = null,
+                    .disp_hi = null,
+                },
+            };
+            return result;
+            // No displacement (register mode)
         },
     }
 }
@@ -219,7 +265,7 @@ pub fn main() !void {
         }
     };
     defer file.close();
-
+    std.debug.print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
     std.debug.print("Simulating {s}\n", .{input_file_path});
 
     if (@TypeOf(file) != std.fs.File) {
@@ -238,17 +284,73 @@ pub fn main() !void {
         const second_byte: u8 = if (activeByte + 1 < file_contents.len) file_contents[activeByte + 1] else default;
         const third_byte: u8 = if (activeByte + 2 < file_contents.len) file_contents[activeByte + 2] else default;
         const fourth_byte: u8 = if (activeByte + 3 < file_contents.len) file_contents[activeByte + 3] else default;
-        // const fifth_byte = file_contents[activeByte + 4];
-        // const sixth_byte = file_contents[activeByte + 5];
+        // const fifth_byte: u8 = if (activeByte + 4 < file_contents.len) file_contents[activeByte + 4] else default;
+        // const sixth_byte: u8 = if (activeByte + 5 < file_contents.len) file_contents[activeByte + 5] else default;
 
-        const instruction: InstructionSet = @enumFromInt(first_byte);
+        // std.debug.print("---Preload------------------------------------------------------------------\n", .{});
+        // std.debug.print("1: {b:0>8} {d},\n2: {b:0>8} {d},\n3: {b:0>8} {d},\n4: {b:0>8} {d},\n5: {b:0>8} {d},\n6: {b:0>8} {d},\n", .{
+        //     first_byte,  activeByte,
+        //     second_byte, activeByte + 1,
+        //     third_byte,  activeByte + 2,
+        //     fourth_byte, activeByte + 3,
+        //     fifth_byte,  activeByte + 4,
+        //     sixth_byte,  activeByte + 5,
+        // });
+        // std.debug.print("---Preload-------------------------------------------------------------------\n", .{});
+
+        const instruction: BinaryInstructions = @enumFromInt(first_byte);
 
         std.debug.print("instruction: {any}\n", .{instruction});
 
         switch (instruction) {
-            InstructionSet.mov_regmem8_reg8 => {
-                const mod: u2 = @intCast(second_byte >> 6);
-                if (mod == 0b00) {
+            BinaryInstructions.mov_regmem8_reg8 => { // 0x88
+                const mod: ModValue = @enumFromInt(second_byte >> 6);
+                const temp_rm = second_byte << 5;
+                const rm: RmValue = @enumFromInt(temp_rm >> 5);
+                std.debug.print("0x88: {any}, {any}\n", .{ mod, rm });
+
+                if (mod == ModValue.registerModeNoDisplacement and rm == RmValue.DHSI_DIRECT_ACCESS) {
+                    const instruction_bytes = [6]u8{ first_byte, second_byte, third_byte, fourth_byte, 0b0000_0000, 0b0000_0000 };
+
+                    std.debug.print("---0x88-no-displacement-----------------------------------------------------\n", .{});
+                    std.debug.print("1: {b:0>8}, {d}\n2: {b:0>8}, {d}\n3: {b:0>8}, {d}\n4: {b:0>8}, {d}\n5: {b:0>8}, {d}\n6: {b:0>8}, {d}\n", .{
+                        instruction_bytes[0], activeByte,
+                        instruction_bytes[1], activeByte + 1,
+                        instruction_bytes[2], activeByte + 2,
+                        instruction_bytes[3], activeByte + 3,
+                        instruction_bytes[4], activeByte + 4,
+                        instruction_bytes[5], activeByte + 5,
+                    });
+                    std.debug.print("---0x88-no-displacement-----------------------------------------------------\n", .{});
+
+                    const payload = decodeMov(ModValue.registerModeNoDisplacement, RmValue.DHSI_DIRECT_ACCESS, instruction_bytes);
+                    switch (payload) {
+                        .err => {
+                            switch (payload.err) {
+                                DecodeMovError.DecodeError => {
+                                    std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
+                                    continue;
+                                },
+                                DecodeMovError.NotYetImplementet => {
+                                    std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
+                                    continue;
+                                },
+                            }
+                        },
+                        .instruction => {
+                            std.debug.print("0x{x}: {b}, {s} {b:0>3},{b:0>3}, {b:0>8}, {b:0>8}", .{
+                                BinaryInstructions.mov_regmem8_reg8,
+                                @intFromEnum(payload.instruction.mod),
+                                payload.instruction.mnemonic,
+                                @intFromEnum(payload.instruction.reg),
+                                @intFromEnum(payload.instruction.rm),
+                                payload.instruction.disp_lo.?,
+                                payload.instruction.disp_hi.?,
+                            });
+                            activeByte += 4;
+                        },
+                    }
+                } else if (mod == ModValue.registerModeNoDisplacement) {
                     // zig fmt: off
                     const instruction_bytes = [6]u8{
                         first_byte,
@@ -258,35 +360,60 @@ pub fn main() !void {
                         0b0000_0000,
                         0b0000_0000,};
 
-                    std.debug.print("----------------------------------------------------------------------------\n", .{});
-                    std.debug.print("1: {b:0>8},\n2: {b:0>8},\n3: {b:0>8},\n4: {b:0>8},\n5: {b:0>8},\n6: {b:0>8},\n", .{
-                        instruction_bytes[0],
-                        instruction_bytes[1],
-                        instruction_bytes[2],
-                        instruction_bytes[3],
-                        instruction_bytes[4],
-                        instruction_bytes[5],
+                    std.debug.print("---0x88-with-no-displacement------------------------------------------------\n", .{});
+                    std.debug.print("1: {b:0>8}, {d}\n2: {b:0>8}, {d}\n3: {b:0>8}, {d}\n4: {b:0>8}, {d}\n5: {b:0>8}, {d}\n6: {b:0>8}, {d}\n", .{
+                        instruction_bytes[0], activeByte,
+                        instruction_bytes[1], activeByte + 1,
+                        instruction_bytes[2], activeByte + 2,
+                        instruction_bytes[3], activeByte + 3,
+                        instruction_bytes[4], activeByte + 4,
+                        instruction_bytes[5], activeByte + 5,
                     });
-                    std.debug.print("----------------------------------------------------------------------------\n", .{});
+                    std.debug.print("---0x88-with-no-displacement------------------------------------------------\n", .{});
 
                     activeByte += 2;
-                    const decoded_instruction = try decodeMove(
-                        ModValue.memoryModeNoDisplacement,
+                    const payload = decodeMov(
+                        mod,
+                        rm,
                         instruction_bytes);
-                    std.debug.print(
-                        "0x{x}: {b}, {s} {b:0>3},{b:0>3}\n",
-                        .{
-                            InstructionSet.mov_regmem8_reg8,
-                            decoded_instruction.mod,
-                            decoded_instruction.mnemonic,
-                            decoded_instruction.reg,
-                            decoded_instruction.rm,});
+
+                    switch (payload) {
+                        .err => {
+                            switch (payload.err) {
+                                DecodeMovError.DecodeError => {
+                                    std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
+                                    continue;
+                                },
+                                DecodeMovError.NotYetImplementet => {
+                                    std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
+                                    continue;
+                                },
+                            }
+                        },
+                        .instruction => {
+                            std.debug.print(
+                                "0x{x}: {b}, {s} {b:0>3},{b:0>3}\n",
+                                .{
+                                    BinaryInstructions.mov_regmem8_reg8,
+                                    @intFromEnum(payload.instruction.mod),
+                                    payload.instruction.mnemonic,
+                                    @intFromEnum(payload.instruction.reg),
+                                    @intFromEnum(payload.instruction.rm),
+                                },
+                            );
+                        },
+                    }
                     // zig fmt: on
                 }
             },
-            InstructionSet.mov_reg8_regmem8 => {
-                const mod: u2 = @intCast(second_byte >> 6);
-                if (mod == 0b10) {
+            BinaryInstructions.mov_regmemreg16 => { // 0x89
+                const mod: ModValue = @enumFromInt(second_byte >> 6);
+                const temp_rm = second_byte << 5;
+                const rm: RmValue = @enumFromInt(temp_rm >> 5);
+
+                std.debug.print("0x89: {b:0>2}\n", .{mod});
+
+                if (mod == ModValue.memoryMode16BitDisplacement) {
                     // zig fmt: off
                     const instruction_bytes = [6]u8{
                         first_byte,
@@ -296,91 +423,147 @@ pub fn main() !void {
                         0b0000_0000,
                         0b0000_0000,};
 
-                    std.debug.print("----------------------------------------------------------------------------\n", .{});
-                    std.debug.print("1: {b:0>8},\n2: {b:0>8},\n3: {b:0>8},\n4: {b:0>8},\n5: {b:0>8},\n6: {b:0>8},\n", .{
-                        instruction_bytes[0],
-                        instruction_bytes[1],
-                        instruction_bytes[2],
-                        instruction_bytes[3],
-                        instruction_bytes[4],
-                        instruction_bytes[5],
+                    std.debug.print("---0x89---------------------------------------------------------------------\n", .{});
+                    std.debug.print("1: {b:0>8}, {d}\n2: {b:0>8}, {d}\n3: {b:0>8}, {d}\n4: {b:0>8}, {d}\n5: {b:0>8}, {d}\n6: {b:0>8}, {d}\n", .{
+                        instruction_bytes[0], activeByte,
+                        instruction_bytes[1], activeByte + 1,
+                        instruction_bytes[2], activeByte + 2,
+                        instruction_bytes[3], activeByte + 3,
+                        instruction_bytes[4], activeByte + 4,
+                        instruction_bytes[5], activeByte + 5,
                     });
-                    std.debug.print("----------------------------------------------------------------------------\n", .{});
+                    std.debug.print("---0x89---------------------------------------------------------------------\n", .{});
 
                     activeByte += 3;
-                    const decoded_instruction = try decodeMove(
-                        ModValue.memoryMode16BitDisplacement,
+                    const payload = decodeMov(
+                        mod,
+                        rm,
                         instruction_bytes);
-                    std.debug.print(
-                        "0x{x}: {b}, {s} {b:0>3},{b:0>3}\n",
-                        .{
-                            InstructionSet.mov_regmem8_reg8,
-                            decoded_instruction.mod,
-                            decoded_instruction.mnemonic,
-                            decoded_instruction.reg,
-                            decoded_instruction.rm,});
-                    // zig fmt: on
+                    switch (payload) {
+                        .err => {
+                            switch (payload.err) {
+                                DecodeMovError.DecodeError => {
+                                    std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
+                                    continue;
+                                },
+                                DecodeMovError.NotYetImplementet => {
+                                    std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
+                                    continue;
+                                },
+                            }
+                        },
+                        // zig fmt: on
+                        .instruction => {
+                            std.debug.print("0x{x}: {b}, {s} {b:0>3},{b:0>3}\n", .{
+                                BinaryInstructions.mov_regmem8_reg8,
+                                @intFromEnum(payload.instruction.mod),
+                                payload.instruction.mnemonic,
+                                @intFromEnum(payload.instruction.reg),
+                                @intFromEnum(payload.instruction.rm),
+                            });
+                        },
+                    }
                 }
             },
-            InstructionSet.mov_regmemreg16 => {
-                const mod: u2 = @intCast(second_byte >> 6);
-                if (mod == 0b01) {
-                    const instruction_bytes = [6]u8{ first_byte, second_byte, third_byte, fourth_byte, 0b0000_0000, 0b0000_0000 };
-
-                    std.debug.print("----------------------------------------------------------------------------\n", .{});
-                    std.debug.print("1: {b:0>8},\n2: {b:0>8},\n3: {b:0>8},\n4: {b:0>8},\n5: {b:0>8},\n6: {b:0>8},\n", .{
-                        instruction_bytes[0],
-                        instruction_bytes[1],
-                        instruction_bytes[2],
-                        instruction_bytes[3],
-                        instruction_bytes[4],
-                        instruction_bytes[5],
-                    });
-                    std.debug.print("----------------------------------------------------------------------------\n", .{});
-
-                    activeByte += 4;
-                    const decoded_instruction = try decodeMove(ModValue.memoryMode8BitDisplacement, instruction_bytes);
-                    std.debug.print("0x{x}: {b}, {s} {b:0>3},{b:0>3}\n", .{ InstructionSet.mov_regmem8_reg8, decoded_instruction.mod, decoded_instruction.mnemonic, decoded_instruction.reg, decoded_instruction.rm });
-                }
-            },
-            InstructionSet.mov_reg16_regmem16 => {
-                const mod: u2 = @intCast(second_byte >> 6);
+            BinaryInstructions.mov_reg8_regmem8 => { // 0x8A
+                const mod: ModValue = @enumFromInt(second_byte >> 6);
                 const temp_rm = second_byte << 5;
-                const rm: u3 = @intCast(temp_rm >> 5);
-                if (mod == @intFromEnum(ModValue.registerModeNoDisplacement) and rm == @intFromEnum(RmValue.DHSI_DIRECT_ACCESS)) {
+                const rm: RmValue = @enumFromInt(temp_rm >> 5);
+
+                std.debug.print("0x8A: {any}\n", .{mod});
+
+                if (mod == ModValue.memoryMode8BitDisplacement) {
                     const instruction_bytes = [6]u8{ first_byte, second_byte, third_byte, fourth_byte, 0b0000_0000, 0b0000_0000 };
 
-                    std.debug.print("----------------------------------------------------------------------------\n", .{});
-                    std.debug.print("1: {b:0>8},\n2: {b:0>8},\n3: {b:0>8},\n4: {b:0>8},\n5: {b:0>8},\n6: {b:0>8},\n", .{
-                        instruction_bytes[0],
-                        instruction_bytes[1],
-                        instruction_bytes[2],
-                        instruction_bytes[3],
-                        instruction_bytes[4],
-                        instruction_bytes[5],
+                    std.debug.print("---0x8A---------------------------------------------------------------------\n", .{});
+                    std.debug.print("1: {b:0>8}, {d}\n2: {b:0>8}, {d}\n3: {b:0>8}, {d}\n4: {b:0>8}, {d}\n5: {b:0>8}, {d}\n6: {b:0>8}, {d}\n", .{
+                        instruction_bytes[0], activeByte,
+                        instruction_bytes[1], activeByte + 1,
+                        instruction_bytes[2], activeByte + 2,
+                        instruction_bytes[3], activeByte + 3,
+                        instruction_bytes[4], activeByte + 4,
+                        instruction_bytes[5], activeByte + 5,
                     });
-                    std.debug.print("----------------------------------------------------------------------------\n", .{});
+                    std.debug.print("---0x8A---------------------------------------------------------------------\n", .{});
 
                     activeByte += 4;
-                    const decoded_instruction = try decodeMove(ModValue.registerModeNoDisplacement, instruction_bytes);
-                    std.debug.print("0x{x}: {b}, {s} {b:0>3},{b:0>3}", .{ InstructionSet.mov_regmem8_reg8, decoded_instruction.mod, decoded_instruction.mnemonic, decoded_instruction.reg, decoded_instruction.rm });
-                } else if (mod == @intFromEnum(ModValue.registerModeNoDisplacement)) {
-                    const instruction_bytes = [6]u8{ first_byte, second_byte, 0b0000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0000 };
+                    const payload = decodeMov(
+                        mod,
+                        rm,
+                        instruction_bytes,
+                    );
+                    switch (payload) {
+                        .err => {
+                            switch (payload.err) {
+                                DecodeMovError.DecodeError => {
+                                    std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
+                                    continue;
+                                },
+                                DecodeMovError.NotYetImplementet => {
+                                    std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
+                                    continue;
+                                },
+                            }
+                        },
+                        .instruction => {
+                            std.debug.print("0x{x}: {b}, {s} {b:0>3},{b:0>3}\n", .{
+                                BinaryInstructions.mov_regmem8_reg8,
+                                @intFromEnum(payload.instruction.mod),
+                                payload.instruction.mnemonic,
+                                @intFromEnum(payload.instruction.reg),
+                                @intFromEnum(payload.instruction.rm),
+                            });
+                        },
+                    }
+                }
+            },
+            BinaryInstructions.mov_reg16_regmem16 => { // 0x8B
+                const mod: ModValue = @enumFromInt(second_byte >> 6);
+                const temp_rm = second_byte << 5;
+                const rm: RmValue = @enumFromInt(temp_rm >> 5);
 
-                    std.debug.print("----------------------------------------------------------------------------\n", .{});
-                    std.debug.print("1: {b:0>8},\n2: {b:0>8},\n3: {b:0>8},\n4: {b:0>8},\n5: {b:0>8},\n6: {b:0>8},\n", .{
-                        instruction_bytes[0],
-                        instruction_bytes[1],
-                        instruction_bytes[2],
-                        instruction_bytes[3],
-                        instruction_bytes[4],
-                        instruction_bytes[5],
-                    });
-                    std.debug.print("----------------------------------------------------------------------------\n", .{});
+                std.debug.print("0x8B: {b:0>2}\n", .{mod});
+                const instruction_bytes = [6]u8{ first_byte, second_byte, 0b0000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0000 };
 
-                    activeByte += 2;
-                    const decoded_instruction = try decodeMove(ModValue.registerModeNoDisplacement, instruction_bytes);
-                    std.debug.print("0x{x}: {b}, {s} {b:0>3},{b:0>3}\n", .{ InstructionSet.mov_regmem8_reg8, decoded_instruction.mod, decoded_instruction.mnemonic, decoded_instruction.reg, decoded_instruction.rm });
+                std.debug.print("---0x8B---------------------------------------------------------------------\n", .{});
+                std.debug.print("1: {b:0>8}, {d}\n2: {b:0>8}, {d}\n3: {b:0>8}, {d}\n4: {b:0>8}, {d}\n5: {b:0>8}, {d}\n6: {b:0>8}, {d}\n", .{
+                    instruction_bytes[0], activeByte,
+                    instruction_bytes[1], activeByte + 1,
+                    instruction_bytes[2], activeByte + 2,
+                    instruction_bytes[3], activeByte + 3,
+                    instruction_bytes[4], activeByte + 4,
+                    instruction_bytes[5], activeByte + 5,
+                });
+                std.debug.print("---0x8B---------------------------------------------------------------------\n", .{});
+
+                activeByte += 2;
+                const payload = decodeMov(
+                    mod,
+                    rm,
+                    instruction_bytes,
+                );
+                switch (payload) {
+                    .err => {
+                        switch (payload.err) {
+                            DecodeMovError.DecodeError => {
+                                std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
+                                continue;
+                            },
+                            DecodeMovError.NotYetImplementet => {
+                                std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
+                                continue;
+                            },
+                        }
+                    },
+                    .instruction => {
+                        std.debug.print("0x{x}: {b}, {s} {b:0>3},{b:0>3}\n", .{
+                            BinaryInstructions.mov_regmem8_reg8,
+                            @intFromEnum(payload.instruction.mod),
+                            payload.instruction.mnemonic,
+                            @intFromEnum(payload.instruction.reg),
+                            @intFromEnum(payload.instruction.rm),
+                        });
+                    },
                 }
             },
             else => {
@@ -393,4 +576,55 @@ pub fn main() !void {
             depleted = true;
         }
     }
+}
+
+test "activeByte moves along correct" {
+    // Since the index of the byte array loaded from file needs
+    // to move allong at the correct speed, meaning if a
+    // instruction takes three bytes the cursor also needs to
+    // move forward three bytes.
+
+    // zls fmt:off
+
+    // MOV
+    // listing_0037_single_register_mov
+    // 0x89
+    // Mod: 0b11, R/M != 0b110,
+    const test_input_register_mode_no_displacement: [6]u8 = [_]u8{
+        0b1000_1001, // mov, d=source, w=word
+        0b1101_1001, // mod=
+        0b0000_0000,
+        0b0000_0000,
+        0b0000_0000,
+        0b0000_0000,
+    };
+    const test_output_register_mode_no_displacement = MovInstruction{
+        .mnemonic = "mov",
+        .d = DValue.source,
+        .w = WValue.word,
+        .mod = ModValue.registerModeNoDisplacement,
+        .reg = RegValue.BLBX,
+        .rm = RmValue.CLCX_BXDI,
+    };
+    try std.testing.expect(decodeMov(
+        ModValue.memoryModeNoDisplacement,
+        test_input_register_mode_no_displacement,
+    ) == test_output_register_mode_no_displacement);
+
+    // const test_input_memory_mode_8_bit_displacement: [6]u8 = []u8{
+    //     0b0000_0000,
+    //     0b0000_0000,
+    //     0b0000_0000,
+    //     0b0000_0000,
+    //     0b0000_0000,
+    //     0b0000_0000,
+    // };
+    // const test_output_memory_mode_8_bit_displacement = .{};
+    // try std.testing.expect(
+    //     decodeMove(
+    //         ModValue.memoryMode8BitDisplacement,
+    //         test_input_memory_mode_8_bit_displacement,
+    //     ) == test_output_memory_mode_8_bit_displacement,
+    // );
+    // zls fmt:on
 }
