@@ -2,7 +2,7 @@
 
 Following the ['Performance Aware Programming' series by Casey Muratory](https://www.computerenhance.com/p/table-of-contents).
 
-This was one of the best learning experiences regarding microprocessors i ever had. The module 'Fundamentals of Microprocessors' (Mikroprozessortechnik) at university didn't even come close!
+Even though i'm not far into the course yet this is already one of the best learning experiences regarding microprocessors i ever had. The module 'Fundamentals of Microprocessors' (Mikroprozessortechnik) at university didn't even come close!
 
 Using the information [provided by Intel](https://www.ceibo.com/eng/datasheets/Intel_8086_Family_Users_Manual.pdf).
 
@@ -13,7 +13,7 @@ Test data is available [here](https://github.com/cmuratori/computer_enhance).
 - Zig
 - x86 instructions
 - Bit operations
-- Using a [assembler (NASM)](https://nasm.us/) and a refreshment of assembler programming
+- Using a [assembler (NASM)](https://nasm.us/) and a refresh of assembler programming
 
 ## Dependencies
 - [zig-x86_64-windows-0.15.0-dev.1552+b87b95868](https://ziglang.org/download/)
