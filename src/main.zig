@@ -25,10 +25,13 @@ const BinaryInstructions = enum(u8) {
     // MOV: Segment reg. to register/memory   | 1 0 0 0 1 1 0 0 | MOD|0|SR | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|
     // MOV: Register/memory to segment reg.   | 1 0 0 0 1 1 1 0 | MOD|0|SR | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|
 
-    /// 8 bit Register/memory to/from register except R/M=DHSI_DIRECT_ACCESS
+    /// 8 bit Register/memory to/from register with Reg defining the source
+    /// and R/M defining the destination. If R/M is .DHSI_DIRECTACCESS_BPD8_BPD16
+    /// (0b110) a 16 bit displacement follows, so the instruction length is 4 bytes.
     mov_source_regmem8_reg8     = 0x88,
-    /// 16 bit Register/memory to/from register
-    mov_source_regmemreg16      = 0x89,
+    /// 16 bit Register/memory to/from register with Reg defining the source
+    /// and R/M defining the destination for the instruction
+    mov_source_regmem16_reg16   = 0x89,
     /// 8 bit Register/memory to/from register
     mov_dest_reg8_regmem8       = 0x8A,
     /// 16 bit Register/memory to/from register
@@ -108,7 +111,10 @@ const DecodedPayloadIdentifier = enum{
     mov_instruction,
 };
 
-// Payload:
+/// Payload carrying the instruction specific, decoded field values
+/// (of the instruction plus all data belonging to the instruction as
+/// byte data)inside a struct. If an error occured during instruction decoding its
+/// value is returned in this Payload.
 const DecodePayload = union(DecodedPayloadIdentifier) {
     err: DecodeMovError,
     mov_instruction: MovInstruction,
@@ -136,7 +142,6 @@ const RegValue = enum(u3) {
     BHDI = 0b111,
 };
 
-
 //         Mod = 11      |           EFFECTIVE ADDRESS CALCULATION
 // -------------------------------------------------------------------------------
 // R/M | W=0|  W=1 | R/M |   MOD = 00     |      MOD = 01    |      MOD = 10
@@ -149,6 +154,230 @@ const RegValue = enum(u3) {
 // 101 | CH |  BP  | 101 | (DI)           | (DI) + D8        | (DI) + D16
 // 110 | DH |  SI  | 110 | DIRECT ADDRESS | (BP) + D8        | (BP) + D16
 // 111 | BH |  DI  | 111 | (BX)           | (BX) + D8        | (BX) + D16
+
+fn getInstructionSourceAndDest(d: DValue, w: WValue, reg: RegValue, mod: ModValue, rm: RmValue) InstructionInfo {
+    var dest: address = undefined;
+    var source: address = undefined;
+    const regIsSource: bool = if (d == DValue.source) true else false;
+    switch (w) {
+        .byte => {
+            switch (reg) {
+                .ALAX => {
+                    if (regIsSource) source = address.al else dest = address.al;
+                },
+                .CLCX => {
+                    if (regIsSource) source = address.cl else dest = address.cl;
+                },
+                .DLDX => {
+                    if (regIsSource) source = address.dl else dest = address.dl;
+                },
+                .BLBX => {
+                    if (regIsSource) source = address.bl else dest = address.bl;
+                },
+                .AHSP => {
+                    if (regIsSource) source = address.ah else dest = address.ah;
+                },
+                .CHBP => {
+                    if (regIsSource) source = address.ch else dest = address.ch;
+                },
+                .DHSI => {
+                    if (regIsSource) source = address.dh else dest = address.dh;
+                },
+                .BHDI => {
+                    if (regIsSource) source = address.bh else dest = address.bh;
+                },
+            }
+
+            switch (mod) {
+                .memoryModeNoDisplacement => {
+                    switch (rm) {
+                        // .ALAX_BXSI_BXSID8_BXSID16 => {},
+                        // .CLCX_BXDI_BXDID8_BXDID16 => {},
+                        // .DLDX_BPSI_BPSID8_BPSID16 => {},
+                        // .BLBX_BPDI_BPDID8_BPDID16 => {},
+                        // .AHSP_SI_SID8_SID16 => {},
+                        // .CHBP_DI_DID8_DID16 => {},
+                        // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
+                        // .BHDI_BX_BXD8_BXD16 => {},
+                        else => {
+                            std.debug.print("ERROR: Mod value not yet implemented.\n", .{});
+                            // std.debug.print("ERROR: R/M value not set.\n", .{});
+                        },
+                    }
+                },
+                .memoryMode8BitDisplacement => {
+                    switch (rm) {
+                        // .ALAX_BXSI_BXSID8_BXSID16 => {},
+                        // .CLCX_BXDI_BXDID8_BXDID16 => {},
+                        // .DLDX_BPSI_BPSID8_BPSID16 => {},
+                        // .BLBX_BPDI_BPDID8_BPDID16 => {},
+                        // .AHSP_SI_SID8_SID16 => {},
+                        // .CHBP_DI_DID8_DID16 => {},
+                        // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
+                        // .BHDI_BX_BXD8_BXD16 => {},
+                        else => {
+                            std.debug.print("ERROR: Mod value not yet implemented.\n", .{});
+                            // std.debug.print("ERROR: R/M value not set.\n", .{});
+                        },
+                    }
+                },
+                .memoryMode16BitDisplacement => {
+                    switch (rm) {
+                        // .ALAX_BXSI_BXSID8_BXSID16 => {},
+                        // .CLCX_BXDI_BXDID8_BXDID16 => {},
+                        // .DLDX_BPSI_BPSID8_BPSID16 => {},
+                        // .BLBX_BPDI_BPDID8_BPDID16 => {},
+                        // .AHSP_SI_SID8_SID16 => {},
+                        // .CHBP_DI_DID8_DID16 => {},
+                        // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
+                        // .BHDI_BX_BXD8_BXD16 => {},
+                        else => {
+                            std.debug.print("ERROR: Mod value not yet implemented.\n", .{});
+                            // std.debug.print("ERROR: R/M value not set.\n", .{});
+                        },
+                    }
+                },
+                .registerModeNoDisplacement => {
+                    switch (rm) {
+                        .ALAX_BXSI_BXSID8_BXSID16 => {
+                            if (regIsSource) dest = address.al else source = address.al;
+                        },
+                        .CLCX_BXDI_BXDID8_BXDID16 => {
+                            if (regIsSource) dest = address.cl else source = address.cl;
+                        },
+                        .DLDX_BPSI_BPSID8_BPSID16 => {
+                            if (regIsSource) dest = address.dl else source = address.dl;
+                        },
+                        .BLBX_BPDI_BPDID8_BPDID16 => {
+                            if (regIsSource) dest = address.bl else source = address.bl;
+                        },
+                        .AHSP_SI_SID8_SID16 => {
+                            if (regIsSource) dest = address.ah else source = address.ah;
+                        },
+                        .CHBP_DI_DID8_DID16 => {
+                            if (regIsSource) dest = address.ch else source = address.ch;
+                        },
+                        .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                            if (regIsSource) dest = address.dh else source = address.dh;
+                        },
+                        .BHDI_BX_BXD8_BXD16 => {
+                            if (regIsSource) dest = address.bh else source = address.bh;
+                        },
+                    }
+                },
+            }
+        },
+        .word => {
+            switch (reg) {
+                .ALAX => {
+                    if (regIsSource) source = address.ax else dest = address.ax;
+                },
+                .CLCX => {
+                    if (regIsSource) source = address.cx else dest = address.cx;
+                },
+                .DLDX => {
+                    if (regIsSource) source = address.dx else dest = address.dx;
+                },
+                .BLBX => {
+                    if (regIsSource) source = address.bx else dest = address.bx;
+                },
+                .AHSP => {
+                    if (regIsSource) source = address.sp else dest = address.sp;
+                },
+                .CHBP => {
+                    if (regIsSource) source = address.bp else dest = address.bp;
+                },
+                .DHSI => {
+                    if (regIsSource) source = address.si else dest = address.si;
+                },
+                .BHDI => {
+                    if (regIsSource) source = address.di else dest = address.di;
+                },
+            }
+
+            switch (mod) {
+                .memoryModeNoDisplacement => {
+                    switch (rm) {
+                        // .ALAX_BXSI_BXSID8_BXSID16 => {},
+                        // .CLCX_BXDI_BXDID8_BXDID16 => {},
+                        // .DLDX_BPSI_BPSID8_BPSID16 => {},
+                        // .BLBX_BPDI_BPDID8_BPDID16 => {},
+                        // .AHSP_SI_SID8_SID16 => {},
+                        // .CHBP_DI_DID8_DID16 => {},
+                        // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
+                        // .BHDI_BX_BXD8_BXD16 => {},
+                        else => {
+                            std.debug.print("ERROR: Mod value not yet implemented.\n", .{});
+                            // std.debug.print("ERROR: R/M value not set.\n", .{});
+                        },
+                    }
+                },
+                .memoryMode8BitDisplacement => {
+                    switch (rm) {
+                        // .ALAX_BXSI_BXSID8_BXSID16 => {},
+                        // .CLCX_BXDI_BXDID8_BXDID16 => {},
+                        // .DLDX_BPSI_BPSID8_BPSID16 => {},
+                        // .BLBX_BPDI_BPDID8_BPDID16 => {},
+                        // .AHSP_SI_SID8_SID16 => {},
+                        // .CHBP_DI_DID8_DID16 => {},
+                        // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
+                        // .BHDI_BX_BXD8_BXD16 => {},
+                        else => {
+                            std.debug.print("ERROR: Mod value not yet implemented.\n", .{});
+                            // std.debug.print("ERROR: R/M value not set.\n", .{});
+                        },
+                    }
+                },
+                .memoryMode16BitDisplacement => {
+                    switch (rm) {
+                        // .ALAX_BXSI_BXSID8_BXSID16 => {},
+                        // .CLCX_BXDI_BXDID8_BXDID16 => {},
+                        // .DLDX_BPSI_BPSID8_BPSID16 => {},
+                        // .BLBX_BPDI_BPDID8_BPDID16 => {},
+                        // .AHSP_SI_SID8_SID16 => {},
+                        // .CHBP_DI_DID8_DID16 => {},
+                        // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
+                        // .BHDI_BX_BXD8_BXD16 => {},
+                        else => {
+                            std.debug.print("ERROR: Mod value not yet implemented.\n", .{});
+                            // std.debug.print("ERROR: R/M value not set.\n", .{});
+                        },
+                    }
+                },
+                .registerModeNoDisplacement => {
+                    switch (rm) {
+                        .ALAX_BXSI_BXSID8_BXSID16 => {
+                            if (regIsSource) dest = address.ax else source = address.ax;
+                        },
+                        .CLCX_BXDI_BXDID8_BXDID16 => {
+                            if (regIsSource) dest = address.cx else source = address.cx;
+                        },
+                        .DLDX_BPSI_BPSID8_BPSID16 => {
+                            if (regIsSource) dest = address.dx else source = address.dx;
+                        },
+                        .BLBX_BPDI_BPDID8_BPDID16 => {
+                            if (regIsSource) dest = address.bx else source = address.bx;
+                        },
+                        .AHSP_SI_SID8_SID16 => {
+                            if (regIsSource) dest = address.sp else source = address.sp;
+                        },
+                        .CHBP_DI_DID8_DID16 => {
+                            if (regIsSource) dest = address.bp else source = address.bp;
+                        },
+                        .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                            if (regIsSource) dest = address.si else source = address.si;
+                        },
+                        .BHDI_BX_BXD8_BXD16 => {
+                            if (regIsSource) dest = address.di else source = address.di;
+                        },
+                    }
+                },
+            }
+        },
+    }
+    return InstructionInfo{ .source = source, .destination = dest };
+}
+
 
 /// Field names encode all possible Register/Register or Register/Memory combinations.
 /// The combinations are in the naming starting with mod=11_mod=00_mod=01_mod=10. In the
@@ -202,7 +431,7 @@ const ZValue = enum(u1) {
 fn movGetInstructionLength(mod: ModValue, rm: RmValue) u3 {
     switch (mod) {
         .memoryModeNoDisplacement => {
-            if (rm == RmValue.DHSI_DIRECT_ACCESS) return 4 else return 2;
+            if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) return 4 else return 2;
         },
         .memoryMode16BitDisplacement => {
             return 4;
@@ -216,22 +445,25 @@ fn movGetInstructionLength(mod: ModValue, rm: RmValue) u3 {
     }
 }
 
-// zig fmt: off
+const InstructionInfo = struct {
+    destination: address = undefined,
+    source: address = undefined,
+};
+
 /// Matching binary values against instruction- and register enum's. Returns names of the
 /// instructions and registers as strings in an []u8.
 fn decodeMov(
     mod: ModValue,
     rm: RmValue,
-    input: [6]u8
+    input: [6]u8,
 ) DecodePayload {
-// zig fmt: on
     const mnemonic = "mov";
     const _rm = rm;
     const _mod = mod;
 
     switch (_mod) {
         ModValue.memoryModeNoDisplacement => {
-            if (_rm == RmValue.DHSI_DIRECT_ACCESS) {
+            if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
                 // 2 byte displacement, second byte is most significant
                 return DecodePayload{ .err = DecodeMovError.NotYetImplementet };
             } else {
@@ -245,21 +477,22 @@ fn decodeMov(
             return DecodePayload{ .err = DecodeMovError.NotYetImplementet };
         },
         ModValue.registerModeNoDisplacement => {
-            var temp_d = input[0] >> 1;
-            temp_d = temp_d <<| 7;
-            temp_d = temp_d >> 7;
-            var temp_w = input[0] <<| 7;
-            temp_w = temp_w >> 7;
-            var temp_reg = input[1] >> 3;
-            temp_reg = temp_reg <<| 6;
-            temp_reg = temp_reg >> 6;
+            // zig fmt: off
+            var temp_d = input[0] >> 1;     
+            temp_d = temp_d << 7;          
+            temp_d = temp_d >> 7;           
+            var temp_w = input[0] << 7;
+            temp_w = temp_w >> 7;   
+            var temp_reg = input[1] >> 3;  
+            temp_reg = temp_reg << 5;      
+            temp_reg = temp_reg >> 5;      
+            // zig fmt: on
 
             // std.debug.print("DEBUG: temp_reg: {b:0>3}\n", .{temp_reg});
 
             const d: u1 = @intCast(temp_d);
             const w: u1 = @intCast(temp_w);
             const reg: u3 = @intCast(temp_reg);
-
             // std.debug.print("DEBUG: asm {s} d {b} w {b} mod {b:0>2} reg {b:0>3} rm {b:0>3}\n", .{
             //     mnemonic, d, w, _mod, reg, _rm,
             // });
@@ -282,8 +515,11 @@ fn decodeMov(
     }
 }
 
+/// Identifiers of the General Register of the CPU.
+const address = enum { ah, al, ax, bh, bl, bx, ch, cl, cx, dh, dl, dx, sp, bp, di, si };
+
 /// Simulates the General register of the 8086 Processor
-const GeneralRegisters = struct {
+const GeneralRegister = struct {
     AX: u16,
     BX: u16,
     CX: u16,
@@ -292,40 +528,40 @@ const GeneralRegisters = struct {
     BP: u16,
     DI: u16,
     SI: u16,
-    pub fn setAH(self: *GeneralRegisters, value: u8) void {
+    pub fn setAH(self: *GeneralRegister, value: u8) void {
         self.AX = value ++ self.AX[8..];
     }
-    pub fn setAL(self: *GeneralRegisters, value: u8) void {
+    pub fn setAL(self: *GeneralRegister, value: u8) void {
         self.AX = self.AX[0..8] ++ value;
     }
-    pub fn setBH(self: *GeneralRegisters, value: u8) void {
+    pub fn setBH(self: *GeneralRegister, value: u8) void {
         self.BX = value ++ self.BX[8..];
     }
-    pub fn setBL(self: *GeneralRegisters, value: u8) void {
+    pub fn setBL(self: *GeneralRegister, value: u8) void {
         self.BX = self.BX[0..8] ++ value;
     }
-    pub fn setCH(self: *GeneralRegisters, value: u8) void {
+    pub fn setCH(self: *GeneralRegister, value: u8) void {
         self.CX = value ++ self.CX[8..];
     }
-    pub fn setCL(self: *GeneralRegisters, value: u8) void {
+    pub fn setCL(self: *GeneralRegister, value: u8) void {
         self.CX = self.CX[0..8] ++ value;
     }
-    pub fn setDH(self: *GeneralRegisters, value: u8) void {
+    pub fn setDH(self: *GeneralRegister, value: u8) void {
         self.DX = value ++ self.DX[8..];
     }
-    pub fn setDL(self: *GeneralRegisters, value: u8) void {
+    pub fn setDL(self: *GeneralRegister, value: u8) void {
         self.DX = self.DX[0..8] ++ value;
     }
-    pub fn setSP(self: *GeneralRegisters, value: u16) void {
+    pub fn setSP(self: *GeneralRegister, value: u16) void {
         self.SP = value;
     }
-    pub fn setBP(self: *GeneralRegisters, value: u16) void {
+    pub fn setBP(self: *GeneralRegister, value: u16) void {
         self.BP = value;
     }
-    pub fn setSI(self: *GeneralRegisters, value: u16) void {
+    pub fn setSI(self: *GeneralRegister, value: u16) void {
         self.SI = value;
     }
-    pub fn setDI(self: *GeneralRegisters, value: u16) void {
+    pub fn setDI(self: *GeneralRegister, value: u16) void {
         self.DI = value;
     }
 };
@@ -388,6 +624,7 @@ pub fn main() !void {
     var instruction_bytes: [6]u8 = undefined;
     const file_contents = try file.readToEndAlloc(heap_allocator, maxFileSizeBytes);
     std.debug.print("Instruction byte count: {d}\n", .{file_contents.len});
+    std.debug.print("+++Start+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte});
 
     var depleted: bool = false;
 
@@ -424,7 +661,7 @@ pub fn main() !void {
                 stepSize = movGetInstructionLength(mod, rm);
                 // std.debug.print("DEBUG: 0x88: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, stepSize });
             },
-            BinaryInstructions.mov_source_regmemreg16 => { // 0x89
+            BinaryInstructions.mov_source_regmem16_reg16 => { // 0x89
                 mod = @enumFromInt(second_byte >> 6);
                 const temp_rm = second_byte << 5;
                 rm = @enumFromInt(temp_rm >> 5);
@@ -509,7 +746,6 @@ pub fn main() !void {
             },
         }
 
-        std.debug.print("--------------------------------------------------------------------------------\n", .{});
         // std.debug.print("---0x{x}-{any}-- Mod: {any}, R/M: {any}\n", .{ @intFromEnum(instruction), instruction, mod, rm });
         // std.debug.print("1: {b:0>8}, {d}\n2: {b:0>8}, {d}\n3: {b:0>8}, {d}\n4: {b:0>8}, {d}\n5: {b:0>8}, {d}\n6: {b:0>8}, {d}\n", .{
         //     instruction_bytes[0], activeByte,
@@ -525,7 +761,7 @@ pub fn main() !void {
             .mov_source_regmem8_reg8 => {
                 payload = decodeMov(mod, rm, instruction_bytes);
             },
-            .mov_source_regmemreg16 => {
+            .mov_source_regmem16_reg16 => {
                 payload = decodeMov(mod, rm, instruction_bytes);
             },
             .mov_dest_reg8_regmem8 => {
@@ -553,131 +789,31 @@ pub fn main() !void {
                 }
             },
             .mov_instruction => {
-                std.debug.print("Instruction: 0x{x}: Mod {b}, Mnemonic {s} Reg {any}, R/M {any}, DISP-LO {b:0>8}, DISP-HI {b:0>8}\n", .{
-                    @intFromEnum(instruction),
-                    @intFromEnum(payload.mov_instruction.mod),
-                    payload.mov_instruction.mnemonic,
-                    payload.mov_instruction.reg,
-                    payload.mov_instruction.rm,
-                    if (stepSize == 3 or stepSize == 4) payload.mov_instruction.disp_lo.? else instruction_bytes[2],
-                    if (stepSize == 4) payload.mov_instruction.disp_hi.? else instruction_bytes[3],
-                });
-
                 const d: DValue = payload.mov_instruction.d;
                 const w: WValue = payload.mov_instruction.w;
                 const reg: RegValue = payload.mov_instruction.reg;
-                switch (w) {
-                    0 => {
-                        switch (reg) {
-                            .ALAX => {},
-                            .CLCX => {},
-                            .DLDX => {},
-                            .BLBX => {},
-                            .AHSP => {},
-                            .CHBP => {},
-                            .DHSI => {},
-                            .BHDI => {},
-                            else => {
-                                std.debug.print("ERROR: Reg value not set.\n", .{});
-                            },
-                        }
-                    },
-                    1 => {
-                        switch (reg) {
-                            .ALAX => {},
-                            .CLCX => {},
-                            .DLDX => {},
-                            .BLBX => {},
-                            .AHSP => {},
-                            .CHBP => {},
-                            .DHSI => {},
-                            .BHDI => {},
-                            else => {
-                                std.debug.print("ERROR: Reg value not set.\n", .{});
-                            },
-                        }
-                    },
-                }
-                var dest: GeneralRegisters = undefined;
-                var source: GeneralRegisters = undefined;
-                switch (payload.mov_instruction.mod) {
-                    .memoryModeNoDisplacement => {
-                        switch (payload.mov_instruction.rm) {
-                            .ALAX_BXSI_BXSID8_BXSID16 => {},
-                            .CLCX_BXDI_BXDID8_BXDID16 => {},
-                            .DLDX_BPSI_BPSID8_BPSID16 => {},
-                            .BLBX_BPDI_BPDID8_BPDID16 => {},
-                            .AHSP_SI_SID8_SID16 => {},
-                            .CHBP_DI_DID8_DID16 => {},
-                            .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
-                            .BHDI_BX_BXD8_BXD16 => {},
-                            else => {
-                                std.debug.print("ERROR: R/M value not set.\n", .{});
-                            },
-                        }
-                    },
-                    .memoryMode8BitDisplacement => {
-                        switch (rm) {
-                            .ALAX_BXSI_BXSID8_BXSID16 => {},
-                            .CLCX_BXDI_BXDID8_BXDID16 => {},
-                            .DLDX_BPSI_BPSID8_BPSID16 => {},
-                            .BLBX_BPDI_BPDID8_BPDID16 => {},
-                            .AHSP_SI_SID8_SID16 => {},
-                            .CHBP_DI_DID8_DID16 => {},
-                            .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
-                            .BHDI_BX_BXD8_BXD16 => {},
-                            else => {
-                                std.debug.print("ERROR: R/M value not set.\n", .{});
-                            },
-                        }
-                    },
-                    .memoryMode16BitDisplacement => {
-                        switch (rm) {
-                            .ALAX_BXSI_BXSID8_BXSID16 => {},
-                            .CLCX_BXDI_BXDID8_BXDID16 => {},
-                            .DLDX_BPSI_BPSID8_BPSID16 => {},
-                            .BLBX_BPDI_BPDID8_BPDID16 => {},
-                            .AHSP_SI_SID8_SID16 => {},
-                            .CHBP_DI_DID8_DID16 => {},
-                            .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
-                            .BHDI_BX_BXD8_BXD16 => {},
-                            else => {
-                                std.debug.print("ERROR: R/M value not set.\n", .{});
-                            },
-                        }
-                    },
-                    .registerModeNoDisplacement => {
-                        switch (rm) {
-                            .ALAX_BXSI_BXSID8_BXSID16 => {
-                                switch (d) {
-                                    .source => {
-                                        dest = if (w == WValue.byte) "al" else "ax";
-                                        source = reg;
-                                    },
-                                    .destination => {
-                                        dest = reg;
-                                        source = if (w == WValue.byte) "al" else "ax";
-                                    },
-                                }
-                            },
-                            .CLCX_BXDI_BXDID8_BXDID16 => {},
-                            .DLDX_BPSI_BPSID8_BPSID16 => {},
-                            .BLBX_BPDI_BPDID8_BPDID16 => {},
-                            .AHSP_SI_SID8_SID16 => {},
-                            .CHBP_DI_DID8_DID16 => {},
-                            .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
-                            .BHDI_BX_BXD8_BXD16 => {},
-                            else => {
-                                std.debug.print("ERROR: R/M value not set.\n", .{});
-                            },
-                        }
-                    },
-                    else => {
-                        std.debug.print("ERROR: Mod value not set.\n", .{});
-                    },
-                }
+                // std.debug.print("Instruction: 0x{x}: Mod: {b}, Reg: {any}, R/M: {any}, DISP-LO: {b:0>8}, DISP-HI: {b:0>8}\n", .{
+                //     @intFromEnum(instruction),
+                //     @intFromEnum(mod),
+                //     reg,
+                //     rm,
+                //     if (stepSize == 3 or stepSize == 4) payload.mov_instruction.disp_lo.? else instruction_bytes[2],
+                //     if (stepSize == 4) payload.mov_instruction.disp_hi.? else instruction_bytes[3],
+                // });
 
-                std.debug.print("ASM-86 {s} {s},{s}", .{ payload.mov_instruction.mnemonic, dest, source });
+                const instruction_info: InstructionInfo = getInstructionSourceAndDest(
+                    d,
+                    w,
+                    reg,
+                    mod,
+                    rm,
+                );
+
+                std.debug.print("ASM-86: {s} {any},{any}\n", .{
+                    payload.mov_instruction.mnemonic,
+                    instruction_info.destination,
+                    instruction_info.source,
+                });
             },
         }
 
@@ -685,281 +821,16 @@ pub fn main() !void {
             depleted = true;
             std.debug.print("+++Simulation+finished++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
         } else {
-            std.debug.print("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
+            if (activeByte + stepSize > 999) {
+                std.debug.print("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
+            } else if (activeByte + stepSize > 99) {
+                std.debug.print("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
+            } else if (activeByte + stepSize > 9) {
+                std.debug.print("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
+            } else {
+                std.debug.print("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
+            }
         }
-
-        // switch (instruction) {
-        //     BinaryInstructions.mov_source_regmem8_reg8 => { // 0x88
-        //         const mod: ModValue = @enumFromInt(second_byte >> 6);
-        //         const temp_rm = second_byte << 5;
-        //         const rm: RmValue = @enumFromInt(temp_rm >> 5);
-
-        //         const ByteCount = movGetInstructionLength(mod, rm);
-        //         std.debug.print("0x88: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, ByteCount });
-        //         switch (ByteCount) {
-        //             2 => {
-        //                 instruction_bytes = [6]u8{
-        //                     first_byte,
-        //                     second_byte,
-        //                     0b0000_0000,
-        //                     0b0000_0000,
-        //                     0b0000_0000,
-        //                     0b0000_0000,
-        //                 };
-        //             },
-        //             3 => {
-        //                 instruction_bytes = [6]u8{
-        //                     first_byte,
-        //                     second_byte,
-        //                     third_byte,
-        //                     0b0000_0000,
-        //                     0b0000_0000,
-        //                     0b0000_0000,
-        //                 };
-        //             },
-        //             4 => {
-        //                 instruction_bytes = [6]u8{
-        //                     first_byte,
-        //                     second_byte,
-        //                     third_byte,
-        //                     fourth_byte,
-        //                     0b0000_0000,
-        //                     0b0000_0000,
-        //                 };
-        //             },
-        //             else => {
-        //                 std.debug.print("ERROR: Invalid byte count for move instruction: {d}", .{ByteCount});
-        //             },
-        //         }
-
-        //         std.debug.print("---0x88-{any}-{any}---------------------------------------------------\n", .{ mod, rm });
-        //         std.debug.print("1: {b:0>8}, {d}\n2: {b:0>8}, {d}\n3: {b:0>8}, {d}\n4: {b:0>8}, {d}\n5: {b:0>8}, {d}\n6: {b:0>8}, {d}\n", .{
-        //             instruction_bytes[0], activeByte,
-        //             instruction_bytes[1], activeByte + 1,
-        //             instruction_bytes[2], activeByte + 2,
-        //             instruction_bytes[3], activeByte + 3,
-        //             instruction_bytes[4], activeByte + 4,
-        //             instruction_bytes[5], activeByte + 5,
-        //         });
-        //         std.debug.print("---0x88-{any}-{any}---------------------------------------------------\n", .{ mod, rm });
-
-        //         const payload = decodeMov(mod, rm, instruction_bytes);
-        //         switch (payload) {
-        //             .err => {
-        //                 switch (payload.err) {
-        //                     DecodeMovError.DecodeError => {
-        //                         std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
-        //                         continue;
-        //                     },
-        //                     DecodeMovError.NotYetImplementet => {
-        //                         std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
-        //                         continue;
-        //                     },
-        //                 }
-        //             },
-        //             .mov_instruction => {
-        //                 std.debug.print("Instruction: 0x{x}: Mod {b}, Mnemonic {s} Reg {b:0>3}, R/M {b:0>3}, DISP-LO {b:0>8}, DISP-HI {b:0>8}\n", .{
-        //                     BinaryInstructions.mov_source_regmem8_reg8,
-        //                     @intFromEnum(payload.mov_instruction.mod),
-        //                     payload.mov_instruction.mnemonic,
-        //                     @intFromEnum(payload.mov_instruction.reg),
-        //                     @intFromEnum(payload.mov_instruction.rm),
-        //                     if (ByteCount == 3 or ByteCount == 4) payload.mov_instruction.disp_lo.? else instruction_bytes[2],
-        //                     if (ByteCount == 4) payload.mov_instruction.disp_hi.? else instruction_bytes[3],
-        //                 });
-        //                 activeByte += ByteCount;
-        //                 std.debug.print("+++++NEXT+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
-        //             },
-        //         }
-        //     },
-        //     BinaryInstructions.mov_source_regmemreg16 => { // 0x89
-        //         const mod: ModValue = @enumFromInt(second_byte >> 6);
-        //         const temp_rm = second_byte << 5;
-        //         const rm: RmValue = @enumFromInt(temp_rm >> 5);
-
-        //         const ByteCount = movGetInstructionLength(mod, rm);
-        //         std.debug.print("0x89: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, ByteCount });
-        //         var instruction_bytes: [6]u8 = undefined;
-
-        //         switch (ByteCount) {
-        //             2 => {
-        //                 instruction_bytes = [6]u8{
-        //                     first_byte,
-        //                     second_byte,
-        //                     0b0000_0000,
-        //                     0b0000_0000,
-        //                     0b0000_0000,
-        //                     0b0000_0000,
-        //                 };
-        //             },
-        //             3 => {
-        //                 instruction_bytes = [6]u8{
-        //                     first_byte,
-        //                     second_byte,
-        //                     third_byte,
-        //                     0b0000_0000,
-        //                     0b0000_0000,
-        //                     0b0000_0000,
-        //                 };
-        //             },
-        //             4 => {
-        //                 instruction_bytes = [6]u8{
-        //                     first_byte,
-        //                     second_byte,
-        //                     third_byte,
-        //                     fourth_byte,
-        //                     0b0000_0000,
-        //                     0b0000_0000,
-        //                 };
-        //             },
-        //         }
-        //         std.debug.print("---0x89---------------------------------------------------------------------\n", .{});
-        //         std.debug.print("1: {b:0>8}, {d}\n2: {b:0>8}, {d}\n3: {b:0>8}, {d}\n4: {b:0>8}, {d}\n5: {b:0>8}, {d}\n6: {b:0>8}, {d}\n", .{
-        //             instruction_bytes[0], activeByte,
-        //             instruction_bytes[1], activeByte + 1,
-        //             instruction_bytes[2], activeByte + 2,
-        //             instruction_bytes[3], activeByte + 3,
-        //             instruction_bytes[4], activeByte + 4,
-        //             instruction_bytes[5], activeByte + 5,
-        //         });
-        //         std.debug.print("---0x89---------------------------------------------------------------------\n", .{});
-
-        //         activeByte += ByteCount;
-        //         const payload = decodeMov(mod, rm, instruction_bytes);
-        //         switch (payload) {
-        //             .err => {
-        //                 switch (payload.err) {
-        //                     DecodeMovError.DecodeError => {
-        //                         std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
-        //                         continue;
-        //                     },
-        //                     DecodeMovError.NotYetImplementet => {
-        //                         std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
-        //                         continue;
-        //                     },
-        //                 }
-        //             },
-        //             // zig fmt: on
-        //             .mov_instruction => {
-        //                 std.debug.print("0x{x}: {b}, {s} {b:0>3},{b:0>3}\n", .{
-        //                     BinaryInstructions.mov_source_regmem8_reg8,
-        //                     @intFromEnum(payload.mov_instruction.mod),
-        //                     payload.mov_instruction.mnemonic,
-        //                     @intFromEnum(payload.mov_instruction.reg),
-        //                     @intFromEnum(payload.mov_instruction.rm),
-        //                 });
-        //                 std.debug.print("+++++NEXT+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
-        //             },
-        //         }
-        //     },
-        //     BinaryInstructions.mov_dest_reg8_regmem8 => { // 0x8A
-        //         const mod: ModValue = @enumFromInt(second_byte >> 6);
-        //         const temp_rm = second_byte << 5;
-        //         const rm: RmValue = @enumFromInt(temp_rm >> 5);
-        //         const ByteCount = movGetInstructionLength(mod, rm);
-        //         std.debug.print("0x8A: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, ByteCount });
-
-        //         if (mod == ModValue.memoryMode8BitDisplacement) {
-        //             const instruction_bytes = [6]u8{ first_byte, second_byte, third_byte, fourth_byte, 0b0000_0000, 0b0000_0000 };
-
-        //             std.debug.print("---0x8A---------------------------------------------------------------------\n", .{});
-        //             std.debug.print("1: {b:0>8}, {d}\n2: {b:0>8}, {d}\n3: {b:0>8}, {d}\n4: {b:0>8}, {d}\n5: {b:0>8}, {d}\n6: {b:0>8}, {d}\n", .{
-        //                 instruction_bytes[0], activeByte,
-        //                 instruction_bytes[1], activeByte + 1,
-        //                 instruction_bytes[2], activeByte + 2,
-        //                 instruction_bytes[3], activeByte + 3,
-        //                 instruction_bytes[4], activeByte + 4,
-        //                 instruction_bytes[5], activeByte + 5,
-        //             });
-        //             std.debug.print("---0x8A---------------------------------------------------------------------\n", .{});
-
-        //             activeByte += 4;
-        //             const payload = decodeMov(
-        //                 mod,
-        //                 rm,
-        //                 instruction_bytes,
-        //             );
-        //             switch (payload) {
-        //                 .err => {
-        //                     switch (payload.err) {
-        //                         DecodeMovError.DecodeError => {
-        //                             std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
-        //                             continue;
-        //                         },
-        //                         DecodeMovError.NotYetImplementet => {
-        //                             std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
-        //                             continue;
-        //                         },
-        //                     }
-        //                 },
-        //                 .mov_instruction => {
-        //                     std.debug.print("0x{x}: {b}, {s} {b:0>3},{b:0>3}\n", .{
-        //                         BinaryInstructions.mov_source_regmem8_reg8,
-        //                         @intFromEnum(payload.mov_instruction.mod),
-        //                         payload.mov_instruction.mnemonic,
-        //                         @intFromEnum(payload.mov_instruction.reg),
-        //                         @intFromEnum(payload.mov_instruction.rm),
-        //                     });
-        //                     std.debug.print("+++++NEXT+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
-        //                 },
-        //             }
-        //         }
-        //     },
-        //     BinaryInstructions.mov_dest_reg16_regmem16 => { // 0x8B
-        //         const mod: ModValue = @enumFromInt(second_byte >> 6);
-        //         const temp_rm = second_byte << 5;
-        //         const rm: RmValue = @enumFromInt(temp_rm >> 5);
-        //         const ByteCount = movGetInstructionLength(mod, rm);
-        //         std.debug.print("0x8B: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, ByteCount });
-
-        //         const instruction_bytes = [6]u8{ first_byte, second_byte, 0b0000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0000 };
-
-        //         std.debug.print("---0x8B---------------------------------------------------------------------\n", .{});
-        //         std.debug.print("1: {b:0>8}, {d}\n2: {b:0>8}, {d}\n3: {b:0>8}, {d}\n4: {b:0>8}, {d}\n5: {b:0>8}, {d}\n6: {b:0>8}, {d}\n", .{
-        //             instruction_bytes[0], activeByte,
-        //             instruction_bytes[1], activeByte + 1,
-        //             instruction_bytes[2], activeByte + 2,
-        //             instruction_bytes[3], activeByte + 3,
-        //             instruction_bytes[4], activeByte + 4,
-        //             instruction_bytes[5], activeByte + 5,
-        //         });
-        //         std.debug.print("---0x8B---------------------------------------------------------------------\n", .{});
-
-        //         activeByte += 2;
-        //         const payload = decodeMov(
-        //             mod,
-        //             rm,
-        //             instruction_bytes,
-        //         );
-        //         switch (payload) {
-        //             .err => {
-        //                 switch (payload.err) {
-        //                     DecodeMovError.DecodeError => {
-        //                         std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
-        //                         continue;
-        //                     },
-        //                     DecodeMovError.NotYetImplementet => {
-        //                         std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
-        //                         continue;
-        //                     },
-        //                 }
-        //             },
-        //             .mov_instruction => {
-        //                 std.debug.print("0x{x}: {b}, {s} {b:0>3},{b:0>3}\n", .{
-        //                     BinaryInstructions.mov_source_regmem8_reg8,
-        //                     @intFromEnum(payload.mov_instruction.mod),
-        //                     payload.mov_instruction.mnemonic,
-        //                     @intFromEnum(payload.mov_instruction.reg),
-        //                     @intFromEnum(payload.mov_instruction.rm),
-        //                 });
-        //                 std.debug.print("+++++NEXT+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
-        //             },
-        //         }
-        //     },
-        //     else => {
-        //         std.debug.print("ERROR: Not implemented yet\n", .{});
-        //     },
-        // }
     }
 }
 
