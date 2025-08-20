@@ -518,51 +518,200 @@ fn decodeMov(
 /// Identifiers of the General Register of the CPU.
 const address = enum { ah, al, ax, bh, bl, bx, ch, cl, cx, dh, dl, dx, sp, bp, di, si };
 
+const RegisterPayload = union {
+    value8: u8,
+    value16: u16,
+};
+
+// |76543210 76543210|
+// |--------|--------|
+// |   AH   |   AL   | AX
+// |--------|--------|
+// |   BH   |   BL   | BX
+// |--------|--------|
+// |   CH   |   CL   | CX
+// |--------|--------|
+// |   DH   |   DL   | DX
+// |--------|--------|
+// |        SP       |
+// |--------X--------|
+// |        BP       |
+// |--------X--------|
+// |        SI       |
+// |--------X--------|
+// |        DI       |
+// |--------X--------|
+// |76543210 76543210|
+
 /// Simulates the General register of the 8086 Processor
 const GeneralRegister = struct {
-    AX: u16,
-    BX: u16,
-    CX: u16,
-    DX: u16,
-    SP: u16,
-    BP: u16,
-    DI: u16,
-    SI: u16,
+    _AX: u16,
+    _BX: u16,
+    _CX: u16,
+    _DX: u16,
+    _SP: u16,
+    _BP: u16,
+    _DI: u16,
+    _SI: u16,
     pub fn setAH(self: *GeneralRegister, value: u8) void {
-        self.AX = value ++ self.AX[8..];
+        self._AX = value ++ self._AX[0..8];
     }
     pub fn setAL(self: *GeneralRegister, value: u8) void {
-        self.AX = self.AX[0..8] ++ value;
+        self._AX = self._AX[8..] ++ value;
+    }
+    pub fn setAX(self: *GeneralRegister, value: u16) void {
+        self._AX = value;
+    }
+    pub fn getAX(self: *GeneralRegister, w: WValue, hilo: []const u8) RegisterPayload {
+        if (w == WValue.byte) {
+            if (std.mem.eql([]const u8, hilo, "hi")) {
+                return self._AX[0..8];
+            } else {
+                return self._AX[8..];
+            }
+        } else {
+            return self._AX;
+        }
     }
     pub fn setBH(self: *GeneralRegister, value: u8) void {
-        self.BX = value ++ self.BX[8..];
+        self._BX = value ++ self._BX[0..8];
     }
     pub fn setBL(self: *GeneralRegister, value: u8) void {
-        self.BX = self.BX[0..8] ++ value;
+        self._BX = self._BX[8..] ++ value;
+    }
+    pub fn setBX(self: *GeneralRegister, value: u16) void {
+        self._BX = value;
+    }
+    pub fn getBX(self: *GeneralRegister, w: WValue, hilo: []const u8) RegisterPayload {
+        if (w == WValue.byte) {
+            if (std.mem.eql([]const u8, hilo, "hi")) {
+                return self._BX[0..8];
+            } else {
+                return self._BX[8..];
+            }
+        } else {
+            return self._BX;
+        }
     }
     pub fn setCH(self: *GeneralRegister, value: u8) void {
-        self.CX = value ++ self.CX[8..];
+        self._CX = value ++ self._CX[0..8];
     }
     pub fn setCL(self: *GeneralRegister, value: u8) void {
-        self.CX = self.CX[0..8] ++ value;
+        self._CX = self._CX[8..] ++ value;
+    }
+    pub fn setCX(self: *GeneralRegister, value: u16) void {
+        self._CX = value;
+    }
+    pub fn getCX(self: *GeneralRegister, w: WValue, hilo: []const u8) RegisterPayload {
+        if (w == WValue.byte) {
+            if (std.mem.eql([]const u8, hilo, "hi")) {
+                return self._CX[0..8];
+            } else {
+                return self._CX[8..];
+            }
+        } else {
+            return self._CX;
+        }
     }
     pub fn setDH(self: *GeneralRegister, value: u8) void {
-        self.DX = value ++ self.DX[8..];
+        self._DX = value ++ self._DX[0..8];
     }
     pub fn setDL(self: *GeneralRegister, value: u8) void {
-        self.DX = self.DX[0..8] ++ value;
+        self._DX = self._DX[8..] ++ value;
+    }
+    pub fn setDX(self: *GeneralRegister, value: u16) void {
+        self._DX = value;
+    }
+    pub fn getDX(self: *GeneralRegister, w: WValue, hilo: []const u8) RegisterPayload {
+        if (w == WValue.byte) {
+            if (std.mem.eql([]const u8, hilo, "hi")) {
+                return self._DX[0..8];
+            } else {
+                return self._DX[8..];
+            }
+        } else {
+            return self._DX;
+        }
     }
     pub fn setSP(self: *GeneralRegister, value: u16) void {
-        self.SP = value;
+        self._SP = value;
+    }
+    pub fn getSP(self: *GeneralRegister) u16 {
+        return self._SP;
     }
     pub fn setBP(self: *GeneralRegister, value: u16) void {
-        self.BP = value;
+        self._BP = value;
+    }
+    pub fn getBP(self: *GeneralRegister) u16 {
+        return self._BP;
     }
     pub fn setSI(self: *GeneralRegister, value: u16) void {
-        self.SI = value;
+        self._SI = value;
+    }
+    pub fn getSI(self: *GeneralRegister) u16 {
+        return self._SI;
     }
     pub fn setDI(self: *GeneralRegister, value: u16) void {
-        self.DI = value;
+        self._DI = value;
+    }
+    pub fn getDI(self: *GeneralRegister) u16 {
+        return self._DI;
+    }
+};
+
+const MemoryError = error{
+    ValueError,
+    OutOfBoundError,
+};
+
+const MemoryPayload = union {
+    err: MemoryError,
+    value8: u8,
+    value16: u16,
+};
+
+/// Simulates the memory of the 8086 Processor
+const Memory = struct {
+    _memory: [65536]u8,
+    pub fn setMemory(
+        self: *Memory,
+        addr: u16!u8,
+        value: u16,
+        w: WValue,
+    ) MemoryError!void {
+        if (@TypeOf(value) == u16) {
+            self._memory[addr] = value[0..8];
+            self._memory[addr + 1] = value[8..];
+        } else if (@TypeOf(value) == u8) {
+            if (w == WValue.byte) {
+                self._memory[addr] = value;
+            } else {
+                self._memory[addr] = value;
+                self._memory[addr + 1] = value >> 8;
+            }
+        } else {
+            return MemoryError.ValueError;
+        }
+    }
+    pub fn getMemory(self: *Memory, addr: u16, w: WValue) MemoryPayload {
+        if (0 <= addr and addr < 65536) {
+            if (w == WValue.byte) {
+                const payload = MemoryPayload{
+                    .value8 = self._memory[addr],
+                };
+                return payload;
+            } else {
+                const payload = MemoryPayload{
+                    .value16 = self._memory[addr] ++ self._memory[addr + 1],
+                };
+                return payload;
+            }
+        } else {
+            const payload = MemoryPayload{
+                .err = MemoryError.OutOfBoundError,
+            };
+            return payload;
+        }
     }
 };
 
@@ -621,6 +770,7 @@ pub fn main() !void {
 
     var activeByte: u16 = 0;
     var stepSize: u3 = 2;
+    var instruction_queue: [6]u8 = undefined;
     var instruction_bytes: [6]u8 = undefined;
     const file_contents = try file.readToEndAlloc(heap_allocator, maxFileSizeBytes);
     std.debug.print("Instruction byte count: {d}\n", .{file_contents.len});
@@ -630,12 +780,12 @@ pub fn main() !void {
 
     while (!depleted and activeByte < file_contents.len) : (activeByte += stepSize) {
         const default: u8 = 0b00000000;
-        const first_byte: u8 = if (activeByte < file_contents.len) file_contents[activeByte] else default;
-        const second_byte: u8 = if (activeByte + 1 < file_contents.len) file_contents[activeByte + 1] else default;
-        const third_byte: u8 = if (activeByte + 2 < file_contents.len) file_contents[activeByte + 2] else default;
-        const fourth_byte: u8 = if (activeByte + 3 < file_contents.len) file_contents[activeByte + 3] else default;
-        const fifth_byte: u8 = if (activeByte + 4 < file_contents.len) file_contents[activeByte + 4] else default;
-        const sixth_byte: u8 = if (activeByte + 5 < file_contents.len) file_contents[activeByte + 5] else default;
+        instruction_queue[0] = if (activeByte < file_contents.len) file_contents[activeByte] else default;
+        instruction_queue[1] = if (activeByte + 1 < file_contents.len) file_contents[activeByte + 1] else default;
+        instruction_queue[2] = if (activeByte + 2 < file_contents.len) file_contents[activeByte + 2] else default;
+        instruction_queue[3] = if (activeByte + 3 < file_contents.len) file_contents[activeByte + 3] else default;
+        instruction_queue[4] = if (activeByte + 4 < file_contents.len) file_contents[activeByte + 4] else default;
+        instruction_queue[5] = if (activeByte + 5 < file_contents.len) file_contents[activeByte + 5] else default;
 
         // std.debug.print("---Data-Range----------------------------------------------------------------\n", .{});
         // std.debug.print("1: {b:0>8} {d},\n2: {b:0>8} {d},\n3: {b:0>8} {d},\n4: {b:0>8} {d},\n5: {b:0>8} {d},\n6: {b:0>8} {d},\n", .{
@@ -647,39 +797,39 @@ pub fn main() !void {
         //     sixth_byte,  activeByte + 5,
         // });
 
-        const instruction: BinaryInstructions = @enumFromInt(first_byte);
+        const instruction: BinaryInstructions = @enumFromInt(instruction_queue[0]);
 
         // std.debug.print("DEBUG: instruction: {any}\n", .{instruction});
         var mod: ModValue = undefined;
         var rm: RmValue = undefined;
         switch (instruction) {
             BinaryInstructions.mov_source_regmem8_reg8 => { // 0x88
-                mod = @enumFromInt(second_byte >> 6);
-                const temp_rm = second_byte << 5;
+                mod = @enumFromInt(instruction_queue[1] >> 6);
+                const temp_rm = instruction_queue[1] << 5;
                 rm = @enumFromInt(temp_rm >> 5);
 
                 stepSize = movGetInstructionLength(mod, rm);
                 // std.debug.print("DEBUG: 0x88: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, stepSize });
             },
             BinaryInstructions.mov_source_regmem16_reg16 => { // 0x89
-                mod = @enumFromInt(second_byte >> 6);
-                const temp_rm = second_byte << 5;
+                mod = @enumFromInt(instruction_queue[1] >> 6);
+                const temp_rm = instruction_queue[1] << 5;
                 rm = @enumFromInt(temp_rm >> 5);
 
                 stepSize = movGetInstructionLength(mod, rm);
                 // std.debug.print("DEBUG: 0x89: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, stepSize });
             },
             BinaryInstructions.mov_dest_reg8_regmem8 => { // 0x8A
-                mod = @enumFromInt(second_byte >> 6);
-                const temp_rm = second_byte << 5;
+                mod = @enumFromInt(instruction_queue[1] >> 6);
+                const temp_rm = instruction_queue[1] << 5;
                 rm = @enumFromInt(temp_rm >> 5);
 
                 stepSize = movGetInstructionLength(mod, rm);
                 // std.debug.print("DEBUG: 0x8A: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, stepSize });
             },
             BinaryInstructions.mov_dest_reg16_regmem16 => { // 0x8B
-                mod = @enumFromInt(second_byte >> 6);
-                const temp_rm = second_byte << 5;
+                mod = @enumFromInt(instruction_queue[1] >> 6);
+                const temp_rm = instruction_queue[1] << 5;
                 rm = @enumFromInt(temp_rm >> 5);
 
                 stepSize = movGetInstructionLength(mod, rm);
@@ -693,8 +843,8 @@ pub fn main() !void {
         switch (stepSize) {
             2 => {
                 instruction_bytes = [6]u8{
-                    first_byte,
-                    second_byte,
+                    instruction_queue[0],
+                    instruction_queue[1],
                     0b0000_0000,
                     0b0000_0000,
                     0b0000_0000,
@@ -703,9 +853,9 @@ pub fn main() !void {
             },
             3 => {
                 instruction_bytes = [6]u8{
-                    first_byte,
-                    second_byte,
-                    third_byte,
+                    instruction_queue[0],
+                    instruction_queue[1],
+                    instruction_queue[2],
                     0b0000_0000,
                     0b0000_0000,
                     0b0000_0000,
@@ -713,32 +863,32 @@ pub fn main() !void {
             },
             4 => {
                 instruction_bytes = [6]u8{
-                    first_byte,
-                    second_byte,
-                    third_byte,
-                    fourth_byte,
+                    instruction_queue[0],
+                    instruction_queue[1],
+                    instruction_queue[2],
+                    instruction_queue[3],
                     0b0000_0000,
                     0b0000_0000,
                 };
             },
             5 => {
                 instruction_bytes = [6]u8{
-                    first_byte,
-                    second_byte,
-                    third_byte,
-                    fourth_byte,
-                    fifth_byte,
+                    instruction_queue[0],
+                    instruction_queue[1],
+                    instruction_queue[2],
+                    instruction_queue[3],
+                    instruction_queue[4],
                     0b0000_0000,
                 };
             },
             6 => {
                 instruction_bytes = [6]u8{
-                    first_byte,
-                    second_byte,
-                    third_byte,
-                    fourth_byte,
-                    fifth_byte,
-                    sixth_byte,
+                    instruction_queue[0],
+                    instruction_queue[1],
+                    instruction_queue[2],
+                    instruction_queue[3],
+                    instruction_queue[4],
+                    instruction_queue[5],
                 };
             },
             else => {
