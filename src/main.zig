@@ -834,53 +834,75 @@ pub fn main() !void {
     }
 }
 
-test "activeByte moves along correct" {
+test "listing_0037_single_register_mov" {
     // Since the index of the byte array loaded from file needs
     // to move allong at the correct speed, meaning if a
     // instruction takes three bytes the cursor also needs to
     // move forward three bytes.
 
-    // zls fmt:off
-
     // MOV
     // listing_0037_single_register_mov
     // 0x89
     // Mod: 0b11, R/M != 0b110,
-    const test_input_register_mode_no_displacement: [6]u8 = [_]u8{
-        0b1000_1001, // mov, d=source, w=word
-        0b1101_1001, // mod=
+    const test_input_0x89_mod_register_mode_no_displacement: [6]u8 = [_]u8{
+        0b1000_1001, // 0x89 => mov, d=source, w=word
+        0b1101_1001, // mod=registerMode, reg=BLBX, R/M=CLCX
         0b0000_0000,
         0b0000_0000,
         0b0000_0000,
         0b0000_0000,
     };
-    const test_output_register_mode_no_displacement = MovInstruction{
-        .mnemonic = "mov",
-        .d = DValue.source,
-        .w = WValue.word,
-        .mod = ModValue.registerModeNoDisplacement,
-        .reg = RegValue.BLBX,
-        .rm = RmValue.CLCX_BXDI,
+    const test_output_payload_0x89_mod_register_mode_no_displacement = DecodePayload{
+        .mov_instruction = MovInstruction{
+            .mnemonic = "mov",
+            .d = DValue.source,
+            .w = WValue.word,
+            .mod = ModValue.registerModeNoDisplacement,
+            .reg = RegValue.BLBX,
+            .rm = RmValue.CLCX_BXDI_BXDID8_BXDID16,
+            .disp_lo = null,
+            .disp_hi = null,
+        },
     };
-    try std.testing.expect(decodeMov(
-        ModValue.memoryModeNoDisplacement,
-        test_input_register_mode_no_displacement,
-    ) == test_output_register_mode_no_displacement);
+    try std.testing.expectEqual(
+        decodeMov(
+            ModValue.registerModeNoDisplacement,
+            RmValue.CLCX_BXDI_BXDID8_BXDID16,
+            test_input_0x89_mod_register_mode_no_displacement,
+        ).mov_instruction,
+        test_output_payload_0x89_mod_register_mode_no_displacement.mov_instruction,
+    );
+}
 
-    // const test_input_memory_mode_8_bit_displacement: [6]u8 = []u8{
-    //     0b0000_0000,
-    //     0b0000_0000,
-    //     0b0000_0000,
-    //     0b0000_0000,
-    //     0b0000_0000,
-    //     0b0000_0000,
-    // };
-    // const test_output_memory_mode_8_bit_displacement = .{};
-    // try std.testing.expect(
-    //     decodeMove(
-    //         ModValue.memoryMode8BitDisplacement,
-    //         test_input_memory_mode_8_bit_displacement,
-    //     ) == test_output_memory_mode_8_bit_displacement,
-    // );
-    // zls fmt:on
+test "listing_0038_many_register_mov" {
+    // listing_0038_many_register_mov
+    // 0x88, 0x89
+
+    // 0x88, Mod: 0b01, R/M:
+    const test_input_0x89_mod_memory_mode_8_bit_displacement: [6]u8 = [_]u8{
+        0b1000_1001,
+        0b0110_0010,
+        0b0101_0101,
+        0b0000_0000,
+        0b0000_0000,
+        0b0000_0000,
+    };
+    const test_output_payload_0x89_mod_memory_mode_8_bit_displacement = DecodePayload{ .mov_instruction = MovInstruction{
+        .mnemonic = "mov",
+        .d = @enumFromInt(0b0),
+        .w = @enumFromInt(0b1),
+        .mod = @enumFromInt(0b01),
+        .reg = @enumFromInt(0b100),
+        .rm = @enumFromInt(0b010),
+        .disp_lo = 0b0101_0101,
+        .disp_hi = null,
+    } };
+    try std.testing.expectEqual(
+        decodeMov(
+            ModValue.memoryMode8BitDisplacement,
+            RmValue.AHSP_SI_SID8_SID16,
+            test_input_0x89_mod_memory_mode_8_bit_displacement,
+        ),
+        test_output_payload_0x89_mod_memory_mode_8_bit_displacement,
+    );
 }
