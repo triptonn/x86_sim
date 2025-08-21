@@ -518,6 +518,38 @@ fn decodeMov(
 /// Identifiers of the General Register of the CPU.
 const address = enum { ah, al, ax, bh, bl, bx, ch, cl, cx, dh, dl, dx, sp, bp, di, si };
 
+/// Errors for the bus interface unit of the 8086 Processor
+const BiuError = error{
+    InvalidIndex,
+};
+
+/// Simulates the bus interface unit of the 8086 Processor, mainly the
+/// instruction queue.
+const BusInterfaceUnit = struct {
+    InstructionQueue: [6]u8 = [1]u8{0} ** 6,
+
+    pub fn initInstructionQueue(self: *BusInterfaceUnit, value_array: [6]u8) BiuError!void {
+        var i: u3 = 0;
+        for (&self.InstructionQueue) |*place| {
+            place.* = value_array[i];
+            i += 1;
+        }
+    }
+
+    /// Set a byte of the instruction queue by passing an index (0 - 5) and the
+    /// value.
+    pub fn setIndex(self: *BusInterfaceUnit, index: u3, value: u8) void {
+        if (index > 5 or index < 0) unreachable;
+        self.InstructionQueue[index] = value;
+    }
+
+    /// Get a byte of the instruction queue by passing an index (0 - 5).
+    pub fn getIndex(self: *BusInterfaceUnit, index: u3) u8 {
+        if (index < 0 or index > 5) unreachable;
+        return self.InstructionQueue[index];
+    }
+};
+
 const RegisterPayload = union {
     value8: u8,
     value16: u16,
@@ -574,35 +606,43 @@ const RegisterPayload = union {
 //   + 0x00022
 //   = 0xA2362H <-- Physical address
 
-/// Simulates the Segment register of the 8086 Processor
-const SegmentRegister = struct {
+/// Simulates the internal communication registers of the 8086 Processor,
+/// consisting of the segment registers and the instruction pointer.
+const InternalCommunicatonRegisters = struct {
     _CS: u16, // Pointer to Code segment base
     _DS: u16, // Pointer to Data segment base
     _ES: u16, // Pointer to Extra segment base
     _SS: u16, // Pointer to Stack segment base
-    pub fn setCS(self: *SegmentRegister, value: u16) void {
+    _IP: u16, // Pointer to the next instruction to execute
+    pub fn setCS(self: *InternalCommunicatonRegisters, value: u16) void {
         self._CS = value;
     }
-    pub fn getCS(self: *SegmentRegister) RegisterPayload {
+    pub fn getCS(self: *InternalCommunicatonRegisters) RegisterPayload {
         return RegisterPayload{ .value16 = self._CS };
     }
-    pub fn setDS(self: *SegmentRegister, value: u16) void {
+    pub fn setDS(self: *InternalCommunicatonRegisters, value: u16) void {
         self._DS = value;
     }
-    pub fn getDS(self: *SegmentRegister) RegisterPayload {
+    pub fn getDS(self: *InternalCommunicatonRegisters) RegisterPayload {
         return RegisterPayload{ .value16 = self._DS };
     }
-    pub fn setES(self: *SegmentRegister, value: u16) void {
+    pub fn setES(self: *InternalCommunicatonRegisters, value: u16) void {
         self._ES = value;
     }
-    pub fn getES(self: *SegmentRegister) RegisterPayload {
+    pub fn getES(self: *InternalCommunicatonRegisters) RegisterPayload {
         return RegisterPayload{ .value16 = self._ES };
     }
-    pub fn setSS(self: *SegmentRegister, value: u16) void {
+    pub fn setSS(self: *InternalCommunicatonRegisters, value: u16) void {
         self._SS = value;
     }
-    pub fn getSS(self: *SegmentRegister) RegisterPayload {
+    pub fn getSS(self: *InternalCommunicatonRegisters) RegisterPayload {
         return RegisterPayload{ .value16 = self._SS };
+    }
+    pub fn setIP(self: *InternalCommunicatonRegisters, value: u16) void {
+        self._IP = value;
+    }
+    pub fn getIP(self: *InternalCommunicatonRegisters) RegisterPayload {
+        return RegisterPayload{ .value16 = self._IP };
     }
 };
 
@@ -756,25 +796,30 @@ const MemoryPayload = union {
 };
 
 // 8086 Memory
-// Total Memory: 1,048,576 bytes | physical addresses range from 0x0H to 0xFFFFFH <-- 'H' signifying a physical address
-// Segment: 65.536               | logical addresses consist of segment base + offset value
-// A, B, C, D, E, F, G, H, I, J  |   -> for any given memory address the segment base value
-// und K                         |      locates the first byte of the containing segment and
-//                               |      the offset is the distance in bytes of the target
-//                               |      location from the beginning of the segment.
-//                               |      segment base and offset are u16
+// Total Memory: 1,048,576 bytes            | physical addresses range from 0x0H to 0xFFFFFH <-- 'H' signifying a physical address
+// Segment: up to   65.536 bytes            | logical addresses consist of segment base + offset value
+// A, B, C, D, E, F, G, H, I, J             |   -> for any given memory address the segment base value
+// und K                                    |      locates the first byte of the containing segment and
+//                                          |      the offset is the distance in bytes of the target
+//                                          |      location from the beginning of the segment.
+//                                          |      segment base and offset are u16
 
 /// Simulates the memory of the 8086 Processor
 const Memory = struct {
-    _memory: [1_048_576]u8,
+    _memory: [0xFFFFF]u8 = undefined,
 
     // byte     0x0 -    0x13 = dedicated
     // byte    0x14 -    0x7F = reserved
     // byte    0x80 - 0xFFFEF = open
     // byte 0xFFFF0 - 0xFFFFB = dedicated
     // byte 0xFFFFC - 0xFFFFF = reserved
-
-    pub fn setMemory(
+    pub fn init(self: *Memory) void {
+        self._memory = [1]u8{0} ** 0xFFFFF;
+    }
+    pub fn defineSegment() void {}
+    pub fn moveSegment() void {}
+    pub fn removeSegment() void {}
+    pub fn setDirectAddress(
         self: *Memory,
         addr: u16!u8,
         value: u16,
@@ -797,8 +842,8 @@ const Memory = struct {
             return MemoryError.ValueError;
         }
     }
-    pub fn getMemory(self: *Memory, addr: u16, w: WValue) MemoryPayload {
-        if (0 <= addr and addr < 65536) {
+    pub fn getDirectAddress(self: *Memory, addr: u16, w: WValue) MemoryPayload {
+        if (0 <= addr and addr < 0xFFF) {
             if (w == WValue.byte) {
                 const payload = MemoryPayload{
                     .value8 = self._memory[addr],
@@ -870,10 +915,22 @@ pub fn main() !void {
         std.debug.print("FileError: file object is not of the correct type.\n", .{});
     }
 
+    var memory = Memory{};
+    memory.init();
+    std.debug.print("DEBUG: Test _memory initialization: _memory size = 0x{x}\n", .{memory._memory.len});
+
     const maxFileSizeBytes = 65535;
 
     var activeByte: u16 = 0;
-    const InstructionQueue: *[6]u8 = undefined;
+    const IQInitValue: [6]u8 = [1]u8{0} ** 6;
+    var biu = BusInterfaceUnit{
+        .InstructionQueue = undefined,
+    };
+    biu.initInstructionQueue(IQInitValue) catch |err| {
+        std.debug.print("ERROR: {any}\n", .{err});
+        unreachable;
+    };
+
     var stepSize: u3 = 2;
     var InstructionBytes: [6]u8 = undefined;
     const file_contents = try file.readToEndAlloc(heap_allocator, maxFileSizeBytes);
@@ -884,56 +941,66 @@ pub fn main() !void {
 
     while (!depleted and activeByte < file_contents.len) : (activeByte += stepSize) {
         const default: u8 = 0b00000000;
-        InstructionQueue[0] = if (activeByte < file_contents.len) file_contents[activeByte] else default;
-        InstructionQueue[1] = if (activeByte + 1 < file_contents.len) file_contents[activeByte + 1] else default;
-        InstructionQueue[2] = if (activeByte + 2 < file_contents.len) file_contents[activeByte + 2] else default;
-        InstructionQueue[3] = if (activeByte + 3 < file_contents.len) file_contents[activeByte + 3] else default;
-        InstructionQueue[4] = if (activeByte + 4 < file_contents.len) file_contents[activeByte + 4] else default;
-        InstructionQueue[5] = if (activeByte + 5 < file_contents.len) file_contents[activeByte + 5] else default;
+        // IQInitValue[0] = if (activeByte < file_contents.len) file_contents[activeByte] else default;
+        // IQInitValue[1] = if (activeByte + 1 < file_contents.len) file_contents[activeByte + 1] else default;
+        // IQInitValue[2] = if (activeByte + 2 < file_contents.len) file_contents[activeByte + 2] else default;
+        // IQInitValue[3] = if (activeByte + 3 < file_contents.len) file_contents[activeByte + 3] else default;
+        // IQInitValue[4] = if (activeByte + 4 < file_contents.len) file_contents[activeByte + 4] else default;
+        // IQInitValue[5] = if (activeByte + 5 < file_contents.len) file_contents[activeByte + 5] else default;
+
+        const queue_size = 6;
+        var queue_index: u3 = 0;
+        // std.debug.print("---BIU-Instruction-Queue-----------------------------------------------------\n", .{});
+        while (queue_index < queue_size) : (queue_index += 1) {
+            biu.setIndex(queue_index, if (activeByte + queue_index < file_contents.len) file_contents[activeByte + queue_index] else default);
+            if (activeByte + queue_index > file_contents.len - 1) break;
+            // std.debug.print("{d}: {b:0>8}, {d}\n", .{ queue_index, file_contents[activeByte + queue_index], activeByte + queue_index });
+            if (queue_index + 1 == 6) break;
+        }
 
         // std.debug.print("---Data-Range----------------------------------------------------------------\n", .{});
         // std.debug.print("1: {b:0>8} {d},\n2: {b:0>8} {d},\n3: {b:0>8} {d},\n4: {b:0>8} {d},\n5: {b:0>8} {d},\n6: {b:0>8} {d},\n", .{
-        //     first_byte,  activeByte,
-        //     second_byte, activeByte + 1,
-        //     third_byte,  activeByte + 2,
-        //     fourth_byte, activeByte + 3,
-        //     fifth_byte,  activeByte + 4,
-        //     sixth_byte,  activeByte + 5,
+        //     biu.getIndex(0), activeByte,
+        //     IQInitValue[1], activeByte + 1,
+        //     IQInitValue[2], activeByte + 2,
+        //     IQInitValue[3], activeByte + 3,
+        //     IQInitValue[4], activeByte + 4,
+        //     IQInitValue[5], activeByte + 5,
         // });
 
-        const instruction: BinaryInstructions = @enumFromInt(InstructionQueue[0]);
+        const instruction: BinaryInstructions = @enumFromInt(biu.getIndex(0));
 
         // std.debug.print("DEBUG: instruction: {any}\n", .{instruction});
         var mod: ModValue = undefined;
         var rm: RmValue = undefined;
         switch (instruction) {
             BinaryInstructions.mov_source_regmem8_reg8 => { // 0x88
-                mod = @enumFromInt(InstructionQueue[1] >> 6);
-                const temp_rm = InstructionQueue[1] << 5;
+                mod = @enumFromInt(biu.getIndex(1) >> 6);
+                const temp_rm = biu.getIndex(1) << 5;
                 rm = @enumFromInt(temp_rm >> 5);
 
                 stepSize = movGetInstructionLength(mod, rm);
                 // std.debug.print("DEBUG: 0x88: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, stepSize });
             },
             BinaryInstructions.mov_source_regmem16_reg16 => { // 0x89
-                mod = @enumFromInt(InstructionQueue[1] >> 6);
-                const temp_rm = InstructionQueue[1] << 5;
+                mod = @enumFromInt(biu.getIndex(1) >> 6);
+                const temp_rm = biu.getIndex(1) << 5;
                 rm = @enumFromInt(temp_rm >> 5);
 
                 stepSize = movGetInstructionLength(mod, rm);
                 // std.debug.print("DEBUG: 0x89: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, stepSize });
             },
             BinaryInstructions.mov_dest_reg8_regmem8 => { // 0x8A
-                mod = @enumFromInt(InstructionQueue[1] >> 6);
-                const temp_rm = InstructionQueue[1] << 5;
+                mod = @enumFromInt(biu.getIndex(1) >> 6);
+                const temp_rm = biu.getIndex(1) << 5;
                 rm = @enumFromInt(temp_rm >> 5);
 
                 stepSize = movGetInstructionLength(mod, rm);
                 // std.debug.print("DEBUG: 0x8A: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, stepSize });
             },
             BinaryInstructions.mov_dest_reg16_regmem16 => { // 0x8B
-                mod = @enumFromInt(InstructionQueue[1] >> 6);
-                const temp_rm = InstructionQueue[1] << 5;
+                mod = @enumFromInt(biu.getIndex(1) >> 6);
+                const temp_rm = biu.getIndex(1) << 5;
                 rm = @enumFromInt(temp_rm >> 5);
 
                 stepSize = movGetInstructionLength(mod, rm);
@@ -945,10 +1012,20 @@ pub fn main() !void {
         }
 
         switch (stepSize) {
+            1 => {
+                InstructionBytes = [6]u8{
+                    biu.getIndex(0),
+                    0b0000_0000,
+                    0b0000_0000,
+                    0b0000_0000,
+                    0b0000_0000,
+                    0b0000_0000,
+                };
+            },
             2 => {
                 InstructionBytes = [6]u8{
-                    InstructionQueue[0],
-                    InstructionQueue[1],
+                    biu.getIndex(0),
+                    biu.getIndex(1),
                     0b0000_0000,
                     0b0000_0000,
                     0b0000_0000,
@@ -957,9 +1034,9 @@ pub fn main() !void {
             },
             3 => {
                 InstructionBytes = [6]u8{
-                    InstructionQueue[0],
-                    InstructionQueue[1],
-                    InstructionQueue[2],
+                    biu.getIndex(0),
+                    biu.getIndex(1),
+                    biu.getIndex(2),
                     0b0000_0000,
                     0b0000_0000,
                     0b0000_0000,
@@ -967,47 +1044,47 @@ pub fn main() !void {
             },
             4 => {
                 InstructionBytes = [6]u8{
-                    InstructionQueue[0],
-                    InstructionQueue[1],
-                    InstructionQueue[2],
-                    InstructionQueue[3],
+                    biu.getIndex(0),
+                    biu.getIndex(1),
+                    biu.getIndex(2),
+                    biu.getIndex(3),
                     0b0000_0000,
                     0b0000_0000,
                 };
             },
             5 => {
                 InstructionBytes = [6]u8{
-                    InstructionQueue[0],
-                    InstructionQueue[1],
-                    InstructionQueue[2],
-                    InstructionQueue[3],
-                    InstructionQueue[4],
+                    biu.getIndex(0),
+                    biu.getIndex(1),
+                    biu.getIndex(2),
+                    biu.getIndex(3),
+                    biu.getIndex(4),
                     0b0000_0000,
                 };
             },
             6 => {
                 InstructionBytes = [6]u8{
-                    InstructionQueue[0],
-                    InstructionQueue[1],
-                    InstructionQueue[2],
-                    InstructionQueue[3],
-                    InstructionQueue[4],
-                    InstructionQueue[5],
+                    biu.getIndex(0),
+                    biu.getIndex(1),
+                    biu.getIndex(2),
+                    biu.getIndex(3),
+                    biu.getIndex(4),
+                    biu.getIndex(5),
                 };
             },
             else => {
-                std.debug.print("InstructionError: Instruction size {} invalid", .{stepSize});
+                std.debug.print("InstructionError: Instruction size {d} invalid", .{stepSize});
             },
         }
 
         // std.debug.print("---0x{x}-{any}-- Mod: {any}, R/M: {any}\n", .{ @intFromEnum(instruction), instruction, mod, rm });
         // std.debug.print("1: {b:0>8}, {d}\n2: {b:0>8}, {d}\n3: {b:0>8}, {d}\n4: {b:0>8}, {d}\n5: {b:0>8}, {d}\n6: {b:0>8}, {d}\n", .{
-        //     instruction_bytes[0], activeByte,
-        //     instruction_bytes[1], activeByte + 1,
-        //     instruction_bytes[2], activeByte + 2,
-        //     instruction_bytes[3], activeByte + 3,
-        //     instruction_bytes[4], activeByte + 4,
-        //     instruction_bytes[5], activeByte + 5,
+        //     InstructionBytes[0], activeByte,
+        //     InstructionBytes[1], activeByte + 1,
+        //     InstructionBytes[2], activeByte + 2,
+        //     InstructionBytes[3], activeByte + 3,
+        //     InstructionBytes[4], activeByte + 4,
+        //     InstructionBytes[5], activeByte + 5,
         // });
 
         var payload: DecodePayload = undefined;
@@ -1063,10 +1140,10 @@ pub fn main() !void {
                     rm,
                 );
 
-                std.debug.print("ASM-86: {s} {any},{any}\n", .{
+                std.debug.print("{s} {s},{s}\n", .{
                     payload.mov_instruction.mnemonic,
-                    instruction_info.destination,
-                    instruction_info.source,
+                    @tagName(instruction_info.destination),
+                    @tagName(instruction_info.source),
                 });
             },
         }
@@ -1076,13 +1153,13 @@ pub fn main() !void {
             std.debug.print("+++Simulation+finished++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
         } else {
             if (activeByte + stepSize > 999) {
-                std.debug.print("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
+                // std.debug.print("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
             } else if (activeByte + stepSize > 99) {
-                std.debug.print("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
+                // std.debug.print("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
             } else if (activeByte + stepSize > 9) {
-                std.debug.print("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
+                // std.debug.print("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
             } else {
-                std.debug.print("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
+                // std.debug.print("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
             }
         }
     }
