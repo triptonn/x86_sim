@@ -523,23 +523,108 @@ const RegisterPayload = union {
     value16: u16,
 };
 
+// TODO: 8086 Instruction Pointer
+//  76543210 76543210
+// -------------------
+// |       IP        | IP - INSTRUCTION POINTER - instructions are fetched from here
+// -------------------
+
+// 16 bit pointer containing the offset (distance in bytes) of the next instruction
+// in the current code segment (CS). Saves and restores to / from the Stack.
+
+// TODO: 8086 Flags
+//
+// AF - Auxiliary Carry flag
+// CF - Carry flag
+// OF - Overflow flag
+// SF - Sign flag
+// PF - Parity flag
+// ZF - Zero flag
+
+// Additional flags
+//
+// DF - Direction flag
+// IF - Interrupt-enable flag
+// TF - Trap flag
+
+// TODO: 8086 Segment Register
+
+// Store base pointers to four segments at a time, these are the only segments
+// that can be access at that point in time.
+//
 // |76543210 76543210|
+// |--------x--------|
+// |       CS        | CS - CODE SEGMENT  64kb  - Instructions are fetched from here
+// |--------x--------|
+// |       DS        | DS - DATA SEGMENT  64kb  - Containing mainly program variables
+// |--------x--------|                     + => 128kb for data in total
+// |       ES        | ES - EXTRA SEGMENT 64kb  - typically also used for data
+// |--------x--------|
+// |       SS        | SS - STACK SEGMENT 64kb  - Stack
+// -------------------
+//
+// Physical address generation
+// ---------------------------------------
+//      0xA234 Segment base      |  Logical
+//      0x0022 Offset            |  Address
+// ---------------------------------------
+// Bit shift left 4 bits segment base:
+//     0xA2340
+// Add offset
+//   + 0x00022
+//   = 0xA2362H <-- Physical address
+
+/// Simulates the Segment register of the 8086 Processor
+const SegmentRegister = struct {
+    _CS: u16, // Pointer to Code segment base
+    _DS: u16, // Pointer to Data segment base
+    _ES: u16, // Pointer to Extra segment base
+    _SS: u16, // Pointer to Stack segment base
+    pub fn setCS(self: *SegmentRegister, value: u16) void {
+        self._CS = value;
+    }
+    pub fn getCS(self: *SegmentRegister) RegisterPayload {
+        return RegisterPayload{ .value16 = self._CS };
+    }
+    pub fn setDS(self: *SegmentRegister, value: u16) void {
+        self._DS = value;
+    }
+    pub fn getDS(self: *SegmentRegister) RegisterPayload {
+        return RegisterPayload{ .value16 = self._DS };
+    }
+    pub fn setES(self: *SegmentRegister, value: u16) void {
+        self._ES = value;
+    }
+    pub fn getES(self: *SegmentRegister) RegisterPayload {
+        return RegisterPayload{ .value16 = self._ES };
+    }
+    pub fn setSS(self: *SegmentRegister, value: u16) void {
+        self._SS = value;
+    }
+    pub fn getSS(self: *SegmentRegister) RegisterPayload {
+        return RegisterPayload{ .value16 = self._SS };
+    }
+};
+
+// 8086 General Register
+//
+// |76543210 76543210|
+// |--------|--------|                          AX - Word multiply, word divide, word i/o
+// |   AH   |   AL   | AX - ACCUMULATOR         AL - Byte multiply, byte divide, byte i/o, translate, decimal arithmatic
+// |--------|--------|                          AH - Byte multiply, byte divide
+// |   BH   |   BL   | BX - BASE                BX - Translate
 // |--------|--------|
-// |   AH   |   AL   | AX
+// |   CH   |   CL   | CX - COUNT               CX - String operations, loops
+// |--------|--------|                          CL - Variable shift and rotate
+// |   DH   |   DL   | DX - DATA                DX - Word multiply, word divide, indirect i/o
 // |--------|--------|
-// |   BH   |   BL   | BX
-// |--------|--------|
-// |   CH   |   CL   | CX
-// |--------|--------|
-// |   DH   |   DL   | DX
-// |--------|--------|
-// |        SP       |
+// |        SP       | SP - STACK POINTER       SP - Stack operations
 // |--------X--------|
-// |        BP       |
+// |        BP       | BP - BASE POINTER
 // |--------X--------|
-// |        SI       |
+// |        SI       | SI - SOURCE INDEX        SI - String operations
 // |--------X--------|
-// |        DI       |
+// |        DI       | DI - DESTINATION INDEX   DI - String operations
 // |--------X--------|
 // |76543210 76543210|
 
@@ -670,15 +755,34 @@ const MemoryPayload = union {
     value16: u16,
 };
 
+// 8086 Memory
+// Total Memory: 1,048,576 bytes | physical addresses range from 0x0H to 0xFFFFFH <-- 'H' signifying a physical address
+// Segment: 65.536               | logical addresses consist of segment base + offset value
+// A, B, C, D, E, F, G, H, I, J  |   -> for any given memory address the segment base value
+// und K                         |      locates the first byte of the containing segment and
+//                               |      the offset is the distance in bytes of the target
+//                               |      location from the beginning of the segment.
+//                               |      segment base and offset are u16
+
 /// Simulates the memory of the 8086 Processor
 const Memory = struct {
-    _memory: [65536]u8,
+    _memory: [1_048_576]u8,
+
+    // byte     0x0 -    0x13 = dedicated
+    // byte    0x14 -    0x7F = reserved
+    // byte    0x80 - 0xFFFEF = open
+    // byte 0xFFFF0 - 0xFFFFB = dedicated
+    // byte 0xFFFFC - 0xFFFFF = reserved
+
     pub fn setMemory(
         self: *Memory,
         addr: u16!u8,
         value: u16,
         w: WValue,
     ) MemoryError!void {
+        if (addr <= 0x7F or addr >= 0xFFFF0) {
+            return MemoryError.OutOfBoundError;
+        }
         if (@TypeOf(value) == u16) {
             self._memory[addr] = value[0..8];
             self._memory[addr + 1] = value[8..];
@@ -769,9 +873,9 @@ pub fn main() !void {
     const maxFileSizeBytes = 65535;
 
     var activeByte: u16 = 0;
+    const InstructionQueue: *[6]u8 = undefined;
     var stepSize: u3 = 2;
-    var instruction_queue: [6]u8 = undefined;
-    var instruction_bytes: [6]u8 = undefined;
+    var InstructionBytes: [6]u8 = undefined;
     const file_contents = try file.readToEndAlloc(heap_allocator, maxFileSizeBytes);
     std.debug.print("Instruction byte count: {d}\n", .{file_contents.len});
     std.debug.print("+++Start+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte});
@@ -780,12 +884,12 @@ pub fn main() !void {
 
     while (!depleted and activeByte < file_contents.len) : (activeByte += stepSize) {
         const default: u8 = 0b00000000;
-        instruction_queue[0] = if (activeByte < file_contents.len) file_contents[activeByte] else default;
-        instruction_queue[1] = if (activeByte + 1 < file_contents.len) file_contents[activeByte + 1] else default;
-        instruction_queue[2] = if (activeByte + 2 < file_contents.len) file_contents[activeByte + 2] else default;
-        instruction_queue[3] = if (activeByte + 3 < file_contents.len) file_contents[activeByte + 3] else default;
-        instruction_queue[4] = if (activeByte + 4 < file_contents.len) file_contents[activeByte + 4] else default;
-        instruction_queue[5] = if (activeByte + 5 < file_contents.len) file_contents[activeByte + 5] else default;
+        InstructionQueue[0] = if (activeByte < file_contents.len) file_contents[activeByte] else default;
+        InstructionQueue[1] = if (activeByte + 1 < file_contents.len) file_contents[activeByte + 1] else default;
+        InstructionQueue[2] = if (activeByte + 2 < file_contents.len) file_contents[activeByte + 2] else default;
+        InstructionQueue[3] = if (activeByte + 3 < file_contents.len) file_contents[activeByte + 3] else default;
+        InstructionQueue[4] = if (activeByte + 4 < file_contents.len) file_contents[activeByte + 4] else default;
+        InstructionQueue[5] = if (activeByte + 5 < file_contents.len) file_contents[activeByte + 5] else default;
 
         // std.debug.print("---Data-Range----------------------------------------------------------------\n", .{});
         // std.debug.print("1: {b:0>8} {d},\n2: {b:0>8} {d},\n3: {b:0>8} {d},\n4: {b:0>8} {d},\n5: {b:0>8} {d},\n6: {b:0>8} {d},\n", .{
@@ -797,39 +901,39 @@ pub fn main() !void {
         //     sixth_byte,  activeByte + 5,
         // });
 
-        const instruction: BinaryInstructions = @enumFromInt(instruction_queue[0]);
+        const instruction: BinaryInstructions = @enumFromInt(InstructionQueue[0]);
 
         // std.debug.print("DEBUG: instruction: {any}\n", .{instruction});
         var mod: ModValue = undefined;
         var rm: RmValue = undefined;
         switch (instruction) {
             BinaryInstructions.mov_source_regmem8_reg8 => { // 0x88
-                mod = @enumFromInt(instruction_queue[1] >> 6);
-                const temp_rm = instruction_queue[1] << 5;
+                mod = @enumFromInt(InstructionQueue[1] >> 6);
+                const temp_rm = InstructionQueue[1] << 5;
                 rm = @enumFromInt(temp_rm >> 5);
 
                 stepSize = movGetInstructionLength(mod, rm);
                 // std.debug.print("DEBUG: 0x88: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, stepSize });
             },
             BinaryInstructions.mov_source_regmem16_reg16 => { // 0x89
-                mod = @enumFromInt(instruction_queue[1] >> 6);
-                const temp_rm = instruction_queue[1] << 5;
+                mod = @enumFromInt(InstructionQueue[1] >> 6);
+                const temp_rm = InstructionQueue[1] << 5;
                 rm = @enumFromInt(temp_rm >> 5);
 
                 stepSize = movGetInstructionLength(mod, rm);
                 // std.debug.print("DEBUG: 0x89: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, stepSize });
             },
             BinaryInstructions.mov_dest_reg8_regmem8 => { // 0x8A
-                mod = @enumFromInt(instruction_queue[1] >> 6);
-                const temp_rm = instruction_queue[1] << 5;
+                mod = @enumFromInt(InstructionQueue[1] >> 6);
+                const temp_rm = InstructionQueue[1] << 5;
                 rm = @enumFromInt(temp_rm >> 5);
 
                 stepSize = movGetInstructionLength(mod, rm);
                 // std.debug.print("DEBUG: 0x8A: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, stepSize });
             },
             BinaryInstructions.mov_dest_reg16_regmem16 => { // 0x8B
-                mod = @enumFromInt(instruction_queue[1] >> 6);
-                const temp_rm = instruction_queue[1] << 5;
+                mod = @enumFromInt(InstructionQueue[1] >> 6);
+                const temp_rm = InstructionQueue[1] << 5;
                 rm = @enumFromInt(temp_rm >> 5);
 
                 stepSize = movGetInstructionLength(mod, rm);
@@ -842,9 +946,9 @@ pub fn main() !void {
 
         switch (stepSize) {
             2 => {
-                instruction_bytes = [6]u8{
-                    instruction_queue[0],
-                    instruction_queue[1],
+                InstructionBytes = [6]u8{
+                    InstructionQueue[0],
+                    InstructionQueue[1],
                     0b0000_0000,
                     0b0000_0000,
                     0b0000_0000,
@@ -852,43 +956,43 @@ pub fn main() !void {
                 };
             },
             3 => {
-                instruction_bytes = [6]u8{
-                    instruction_queue[0],
-                    instruction_queue[1],
-                    instruction_queue[2],
+                InstructionBytes = [6]u8{
+                    InstructionQueue[0],
+                    InstructionQueue[1],
+                    InstructionQueue[2],
                     0b0000_0000,
                     0b0000_0000,
                     0b0000_0000,
                 };
             },
             4 => {
-                instruction_bytes = [6]u8{
-                    instruction_queue[0],
-                    instruction_queue[1],
-                    instruction_queue[2],
-                    instruction_queue[3],
+                InstructionBytes = [6]u8{
+                    InstructionQueue[0],
+                    InstructionQueue[1],
+                    InstructionQueue[2],
+                    InstructionQueue[3],
                     0b0000_0000,
                     0b0000_0000,
                 };
             },
             5 => {
-                instruction_bytes = [6]u8{
-                    instruction_queue[0],
-                    instruction_queue[1],
-                    instruction_queue[2],
-                    instruction_queue[3],
-                    instruction_queue[4],
+                InstructionBytes = [6]u8{
+                    InstructionQueue[0],
+                    InstructionQueue[1],
+                    InstructionQueue[2],
+                    InstructionQueue[3],
+                    InstructionQueue[4],
                     0b0000_0000,
                 };
             },
             6 => {
-                instruction_bytes = [6]u8{
-                    instruction_queue[0],
-                    instruction_queue[1],
-                    instruction_queue[2],
-                    instruction_queue[3],
-                    instruction_queue[4],
-                    instruction_queue[5],
+                InstructionBytes = [6]u8{
+                    InstructionQueue[0],
+                    InstructionQueue[1],
+                    InstructionQueue[2],
+                    InstructionQueue[3],
+                    InstructionQueue[4],
+                    InstructionQueue[5],
                 };
             },
             else => {
@@ -909,16 +1013,16 @@ pub fn main() !void {
         var payload: DecodePayload = undefined;
         switch (instruction) {
             .mov_source_regmem8_reg8 => {
-                payload = decodeMov(mod, rm, instruction_bytes);
+                payload = decodeMov(mod, rm, InstructionBytes);
             },
             .mov_source_regmem16_reg16 => {
-                payload = decodeMov(mod, rm, instruction_bytes);
+                payload = decodeMov(mod, rm, InstructionBytes);
             },
             .mov_dest_reg8_regmem8 => {
-                payload = decodeMov(mod, rm, instruction_bytes);
+                payload = decodeMov(mod, rm, InstructionBytes);
             },
             .mov_dest_reg16_regmem16 => {
-                payload = decodeMov(mod, rm, instruction_bytes);
+                payload = decodeMov(mod, rm, InstructionBytes);
             },
             else => {
                 std.debug.print("ERROR: Not implemented yet\n", .{});
