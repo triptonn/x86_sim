@@ -9,6 +9,7 @@
 // ========================================================================
 
 const std = @import("std");
+const logger = @import("log.zig");
 
 // const DecodeError = error{ InvalidInstruction, InvalidRegister, NotYetImplemented };
 
@@ -19,9 +20,9 @@ const BinaryInstructions = enum(u8) {
     // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
     // MOV: Register/memory to/from register  | 1 0 0 0 1 0|D|W | MOD| REG | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|
     // MOV: Immediate to register/memory      | 1 1 0 0 0 1 1|W | MOD|0 0 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      |   data if W=1   |
-    // MOV: Immediate to register             | 1 0 1 1|W| reg  |     data        |   data if W=1   |<-----------------------XXX------------------------->|
-    // MOV: Memory to accumulator             | 1 0 1 0 0 0 0|W |    addr-lo      |     addr-hi     |<-----------------------XXX------------------------->|
-    // MOV: Accumulator to memory             | 1 0 1 0 0 0 1|W |    addr-lo      |     addr-hi     |<-----------------------XXX------------------------->|
+    // MOV: Immediate to register             | 1 0 1 1|W| reg  |      data       |   data if W=1   |<-----------------------XXX------------------------->|
+    // MOV: Memory to accumulator             | 1 0 1 0 0 0 0|W |     addr-lo     |     addr-hi     |<-----------------------XXX------------------------->|
+    // MOV: Accumulator to memory             | 1 0 1 0 0 0 1|W |     addr-lo     |     addr-hi     |<-----------------------XXX------------------------->|
     // MOV: Segment reg. to register/memory   | 1 0 0 0 1 1 0 0 | MOD|0|SR | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|
     // MOV: Register/memory to segment reg.   | 1 0 0 0 1 1 1 0 | MOD|0|SR | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|
 
@@ -49,37 +50,37 @@ const BinaryInstructions = enum(u8) {
     /// Accumulator to memory
     mov_acc16_mem16             = 0xA3,
     /// 8 bit Immediate to register
-    mov_immediate_reg_AL        = 0xB0,
+    mov_immediate_reg_al        = 0xB0,
     /// 8 bit Immediate to register
-    mov_immediate_reg_CL        = 0xB1,
+    mov_immediate_reg_cl        = 0xB1,
     /// 8 bit Immediate to register
-    mov_immediate_reg_DL        = 0xB2,
+    mov_immediate_reg_dl        = 0xB2,
     /// 8 bit Immediate to register
-    mov_immediate_reg_BL        = 0xB3,
+    mov_immediate_reg_bl        = 0xB3,
     /// 8 bit Immediate to register
-    mov_immediate_reg_AH        = 0xB4,
+    mov_immediate_reg_ah        = 0xB4,
     /// 8 bit Immediate to register
-    mov_immediate_reg_CH        = 0xB5,
+    mov_immediate_reg_ch        = 0xB5,
     /// 8 bit Immediate to register
-    mov_immediate_reg_DH        = 0xB6,
+    mov_immediate_reg_dh        = 0xB6,
     /// 8 bit Immediate to register
-    mov_immediate_reg_BH        = 0xB7,
+    mov_immediate_reg_bh        = 0xB7,
     /// 8 bit Immediate to register
-    mov_immediate_reg_AX        = 0xB8,
+    mov_immediate_reg_ax        = 0xB8,
     /// 16 bit Immediate to register
-    mov_immediate_reg_CX        = 0xB9,
+    mov_immediate_reg_cx        = 0xB9,
     /// 16 bit Immediate to register
-    mov_immediate_reg_DX        = 0xBA,
+    mov_immediate_reg_dx        = 0xBA,
     /// 16 bit Immediate to register
-    mov_immediate_reg_BX        = 0xBB,
+    mov_immediate_reg_bx        = 0xBB,
     /// 16 bit Immediate to register
-    mov_immediate_reg_SP        = 0xBC,
+    mov_immediate_reg_sp        = 0xBC,
     /// 16 bit Immediate to register
-    mov_immediate_reg_BP        = 0xBD,
+    mov_immediate_reg_bp        = 0xBD,
     /// 16 bit Immediate to register
-    mov_immediate_reg_SI        = 0xBE,
+    mov_immediate_reg_si        = 0xBE,
     /// 16 bit Immediate to register
-    mov_immediate_reg_DI        = 0xBF,
+    mov_immediate_reg_di        = 0xBF,
     /// Segment register to register/memory if second byte of format 0x|MOD|000|R/M|
     mov_seg_regmem              = 0xC6,
     /// Register/memory to segment register if second byte of format 0x|MOD|000|R/M|
@@ -88,9 +89,14 @@ const BinaryInstructions = enum(u8) {
 
 // Error:
 // register / memory to / from register: 0x88, 0x89, 0x8A, 0x8B
-const DecodeMovError = error{
+const DecodeInstructionError = error{
     DecodeError,
     NotYetImplementet,
+};
+
+const SimulatorError = error{
+    FileError,
+    InstructionError,
 };
 
 // MovInstruction
@@ -116,7 +122,7 @@ const DecodedPayloadIdentifier = enum{
 /// byte data)inside a struct. If an error occured during instruction decoding its
 /// value is returned in this Payload.
 const DecodePayload = union(DecodedPayloadIdentifier) {
-    err: DecodeMovError,
+    err: DecodeInstructionError,
     mov_instruction: MovInstruction,
 };
 
@@ -156,6 +162,7 @@ const RegValue = enum(u3) {
 // 111 | BH |  DI  | 111 | (BX)           | (BX) + D8        | (BX) + D16
 
 fn getInstructionSourceAndDest(d: DValue, w: WValue, reg: RegValue, mod: ModValue, rm: RmValue) InstructionInfo {
+    const log = std.log.scoped(.getInstructionSourceAndDest);
     var dest: address = undefined;
     var source: address = undefined;
     const regIsSource: bool = if (d == DValue.source) true else false;
@@ -200,8 +207,7 @@ fn getInstructionSourceAndDest(d: DValue, w: WValue, reg: RegValue, mod: ModValu
                         // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
                         // .BHDI_BX_BXD8_BXD16 => {},
                         else => {
-                            std.debug.print("ERROR: Mod value not yet implemented.\n", .{});
-                            // std.debug.print("ERROR: R/M value not set.\n", .{});
+                            log.err("{s}: Mod value 0b{b:0>2} ({s}) not yet implemented.\n", .{@errorName(DecodeInstructionError.NotYetImplementet), @intFromEnum(mod), @tagName(mod),});
                         },
                     }
                 },
@@ -216,8 +222,7 @@ fn getInstructionSourceAndDest(d: DValue, w: WValue, reg: RegValue, mod: ModValu
                         // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
                         // .BHDI_BX_BXD8_BXD16 => {},
                         else => {
-                            std.debug.print("ERROR: Mod value not yet implemented.\n", .{});
-                            // std.debug.print("ERROR: R/M value not set.\n", .{});
+                            log.err("{s}: Mod value 0b{b:0>2} ({s}) not yet implemented.\n", .{@errorName(DecodeInstructionError.NotYetImplementet), @intFromEnum(mod), @tagName(mod),});
                         },
                     }
                 },
@@ -232,8 +237,7 @@ fn getInstructionSourceAndDest(d: DValue, w: WValue, reg: RegValue, mod: ModValu
                         // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
                         // .BHDI_BX_BXD8_BXD16 => {},
                         else => {
-                            std.debug.print("ERROR: Mod value not yet implemented.\n", .{});
-                            // std.debug.print("ERROR: R/M value not set.\n", .{});
+                            log.err("{s}: Mod value 0b{b:0>2} ({s}) not yet implemented.\n", .{@errorName(DecodeInstructionError.NotYetImplementet), @intFromEnum(mod), @tagName(mod),});
                         },
                     }
                 },
@@ -307,7 +311,7 @@ fn getInstructionSourceAndDest(d: DValue, w: WValue, reg: RegValue, mod: ModValu
                         // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
                         // .BHDI_BX_BXD8_BXD16 => {},
                         else => {
-                            std.debug.print("ERROR: Mod value not yet implemented.\n", .{});
+                            log.err("{s}: Mod value 0b{b:0>2} ({s}) not yet implemented.\n", .{@errorName(DecodeInstructionError.NotYetImplementet), @intFromEnum(mod), @tagName(mod),});
                             // std.debug.print("ERROR: R/M value not set.\n", .{});
                         },
                     }
@@ -323,7 +327,7 @@ fn getInstructionSourceAndDest(d: DValue, w: WValue, reg: RegValue, mod: ModValu
                         // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
                         // .BHDI_BX_BXD8_BXD16 => {},
                         else => {
-                            std.debug.print("ERROR: Mod value not yet implemented.\n", .{});
+                            log.err("{s}: Mod value 0b{b:0>2} ({s}) not yet implemented.\n", .{@errorName(DecodeInstructionError.NotYetImplementet), @intFromEnum(mod), @tagName(mod),});
                             // std.debug.print("ERROR: R/M value not set.\n", .{});
                         },
                     }
@@ -339,7 +343,7 @@ fn getInstructionSourceAndDest(d: DValue, w: WValue, reg: RegValue, mod: ModValu
                         // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
                         // .BHDI_BX_BXD8_BXD16 => {},
                         else => {
-                            std.debug.print("ERROR: Mod value not yet implemented.\n", .{});
+                            log.err("{s}: Mod value 0b{b:0>2} ({s}) not yet implemented.\n", .{@errorName(DecodeInstructionError.NotYetImplementet), @intFromEnum(mod), @tagName(mod),});
                             // std.debug.print("ERROR: R/M value not set.\n", .{});
                         },
                     }
@@ -465,16 +469,16 @@ fn decodeMov(
         ModValue.memoryModeNoDisplacement => {
             if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
                 // 2 byte displacement, second byte is most significant
-                return DecodePayload{ .err = DecodeMovError.NotYetImplementet };
+                return DecodePayload{ .err = DecodeInstructionError.NotYetImplementet };
             } else {
-                return DecodePayload{ .err = DecodeMovError.NotYetImplementet };
+                return DecodePayload{ .err = DecodeInstructionError.NotYetImplementet };
             }
         },
         ModValue.memoryMode8BitDisplacement => {
-            return DecodePayload{ .err = DecodeMovError.NotYetImplementet };
+            return DecodePayload{ .err = DecodeInstructionError.NotYetImplementet };
         },
         ModValue.memoryMode16BitDisplacement => {
-            return DecodePayload{ .err = DecodeMovError.NotYetImplementet };
+            return DecodePayload{ .err = DecodeInstructionError.NotYetImplementet };
         },
         ModValue.registerModeNoDisplacement => {
             // zig fmt: off
@@ -865,6 +869,9 @@ const Memory = struct {
 };
 
 pub fn main() !void {
+    const print = std.debug.print;
+    const log = std.log.scoped(.x86sim);
+
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
@@ -884,58 +891,106 @@ pub fn main() !void {
     const input_file_path = args[1];
 
     const heap_allocator = std.heap.page_allocator;
-    const open_mode = std.fs.File.OpenFlags{
+    const open_mode_input_file = std.fs.File.OpenFlags{
         .mode = .read_only,
         .lock = .none,
         .lock_nonblocking = false,
         .allow_ctty = false,
     };
+    const open_mode_output_file = std.fs.File.CreateFlags{
+        .truncate = true,
+        .exclusive = false,
+        .lock = .none,
+        .lock_nonblocking = false,
+    };
 
-    const file = std.fs.cwd().openFile(input_file_path, open_mode) catch |err| {
+    const input_binary_file = std.fs.cwd().openFile(input_file_path, open_mode_input_file) catch |err| {
         switch (err) {
             error.FileNotFound => {
-                std.debug.print("ERROR: Could not find file '{s}'\n", .{input_file_path});
+                log.err("{s}: '{s}':{any}", .{ @errorName(err), input_file_path, @errorReturnTrace() });
                 std.process.exit(1);
             },
             error.AccessDenied => {
-                std.debug.print("ERROR: Access denies to file '{s}'\n", .{input_file_path});
+                log.err("{s}: '{s}':{any}", .{ @errorName(err), input_file_path, @errorReturnTrace() });
                 std.process.exit(1);
             },
             else => {
-                std.debug.print("ERROR: Unable to open file '{s}': {any}\n", .{ input_file_path, err });
+                log.err("{s}: Unable to open file '{s}': {any}\n", .{ @errorName(err), input_file_path, @errorReturnTrace() });
                 std.process.exit(1);
             },
         }
     };
-    defer file.close();
-    std.debug.print("+++x86+Simulator++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
-    std.debug.print("Simulating target: {s}\n", .{input_file_path});
+    defer input_binary_file.close();
 
-    if (@TypeOf(file) != std.fs.File) {
-        std.debug.print("FileError: file object is not of the correct type.\n", .{});
+    if (@TypeOf(input_binary_file) != std.fs.File) {
+        log.err("{s}: File object is not of the correct type.", .{@errorName(SimulatorError.FileError)});
     }
+
+    const output_asm_file_path: []const u8 = "./disassemble.asm";
+    try std.fs.cwd().deleteFile(output_asm_file_path);
+    const output_asm_file = std.fs.cwd().createFile(output_asm_file_path, open_mode_output_file) catch |err| {
+        switch (err) {
+            error.FileNotFound => {
+                log.err("{s}: '{s}':{any}", .{
+                    @errorName(err),
+                    output_asm_file_path,
+                    @errorReturnTrace(),
+                });
+                std.process.exit(1);
+            },
+            error.AccessDenied => {
+                log.err("{s}: '{s}':{any}", .{
+                    @errorName(err),
+                    output_asm_file_path,
+                    @errorReturnTrace(),
+                });
+                std.process.exit(1);
+            },
+            else => {
+                log.err("{s}: Unable to open file '{s}': {any}\n", .{
+                    @errorName(err),
+                    output_asm_file_path,
+                    @errorReturnTrace(),
+                });
+                std.process.exit(1);
+            },
+        }
+    };
+    defer output_asm_file.close();
+    const OutputWriter = std.fs.File.writer(output_asm_file);
+
+    //////////////////////////////////////////
+    // Initializing the Simulator           //
+    //////////////////////////////////////////
 
     var memory = Memory{};
     memory.init();
-    std.debug.print("DEBUG: Test _memory initialization: _memory size = 0x{x}\n", .{memory._memory.len});
-
+    log.debug("Test _memory initialization: _memory size = 0x{x}", .{memory._memory.len});
     const maxFileSizeBytes = 65535;
 
-    var activeByte: u16 = 0;
     const IQInitValue: [6]u8 = [1]u8{0} ** 6;
     var biu = BusInterfaceUnit{
         .InstructionQueue = undefined,
     };
     biu.initInstructionQueue(IQInitValue) catch |err| {
-        std.debug.print("ERROR: {any}\n", .{err});
+        log.err("{s}: {any}", .{ @errorName(err), @errorReturnTrace() });
         unreachable;
     };
 
+    //////////////////////////////////////////
+    // Start of the Simulation Part         //
+    //////////////////////////////////////////
+
+    print("\n+++x86+Simulator++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
+    print("Simulating target: {s}\n", .{input_file_path});
+
+    var activeByte: u16 = 0;
+
     var stepSize: u3 = 2;
     var InstructionBytes: [6]u8 = undefined;
-    const file_contents = try file.readToEndAlloc(heap_allocator, maxFileSizeBytes);
-    std.debug.print("Instruction byte count: {d}\n", .{file_contents.len});
-    std.debug.print("+++Start+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte});
+    const file_contents = try input_binary_file.readToEndAlloc(heap_allocator, maxFileSizeBytes);
+    print("Instruction byte count: {d}\n", .{file_contents.len});
+    print("+++Start+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte});
 
     var depleted: bool = false;
 
@@ -1007,7 +1062,11 @@ pub fn main() !void {
                 // std.debug.print("DEBUG: 0x8B: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, stepSize });
             },
             else => {
-                std.debug.print("ERROR: Not implemented yet\n", .{});
+                log.err("{s}: 0x{x} ({s}) not implemented yet.", .{
+                    @errorName(SimulatorError.InstructionError),
+                    InstructionBytes[0],
+                    @tagName(instruction),
+                });
             },
         }
 
@@ -1073,7 +1132,7 @@ pub fn main() !void {
                 };
             },
             else => {
-                std.debug.print("InstructionError: Instruction size {d} invalid", .{stepSize});
+                log.err("{s}: Instruction size of {d} bytes not valid.", .{ @errorName(SimulatorError.InstructionError), stepSize });
             },
         }
 
@@ -1102,19 +1161,30 @@ pub fn main() !void {
                 payload = decodeMov(mod, rm, InstructionBytes);
             },
             else => {
-                std.debug.print("ERROR: Not implemented yet\n", .{});
+                log.err("{s}: 0x{x} ({s}) not implemented yet.", .{
+                    @errorName(SimulatorError.InstructionError),
+                    InstructionBytes[0],
+                    @tagName(instruction),
+                });
             },
         }
 
         switch (payload) {
             .err => {
                 switch (payload.err) {
-                    DecodeMovError.DecodeError => {
-                        std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
+                    DecodeInstructionError.DecodeError => {
+                        log.err("{s}: Instruction 0x{x} could not be decoded.\ncontinue...", .{
+                            @errorName(payload.err),
+                            InstructionBytes[0],
+                        });
                         continue;
                     },
-                    DecodeMovError.NotYetImplementet => {
-                        std.debug.print("Error: {any}\ncontinue...\n", .{payload.err});
+                    DecodeInstructionError.NotYetImplementet => {
+                        log.err("{s}: 0x{x} ({s}) not implemented yet.\ncontinue...", .{
+                            @errorName(payload.err),
+                            InstructionBytes[0],
+                            @tagName(instruction),
+                        });
                         continue;
                     },
                 }
@@ -1140,17 +1210,24 @@ pub fn main() !void {
                     rm,
                 );
 
-                std.debug.print("{s} {s},{s}\n", .{
+                print("{s} {s},{s}\n", .{
                     payload.mov_instruction.mnemonic,
                     @tagName(instruction_info.destination),
                     @tagName(instruction_info.source),
                 });
+                OutputWriter.print("{s} {s},{s}\n", .{
+                    payload.mov_instruction.mnemonic,
+                    @tagName(instruction_info.destination),
+                    @tagName(instruction_info.source),
+                }) catch |err| {
+                    log.err("{s}: Something went wrong trying to write to the output file.", .{@errorName(err)});
+                };
             },
         }
 
         if (activeByte + stepSize == maxFileSizeBytes or activeByte + stepSize >= file_contents.len) {
             depleted = true;
-            std.debug.print("+++Simulation+finished++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
+            std.debug.print("+++Simulation+finished++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n", .{});
         } else {
             if (activeByte + stepSize > 999) {
                 // std.debug.print("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
@@ -1163,9 +1240,105 @@ pub fn main() !void {
             }
         }
     }
+
+    try runAssemblyTest(args_allocator, input_file_path, output_asm_file_path);
 }
 
-test "listing_0037_single_register_mov" {
+fn runAssemblyTest(
+    allocator: std.mem.Allocator,
+    path_to_binary_input: []const u8,
+    asm_file_path: []const u8,
+) !void {
+    const print = std.debug.print;
+    // const log = std.log.scoped(.runAssemblyTest);
+
+    print("\n+++Testing+Phase++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
+    print("Assembling generated ASM file and comparing with original binary...\n", .{});
+
+    const assembled_binary_path = "./assembled_output";
+
+    const assemble_args = [_][]const u8{
+        "nasm",
+        "-f",
+        "bin",
+        asm_file_path,
+        "-o",
+        assembled_binary_path,
+    };
+
+    var assemble_process = std.process.Child.init(&assemble_args, allocator);
+    assemble_process.stdout_behavior = .Pipe;
+    assemble_process.stderr_behavior = .Pipe;
+
+    try assemble_process.spawn();
+    const assemble_result = try assemble_process.wait();
+
+    switch (assemble_result) {
+        .Exited => |code| {
+            if (code == 0) {
+                print("Assembly successfull\n", .{});
+            } else {
+                print("Assembly failed with exit code: {d}\n", .{code});
+                return;
+            }
+        },
+        else => {
+            print("Assembly process terminated unexpectedly\n", .{});
+            return;
+        },
+    }
+
+    defer std.fs.cwd().deleteFile(assembled_binary_path) catch {};
+    const compare_result = try compareFiles(
+        allocator,
+        path_to_binary_input,
+        assembled_binary_path,
+    );
+
+    if (compare_result) {
+        print("SUCCESS: The generated assembly mathes the original binary!\n", .{});
+    } else {
+        print("FAILURE: The generated assembly does not match the original binary.\n", .{});
+    }
+
+    print("+++Testing+Complete+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
+}
+
+fn compareFiles(
+    allocator: std.mem.Allocator,
+    path_to_binary_input: []const u8,
+    assembled_binary_path: []const u8,
+) !bool {
+    const print = std.debug.print;
+    const input = std.fs.cwd().openFile(path_to_binary_input, .{}) catch |err| {
+        print("Error opening input {s}: {}\n", .{ path_to_binary_input, err });
+        return false;
+    };
+    defer input.close();
+
+    const output = std.fs.cwd().openFile(assembled_binary_path, .{}) catch |err| {
+        print("Error opening output {s}: {}\n", .{ assembled_binary_path, err });
+        return false;
+    };
+    defer output.close();
+
+    const input_size = try input.getEndPos();
+    const output_size = try output.getEndPos();
+
+    if (input_size != output_size) {
+        print("File sizes differ: input size {d} vs output size {d} bytes\n", .{ input_size, output_size });
+    }
+
+    const max_file_size = 0xFFF;
+    const input_content = try input.readToEndAlloc(allocator, max_file_size);
+    defer allocator.free(input_content);
+    const output_content = try output.readToEndAlloc(allocator, max_file_size);
+    defer allocator.free(output_content);
+
+    return std.mem.eql(u8, input_content, output_content);
+}
+
+test "TEST listing_0037_single_register_mov" {
     // Since the index of the byte array loaded from file needs
     // to move allong at the correct speed, meaning if a
     // instruction takes three bytes the cursor also needs to
@@ -1205,7 +1378,7 @@ test "listing_0037_single_register_mov" {
     );
 }
 
-test "listing_0038_many_register_mov" {
+test "TEST listing_0038_many_register_mov" {
     // listing_0038_many_register_mov
     // 0x88, 0x89
 

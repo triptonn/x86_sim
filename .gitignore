@@ -7,3 +7,6 @@
 # Files types
 /*.exe
 /*.pdb
+
+# VSCode
+*.code-workspace
