@@ -97,6 +97,7 @@ const DecodeInstructionError = error{
 const SimulatorError = error{
     FileError,
     InstructionError,
+    InstructionSizeError,
 };
 
 // MovInstruction
@@ -110,6 +111,8 @@ const MovInstruction = struct{
     rm: RmValue,
     disp_lo: ?u8,
     disp_hi: ?u8,
+    data: ?u8,
+    w_data: ?u8,
 };
 
 const DecodedPayloadIdentifier = enum{
@@ -119,8 +122,8 @@ const DecodedPayloadIdentifier = enum{
 
 /// Payload carrying the instruction specific, decoded field values
 /// (of the instruction plus all data belonging to the instruction as
-/// byte data)inside a struct. If an error occured during instruction decoding its
-/// value is returned in this Payload.
+/// byte data)inside a struct. If an error occured during instruction
+/// decoding its value is returned in this Payload.
 const DecodePayload = union(DecodedPayloadIdentifier) {
     err: DecodeInstructionError,
     mov_instruction: MovInstruction,
@@ -161,11 +164,18 @@ const RegValue = enum(u3) {
 // 110 | DH |  SI  | 110 | DIRECT ADDRESS | (BP) + D8        | (BP) + D16
 // 111 | BH |  DI  | 111 | (BX)           | (BX) + D8        | (BX) + D16
 
-fn getInstructionSourceAndDest(d: DValue, w: WValue, reg: RegValue, mod: ModValue, rm: RmValue) InstructionInfo {
+/// Given the fields decoded from the instruction bytes this function returns
+/// the addresses of source and destination. These can be registers or memory
+/// addresses. The values are returned as InstructionInfo.
+fn getInstructionSourceAndDest(registers: *Register, d: DValue, w: WValue, reg: RegValue, mod: ModValue, rm: RmValue) InstructionInfo {
     const log = std.log.scoped(.getInstructionSourceAndDest);
     var dest: address = undefined;
     var source: address = undefined;
+    var dest_index: u20 = undefined;
+    var source_index: u20 = undefined;
     const regIsSource: bool = if (d == DValue.source) true else false;
+
+    // Checking what the REG field encodes
     switch (w) {
         .byte => {
             switch (reg) {
@@ -195,81 +205,6 @@ fn getInstructionSourceAndDest(d: DValue, w: WValue, reg: RegValue, mod: ModValu
                 },
             }
 
-            switch (mod) {
-                .memoryModeNoDisplacement => {
-                    switch (rm) {
-                        // .ALAX_BXSI_BXSID8_BXSID16 => {},
-                        // .CLCX_BXDI_BXDID8_BXDID16 => {},
-                        // .DLDX_BPSI_BPSID8_BPSID16 => {},
-                        // .BLBX_BPDI_BPDID8_BPDID16 => {},
-                        // .AHSP_SI_SID8_SID16 => {},
-                        // .CHBP_DI_DID8_DID16 => {},
-                        // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
-                        // .BHDI_BX_BXD8_BXD16 => {},
-                        else => {
-                            log.err("{s}: Mod value 0b{b:0>2} ({s}) not yet implemented.\n", .{@errorName(DecodeInstructionError.NotYetImplementet), @intFromEnum(mod), @tagName(mod),});
-                        },
-                    }
-                },
-                .memoryMode8BitDisplacement => {
-                    switch (rm) {
-                        // .ALAX_BXSI_BXSID8_BXSID16 => {},
-                        // .CLCX_BXDI_BXDID8_BXDID16 => {},
-                        // .DLDX_BPSI_BPSID8_BPSID16 => {},
-                        // .BLBX_BPDI_BPDID8_BPDID16 => {},
-                        // .AHSP_SI_SID8_SID16 => {},
-                        // .CHBP_DI_DID8_DID16 => {},
-                        // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
-                        // .BHDI_BX_BXD8_BXD16 => {},
-                        else => {
-                            log.err("{s}: Mod value 0b{b:0>2} ({s}) not yet implemented.\n", .{@errorName(DecodeInstructionError.NotYetImplementet), @intFromEnum(mod), @tagName(mod),});
-                        },
-                    }
-                },
-                .memoryMode16BitDisplacement => {
-                    switch (rm) {
-                        // .ALAX_BXSI_BXSID8_BXSID16 => {},
-                        // .CLCX_BXDI_BXDID8_BXDID16 => {},
-                        // .DLDX_BPSI_BPSID8_BPSID16 => {},
-                        // .BLBX_BPDI_BPDID8_BPDID16 => {},
-                        // .AHSP_SI_SID8_SID16 => {},
-                        // .CHBP_DI_DID8_DID16 => {},
-                        // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
-                        // .BHDI_BX_BXD8_BXD16 => {},
-                        else => {
-                            log.err("{s}: Mod value 0b{b:0>2} ({s}) not yet implemented.\n", .{@errorName(DecodeInstructionError.NotYetImplementet), @intFromEnum(mod), @tagName(mod),});
-                        },
-                    }
-                },
-                .registerModeNoDisplacement => {
-                    switch (rm) {
-                        .ALAX_BXSI_BXSID8_BXSID16 => {
-                            if (regIsSource) dest = address.al else source = address.al;
-                        },
-                        .CLCX_BXDI_BXDID8_BXDID16 => {
-                            if (regIsSource) dest = address.cl else source = address.cl;
-                        },
-                        .DLDX_BPSI_BPSID8_BPSID16 => {
-                            if (regIsSource) dest = address.dl else source = address.dl;
-                        },
-                        .BLBX_BPDI_BPDID8_BPDID16 => {
-                            if (regIsSource) dest = address.bl else source = address.bl;
-                        },
-                        .AHSP_SI_SID8_SID16 => {
-                            if (regIsSource) dest = address.ah else source = address.ah;
-                        },
-                        .CHBP_DI_DID8_DID16 => {
-                            if (regIsSource) dest = address.ch else source = address.ch;
-                        },
-                        .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                            if (regIsSource) dest = address.dh else source = address.dh;
-                        },
-                        .BHDI_BX_BXD8_BXD16 => {
-                            if (regIsSource) dest = address.bh else source = address.bh;
-                        },
-                    }
-                },
-            }
         },
         .word => {
             switch (reg) {
@@ -298,57 +233,132 @@ fn getInstructionSourceAndDest(d: DValue, w: WValue, reg: RegValue, mod: ModValu
                     if (regIsSource) source = address.di else dest = address.di;
                 },
             }
+        },
+    }
 
-            switch (mod) {
-                .memoryModeNoDisplacement => {
+    // Effective Address Calculation
+    // Segment base: 0x1000, Index (offset): 0x0022,
+    // 1. Cast u16 to u20 and shift segment base left by four bits:
+    //      0x01000 << 4 = 0x10000
+    // 2. Add index to shifted segment base value:
+    //      0x10000 + 0x0022 = 0x10022 << Physical address
+    // 3. The same could be achieved by this formula:
+    //      Physical address = (Segment base * 16) + Index (offset)
+
+    // Checking what the R/M field encodes
+    switch (mod) {
+        .memoryModeNoDisplacement => {
+            switch (rm) {
+                .ALAX_BXSI_BXSID8_BXSID16 => {
+                    const bx_value: u16 = registers.getBX(WValue.word, null).value16;
+                    if (regIsSource) {
+                        dest_index = (@as(u20, bx_value) << 4) + registers.getSI();
+                    } else {
+                        source_index = (@as(u20, bx_value) << 4) + registers.getSI();
+                    }
+                },
+                .CLCX_BXDI_BXDID8_BXDID16 => {
+                    const bx_value: u16 = registers.getBX(WValue.word, null).value16;
+                    if (regIsSource) {
+                        dest_index = (@as(u20, bx_value) << 4) + registers.getDI();
+                    } else {
+                        source_index = (@as(u20, bx_value) << 4) + registers.getDI();
+                    }
+                },
+                .DLDX_BPSI_BPSID8_BPSID16 => {
+                    if (regIsSource) {
+                        dest_index = (@as(u20, registers.getBP()) << 4) + registers.getSI();
+                    } else {
+                        source_index = (@as(u20, registers.getBP()) << 4) + registers.getSI();
+                    }
+                },
+                .BLBX_BPDI_BPDID8_BPDID16 => {
+                    if (regIsSource) {
+                        dest_index = (@as(u20, registers.getBP()) << 4) + registers.getDI();
+                    } else {
+                        source_index = (@as(u20, registers.getBP()) << 4) + registers.getDI();
+                    }
+                },
+                .AHSP_SI_SID8_SID16 => {
+                    if (regIsSource) dest_index = registers.getSI() else source_index = registers.getSI();
+                },
+                .CHBP_DI_DID8_DID16 => {
+                    if (regIsSource) dest_index = registers.getDI() else source_index = registers.getDI();
+                },
+                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                    if (regIsSource) dest = address.directaccess else source = address.directaccess;
+                },
+                .BHDI_BX_BXD8_BXD16 => {
+                    const bx_value: u16 = registers.getBX(WValue.word, null).value16;
+                    if (regIsSource) {
+                        dest_index = (@as(u20, bx_value) << 4);
+                    } else {
+                        source_index = (@as(u20, bx_value) << 4);
+                    }
+                },
+            }
+        },
+        .memoryMode8BitDisplacement => {
+            switch (rm) {
+                // .ALAX_BXSI_BXSID8_BXSID16 => {},
+                // .CLCX_BXDI_BXDID8_BXDID16 => {},
+                // .DLDX_BPSI_BPSID8_BPSID16 => {},
+                // .BLBX_BPDI_BPDID8_BPDID16 => {},
+                // .AHSP_SI_SID8_SID16 => {},
+                // .CHBP_DI_DID8_DID16 => {},
+                // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
+                // .BHDI_BX_BXD8_BXD16 => {},
+                else => {
+                    log.err("{s}: Mod value 0b{b:0>2} ({s}) not yet implemented.\n", .{@errorName(DecodeInstructionError.NotYetImplementet), @intFromEnum(mod), @tagName(mod),});
+                },
+            }
+        },
+        .memoryMode16BitDisplacement => {
+            switch (rm) {
+                // .ALAX_BXSI_BXSID8_BXSID16 => {},
+                // .CLCX_BXDI_BXDID8_BXDID16 => {},
+                // .DLDX_BPSI_BPSID8_BPSID16 => {},
+                // .BLBX_BPDI_BPDID8_BPDID16 => {},
+                // .AHSP_SI_SID8_SID16 => {},
+                // .CHBP_DI_DID8_DID16 => {},
+                // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
+                // .BHDI_BX_BXD8_BXD16 => {},
+                else => {
+                    log.err("{s}: Mod value 0b{b:0>2} ({s}) not yet implemented.\n", .{@errorName(DecodeInstructionError.NotYetImplementet), @intFromEnum(mod), @tagName(mod),});
+                },
+            }
+        },
+        .registerModeNoDisplacement => {
+            switch (w) {
+                .byte => {
                     switch (rm) {
-                        // .ALAX_BXSI_BXSID8_BXSID16 => {},
-                        // .CLCX_BXDI_BXDID8_BXDID16 => {},
-                        // .DLDX_BPSI_BPSID8_BPSID16 => {},
-                        // .BLBX_BPDI_BPDID8_BPDID16 => {},
-                        // .AHSP_SI_SID8_SID16 => {},
-                        // .CHBP_DI_DID8_DID16 => {},
-                        // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
-                        // .BHDI_BX_BXD8_BXD16 => {},
-                        else => {
-                            log.err("{s}: Mod value 0b{b:0>2} ({s}) not yet implemented.\n", .{@errorName(DecodeInstructionError.NotYetImplementet), @intFromEnum(mod), @tagName(mod),});
-                            // std.debug.print("ERROR: R/M value not set.\n", .{});
+                        .ALAX_BXSI_BXSID8_BXSID16 => {
+                            if (regIsSource) dest = address.al else source = address.al;
+                        },
+                        .CLCX_BXDI_BXDID8_BXDID16 => {
+                            if (regIsSource) dest = address.cl else source = address.cl;
+                        },
+                        .DLDX_BPSI_BPSID8_BPSID16 => {
+                            if (regIsSource) dest = address.dl else source = address.dl;
+                        },
+                        .BLBX_BPDI_BPDID8_BPDID16 => {
+                            if (regIsSource) dest = address.bl else source = address.bl;
+                        },
+                        .AHSP_SI_SID8_SID16 => {
+                            if (regIsSource) dest = address.ah else source = address.ah;
+                        },
+                        .CHBP_DI_DID8_DID16 => {
+                            if (regIsSource) dest = address.ch else source = address.ch;
+                        },
+                        .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                            if (regIsSource) dest = address.dh else source = address.dh;
+                        },
+                        .BHDI_BX_BXD8_BXD16 => {
+                            if (regIsSource) dest = address.bh else source = address.bh;
                         },
                     }
                 },
-                .memoryMode8BitDisplacement => {
-                    switch (rm) {
-                        // .ALAX_BXSI_BXSID8_BXSID16 => {},
-                        // .CLCX_BXDI_BXDID8_BXDID16 => {},
-                        // .DLDX_BPSI_BPSID8_BPSID16 => {},
-                        // .BLBX_BPDI_BPDID8_BPDID16 => {},
-                        // .AHSP_SI_SID8_SID16 => {},
-                        // .CHBP_DI_DID8_DID16 => {},
-                        // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
-                        // .BHDI_BX_BXD8_BXD16 => {},
-                        else => {
-                            log.err("{s}: Mod value 0b{b:0>2} ({s}) not yet implemented.\n", .{@errorName(DecodeInstructionError.NotYetImplementet), @intFromEnum(mod), @tagName(mod),});
-                            // std.debug.print("ERROR: R/M value not set.\n", .{});
-                        },
-                    }
-                },
-                .memoryMode16BitDisplacement => {
-                    switch (rm) {
-                        // .ALAX_BXSI_BXSID8_BXSID16 => {},
-                        // .CLCX_BXDI_BXDID8_BXDID16 => {},
-                        // .DLDX_BPSI_BPSID8_BPSID16 => {},
-                        // .BLBX_BPDI_BPDID8_BPDID16 => {},
-                        // .AHSP_SI_SID8_SID16 => {},
-                        // .CHBP_DI_DID8_DID16 => {},
-                        // .DHSI_DIRECTACCESS_BPD8_BPD16 => {},
-                        // .BHDI_BX_BXD8_BXD16 => {},
-                        else => {
-                            log.err("{s}: Mod value 0b{b:0>2} ({s}) not yet implemented.\n", .{@errorName(DecodeInstructionError.NotYetImplementet), @intFromEnum(mod), @tagName(mod),});
-                            // std.debug.print("ERROR: R/M value not set.\n", .{});
-                        },
-                    }
-                },
-                .registerModeNoDisplacement => {
+                .word => {
                     switch (rm) {
                         .ALAX_BXSI_BXSID8_BXSID16 => {
                             if (regIsSource) dest = address.ax else source = address.ax;
@@ -379,7 +389,32 @@ fn getInstructionSourceAndDest(d: DValue, w: WValue, reg: RegValue, mod: ModValu
             }
         },
     }
-    return InstructionInfo{ .source = source, .destination = dest };
+
+    const destination_payload: DestinationInfo = undefined;
+    if (true) {
+        destination_payload = DestinationInfo{
+            .destination = dest,
+        };
+    } else {
+        destination_payload = DestinationInfo{
+            .destination_index = dest_index,
+        };
+    }
+    const source_payload: SourceInfo = undefined;
+    if (true) {
+        source_payload = SourceInfo{
+            .source = source,
+        };
+    } else {
+        source_payload = SourceInfo{
+            .source_index = source_index,
+        };
+    }
+
+    return InstructionInfo{
+        .destination = destination_payload,
+        .source = source_payload,
+    };
 }
 
 
@@ -450,8 +485,18 @@ fn movGetInstructionLength(mod: ModValue, rm: RmValue) u3 {
 }
 
 const InstructionInfo = struct {
-    destination: address = undefined,
-    source: address = undefined,
+    destination: DestinationInfo,
+    source: SourceInfo,
+};
+
+const DestinationInfo = union {
+    destination: address,
+    destination_index: u20,
+};
+
+const SourceInfo = union {
+    source: address,
+    source_index: u20,
 };
 
 /// Matching binary values against instruction- and register enum's. Returns names of the
@@ -511,6 +556,8 @@ fn decodeMov(
                     .rm = _rm,
                     .disp_lo = null,
                     .disp_hi = null,
+                    .data = null,
+                    .w_data = null,
                 },
             };
             return result;
@@ -519,8 +566,10 @@ fn decodeMov(
     }
 }
 
-/// Identifiers of the General Register of the CPU.
-const address = enum { ah, al, ax, bh, bl, bx, ch, cl, cx, dh, dl, dx, sp, bp, di, si };
+/// Identifiers of the Internal Communication Registers as well as
+/// the General Registers of the Intel 8086 CPU plus an identifier for
+/// a direct address following the instruction as a 16 bit displacement.
+const address = enum { cs, ds, es, ss, ip, ah, al, ax, bh, bl, bx, ch, cl, cx, dh, dl, dx, sp, bp, di, si, directaccess };
 
 /// Errors for the bus interface unit of the 8086 Processor
 const BiuError = error{
@@ -531,14 +580,6 @@ const BiuError = error{
 /// instruction queue.
 const BusInterfaceUnit = struct {
     InstructionQueue: [6]u8 = [1]u8{0} ** 6,
-
-    pub fn initInstructionQueue(self: *BusInterfaceUnit, value_array: [6]u8) BiuError!void {
-        var i: u3 = 0;
-        for (&self.InstructionQueue) |*place| {
-            place.* = value_array[i];
-            i += 1;
-        }
-    }
 
     /// Set a byte of the instruction queue by passing an index (0 - 5) and the
     /// value.
@@ -558,32 +599,6 @@ const RegisterPayload = union {
     value8: u8,
     value16: u16,
 };
-
-// TODO: 8086 Instruction Pointer
-//  76543210 76543210
-// -------------------
-// |       IP        | IP - INSTRUCTION POINTER - instructions are fetched from here
-// -------------------
-
-// 16 bit pointer containing the offset (distance in bytes) of the next instruction
-// in the current code segment (CS). Saves and restores to / from the Stack.
-
-// TODO: 8086 Flags
-//
-// AF - Auxiliary Carry flag
-// CF - Carry flag
-// OF - Overflow flag
-// SF - Sign flag
-// PF - Parity flag
-// ZF - Zero flag
-
-// Additional flags
-//
-// DF - Direction flag
-// IF - Interrupt-enable flag
-// TF - Trap flag
-
-// TODO: 8086 Segment Register
 
 // Store base pointers to four segments at a time, these are the only segments
 // that can be access at that point in time.
@@ -609,47 +624,28 @@ const RegisterPayload = union {
 // Add offset
 //   + 0x00022
 //   = 0xA2362H <-- Physical address
-
-/// Simulates the internal communication registers of the 8086 Processor,
-/// consisting of the segment registers and the instruction pointer.
-const InternalCommunicatonRegisters = struct {
-    _CS: u16, // Pointer to Code segment base
-    _DS: u16, // Pointer to Data segment base
-    _ES: u16, // Pointer to Extra segment base
-    _SS: u16, // Pointer to Stack segment base
-    _IP: u16, // Pointer to the next instruction to execute
-    pub fn setCS(self: *InternalCommunicatonRegisters, value: u16) void {
-        self._CS = value;
-    }
-    pub fn getCS(self: *InternalCommunicatonRegisters) RegisterPayload {
-        return RegisterPayload{ .value16 = self._CS };
-    }
-    pub fn setDS(self: *InternalCommunicatonRegisters, value: u16) void {
-        self._DS = value;
-    }
-    pub fn getDS(self: *InternalCommunicatonRegisters) RegisterPayload {
-        return RegisterPayload{ .value16 = self._DS };
-    }
-    pub fn setES(self: *InternalCommunicatonRegisters, value: u16) void {
-        self._ES = value;
-    }
-    pub fn getES(self: *InternalCommunicatonRegisters) RegisterPayload {
-        return RegisterPayload{ .value16 = self._ES };
-    }
-    pub fn setSS(self: *InternalCommunicatonRegisters, value: u16) void {
-        self._SS = value;
-    }
-    pub fn getSS(self: *InternalCommunicatonRegisters) RegisterPayload {
-        return RegisterPayload{ .value16 = self._SS };
-    }
-    pub fn setIP(self: *InternalCommunicatonRegisters, value: u16) void {
-        self._IP = value;
-    }
-    pub fn getIP(self: *InternalCommunicatonRegisters) RegisterPayload {
-        return RegisterPayload{ .value16 = self._IP };
-    }
-};
-
+//
+//  76543210 76543210
+// -------------------
+// |       IP        | IP - INSTRUCTION POINTER - instructions are fetched from here
+// -------------------
+//
+// 16 bit pointer containing the offset (distance in bytes) of the next instruction
+// in the current code segment (CS). Saves and restores to / from the Stack.
+//
+// AF - Auxiliary Carry flag
+// CF - Carry flag
+// OF - Overflow flag
+// SF - Sign flag
+// PF - Parity flag
+// ZF - Zero flag
+//
+// Additional flags
+//
+// DF - Direction flag
+// IF - Interrupt-enable flag
+// TF - Trap flag
+//
 // 8086 General Register
 //
 // |76543210 76543210|
@@ -672,26 +668,138 @@ const InternalCommunicatonRegisters = struct {
 // |--------X--------|
 // |76543210 76543210|
 
-/// Simulates the General register of the 8086 Processor
-const GeneralRegister = struct {
-    _AX: u16,
-    _BX: u16,
-    _CX: u16,
-    _DX: u16,
-    _SP: u16,
-    _BP: u16,
-    _DI: u16,
-    _SI: u16,
-    pub fn setAH(self: *GeneralRegister, value: u8) void {
+/// Simulates the Internal Communication and General Registers of the
+/// Intel 8086 Processor.
+const Register = struct {
+    // Internal Communication Registers
+    _CS: u16, // Pointer to Code segment base
+    _DS: u16, // Pointer to Data segment base
+    _ES: u16, // Pointer to Extra segment base
+    _SS: u16, // Pointer to Stack segment base
+    _IP: u16, // Pointer to the next instruction to execute
+
+    // Status Flags
+    _AF: bool, // Auxiliary Carry flag
+    _CF: bool, // Carry flag
+    _OF: bool, // Overflow flag
+    _SF: bool, // Sign flag
+    _PF: bool, // Parity flag
+    _ZF: bool, // Zero flag
+
+    // Control Flags
+    _DF: bool, // Direction flag
+    _IF: bool, // Interrupt-enable flag
+    _TF: bool, // Trap flag
+
+    // General Registers
+    _AX: u16, // Accumulator
+    _BX: u16, // Base
+    _CX: u16, // Count
+    _DX: u16, // Data
+    _SP: u16, // Stack Pointer
+    _BP: u16, // Base Pointer
+    _DI: u16, // Source Index (Offset)
+    _SI: u16, // Destination Index (Offset)
+
+    // Internal Communication Register Methods
+    pub fn setCS(self: *Register, value: u16) void {
+        self._CS = value;
+    }
+    pub fn getCS(self: *Register) RegisterPayload {
+        return RegisterPayload{ .value16 = self._CS };
+    }
+    pub fn setDS(self: *Register, value: u16) void {
+        self._DS = value;
+    }
+    pub fn getDS(self: *Register) RegisterPayload {
+        return RegisterPayload{ .value16 = self._DS };
+    }
+    pub fn setES(self: *Register, value: u16) void {
+        self._ES = value;
+    }
+    pub fn getES(self: *Register) RegisterPayload {
+        return RegisterPayload{ .value16 = self._ES };
+    }
+    pub fn setSS(self: *Register, value: u16) void {
+        self._SS = value;
+    }
+    pub fn getSS(self: *Register) RegisterPayload {
+        return RegisterPayload{ .value16 = self._SS };
+    }
+    pub fn setIP(self: *Register, value: u16) void {
+        self._IP = value;
+    }
+    pub fn getIP(self: *Register) RegisterPayload {
+        return RegisterPayload{ .value16 = self._IP };
+    }
+
+    // Flag Methods
+    pub fn setAF(self: *Register, state: bool) void {
+        self._AF = state;
+    }
+    pub fn getAF(self: *Register) bool {
+        return self._AF;
+    }
+    pub fn setCF(self: *Register, state: bool) void {
+        self._CF = state;
+    }
+    pub fn getCF(self: *Register) bool {
+        return self._CF;
+    }
+    pub fn setOF(self: *Register, state: bool) void {
+        self._OF = state;
+    }
+    pub fn getOF(self: *Register) bool {
+        return self._OF;
+    }
+    pub fn setSF(self: *Register, state: bool) void {
+        self._SF = state;
+    }
+    pub fn getSF(self: *Register) bool {
+        return self._SF;
+    }
+    pub fn setPF(self: *Register, state: bool) void {
+        self._PF = state;
+    }
+    pub fn getPF(self: *Register) bool {
+        return self._PF;
+    }
+    pub fn setZF(self: *Register, state: bool) void {
+        self._ZF = state;
+    }
+    pub fn getZF(self: *Register) bool {
+        return self._ZF;
+    }
+    pub fn setDF(self: *Register, state: bool) void {
+        self._DF = state;
+    }
+    pub fn getDF(self: *Register) bool {
+        return self._DF;
+    }
+    pub fn setIF(self: *Register, state: bool) void {
+        self._IF = state;
+    }
+    pub fn getIF(self: *Register) bool {
+        return self._IF;
+    }
+    pub fn setTF(self: *Register, state: bool) void {
+        self._TF = state;
+    }
+    pub fn getTF(self: *Register) bool {
+        return self._TF;
+    }
+
+    // General Register Methods
+    pub fn setAH(self: *Register, value: u8) void {
         self._AX = value ++ self._AX[0..8];
     }
-    pub fn setAL(self: *GeneralRegister, value: u8) void {
+    pub fn setAL(self: *Register, value: u8) void {
         self._AX = self._AX[8..] ++ value;
     }
-    pub fn setAX(self: *GeneralRegister, value: u16) void {
+    pub fn setAX(self: *Register, value: u16) void {
         self._AX = value;
     }
-    pub fn getAX(self: *GeneralRegister, w: WValue, hilo: []const u8) RegisterPayload {
+    pub fn getAX(self: *Register, w: WValue, hilo: []const u8) RegisterPayload {
         if (w == WValue.byte) {
             if (std.mem.eql([]const u8, hilo, "hi")) {
                 return self._AX[0..8];
@@ -702,36 +810,41 @@ const GeneralRegister = struct {
             return self._AX;
         }
     }
-    pub fn setBH(self: *GeneralRegister, value: u8) void {
+    pub fn setBH(self: *Register, value: u8) void {
         self._BX = value ++ self._BX[0..8];
     }
-    pub fn setBL(self: *GeneralRegister, value: u8) void {
+    pub fn setBL(self: *Register, value: u8) void {
         self._BX = self._BX[8..] ++ value;
     }
-    pub fn setBX(self: *GeneralRegister, value: u16) void {
+    pub fn setBX(self: *Register, value: u16) void {
         self._BX = value;
     }
-    pub fn getBX(self: *GeneralRegister, w: WValue, hilo: []const u8) RegisterPayload {
+
+    /// Returns value of BH, BL or BX depending on w and hilo. If
+    /// w = byte, hilo can be set to "hi" or "lo". If w = word hilo
+    /// should be set to "hilo"
+    pub fn getBX(self: *Register, w: WValue, hilo: ?[]const u8) RegisterPayload {
         if (w == WValue.byte) {
-            if (std.mem.eql([]const u8, hilo, "hi")) {
-                return self._BX[0..8];
+            if (std.mem.eql(u8, hilo.?, "hi")) {
+                return RegisterPayload{ .value8 = @intCast(self._BX >> 8) };
             } else {
-                return self._BX[8..];
+                self._BX = self._BX << 8;
+                return RegisterPayload{ .value8 = @intCast(self._BX >> 8) };
             }
         } else {
-            return self._BX;
+            return RegisterPayload{ .value16 = self._BX };
         }
     }
-    pub fn setCH(self: *GeneralRegister, value: u8) void {
+    pub fn setCH(self: *Register, value: u8) void {
         self._CX = value ++ self._CX[0..8];
     }
-    pub fn setCL(self: *GeneralRegister, value: u8) void {
+    pub fn setCL(self: *Register, value: u8) void {
         self._CX = self._CX[8..] ++ value;
     }
-    pub fn setCX(self: *GeneralRegister, value: u16) void {
+    pub fn setCX(self: *Register, value: u16) void {
         self._CX = value;
     }
-    pub fn getCX(self: *GeneralRegister, w: WValue, hilo: []const u8) RegisterPayload {
+    pub fn getCX(self: *Register, w: WValue, hilo: []const u8) RegisterPayload {
         if (w == WValue.byte) {
             if (std.mem.eql([]const u8, hilo, "hi")) {
                 return self._CX[0..8];
@@ -742,16 +855,16 @@ const GeneralRegister = struct {
             return self._CX;
         }
     }
-    pub fn setDH(self: *GeneralRegister, value: u8) void {
+    pub fn setDH(self: *Register, value: u8) void {
         self._DX = value ++ self._DX[0..8];
     }
-    pub fn setDL(self: *GeneralRegister, value: u8) void {
+    pub fn setDL(self: *Register, value: u8) void {
         self._DX = self._DX[8..] ++ value;
     }
-    pub fn setDX(self: *GeneralRegister, value: u16) void {
+    pub fn setDX(self: *Register, value: u16) void {
         self._DX = value;
     }
-    pub fn getDX(self: *GeneralRegister, w: WValue, hilo: []const u8) RegisterPayload {
+    pub fn getDX(self: *Register, w: WValue, hilo: []const u8) RegisterPayload {
         if (w == WValue.byte) {
             if (std.mem.eql([]const u8, hilo, "hi")) {
                 return self._DX[0..8];
@@ -762,28 +875,28 @@ const GeneralRegister = struct {
             return self._DX;
         }
     }
-    pub fn setSP(self: *GeneralRegister, value: u16) void {
+    pub fn setSP(self: *Register, value: u16) void {
         self._SP = value;
     }
-    pub fn getSP(self: *GeneralRegister) u16 {
+    pub fn getSP(self: *Register) u16 {
         return self._SP;
     }
-    pub fn setBP(self: *GeneralRegister, value: u16) void {
+    pub fn setBP(self: *Register, value: u16) void {
         self._BP = value;
     }
-    pub fn getBP(self: *GeneralRegister) u16 {
+    pub fn getBP(self: *Register) u16 {
         return self._BP;
     }
-    pub fn setSI(self: *GeneralRegister, value: u16) void {
+    pub fn setSI(self: *Register, value: u16) void {
         self._SI = value;
     }
-    pub fn getSI(self: *GeneralRegister) u16 {
+    pub fn getSI(self: *Register) u16 {
         return self._SI;
     }
-    pub fn setDI(self: *GeneralRegister, value: u16) void {
+    pub fn setDI(self: *Register, value: u16) void {
         self._DI = value;
     }
-    pub fn getDI(self: *GeneralRegister) u16 {
+    pub fn getDI(self: *Register) u16 {
         return self._DI;
     }
 };
@@ -963,18 +1076,53 @@ pub fn main() !void {
     // Initializing the Simulator           //
     //////////////////////////////////////////
 
+    const maxFileSizeBytes = 65535;
+    const u8_init_value: u8 = 0b0000_0000;
+    const u16_init_value: u16 = 0b0000_0000_0000_0000;
+
+    var registers = Register{
+        // Initialize Communication Registers
+        ._CS = 0xFFFF,
+        ._DS = u16_init_value,
+        ._ES = u16_init_value,
+        ._SS = u16_init_value,
+
+        // Initialize Instruction Pointer
+        ._IP = u16_init_value,
+
+        // Initialize Status Flags
+        ._AF = false,
+        ._CF = false,
+        ._OF = false,
+        ._SF = false,
+        ._PF = false,
+        ._ZF = false,
+
+        // Initialize Control Flags
+        ._DF = false,
+        ._IF = false,
+        ._TF = false,
+
+        // Initialize General Registers
+        ._AX = u16_init_value,
+        ._BX = u16_init_value,
+        ._CX = u16_init_value,
+        ._DX = u16_init_value,
+        ._SP = u16_init_value,
+        ._BP = u16_init_value,
+        ._SI = u16_init_value,
+        ._DI = u16_init_value,
+    };
+
     var memory = Memory{};
     memory.init();
     log.debug("Test _memory initialization: _memory size = 0x{x}", .{memory._memory.len});
-    const maxFileSizeBytes = 65535;
 
-    const IQInitValue: [6]u8 = [1]u8{0} ** 6;
+    // TODO: Put loaded binary input file in simulated memory, update CS to point at the base of the segment
+    // TODO: Define the stack and data segments and update DS, ES and SS
+
     var biu = BusInterfaceUnit{
-        .InstructionQueue = undefined,
-    };
-    biu.initInstructionQueue(IQInitValue) catch |err| {
-        log.err("{s}: {any}", .{ @errorName(err), @errorReturnTrace() });
-        unreachable;
+        .InstructionQueue = [1]u8{0} ** 6,
     };
 
     //////////////////////////////////////////
@@ -995,79 +1143,76 @@ pub fn main() !void {
     var depleted: bool = false;
 
     while (!depleted and activeByte < file_contents.len) : (activeByte += stepSize) {
-        const default: u8 = 0b00000000;
-        // IQInitValue[0] = if (activeByte < file_contents.len) file_contents[activeByte] else default;
-        // IQInitValue[1] = if (activeByte + 1 < file_contents.len) file_contents[activeByte + 1] else default;
-        // IQInitValue[2] = if (activeByte + 2 < file_contents.len) file_contents[activeByte + 2] else default;
-        // IQInitValue[3] = if (activeByte + 3 < file_contents.len) file_contents[activeByte + 3] else default;
-        // IQInitValue[4] = if (activeByte + 4 < file_contents.len) file_contents[activeByte + 4] else default;
-        // IQInitValue[5] = if (activeByte + 5 < file_contents.len) file_contents[activeByte + 5] else default;
-
         const queue_size = 6;
         var queue_index: u3 = 0;
         // std.debug.print("---BIU-Instruction-Queue-----------------------------------------------------\n", .{});
         while (queue_index < queue_size) : (queue_index += 1) {
-            biu.setIndex(queue_index, if (activeByte + queue_index < file_contents.len) file_contents[activeByte + queue_index] else default);
+            biu.setIndex(queue_index, if (activeByte + queue_index < file_contents.len) file_contents[activeByte + queue_index] else u8_init_value);
             if (activeByte + queue_index > file_contents.len - 1) break;
             // std.debug.print("{d}: {b:0>8}, {d}\n", .{ queue_index, file_contents[activeByte + queue_index], activeByte + queue_index });
             if (queue_index + 1 == 6) break;
         }
 
-        // std.debug.print("---Data-Range----------------------------------------------------------------\n", .{});
-        // std.debug.print("1: {b:0>8} {d},\n2: {b:0>8} {d},\n3: {b:0>8} {d},\n4: {b:0>8} {d},\n5: {b:0>8} {d},\n6: {b:0>8} {d},\n", .{
-        //     biu.getIndex(0), activeByte,
-        //     IQInitValue[1], activeByte + 1,
-        //     IQInitValue[2], activeByte + 2,
-        //     IQInitValue[3], activeByte + 3,
-        //     IQInitValue[4], activeByte + 4,
-        //     IQInitValue[5], activeByte + 5,
-        // });
-
         const instruction: BinaryInstructions = @enumFromInt(biu.getIndex(0));
 
-        // std.debug.print("DEBUG: instruction: {any}\n", .{instruction});
         var mod: ModValue = undefined;
         var rm: RmValue = undefined;
         switch (instruction) {
-            BinaryInstructions.mov_source_regmem8_reg8 => { // 0x88
+            BinaryInstructions.mov_source_regmem8_reg8,
+            BinaryInstructions.mov_source_regmem16_reg16,
+            BinaryInstructions.mov_dest_reg8_regmem8,
+            BinaryInstructions.mov_dest_reg16_regmem16,
+            => {
+                // 0x88, 0x89, 0x8A, 0x8B
                 mod = @enumFromInt(biu.getIndex(1) >> 6);
                 const temp_rm = biu.getIndex(1) << 5;
                 rm = @enumFromInt(temp_rm >> 5);
 
                 stepSize = movGetInstructionLength(mod, rm);
-                // std.debug.print("DEBUG: 0x88: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, stepSize });
             },
-            BinaryInstructions.mov_source_regmem16_reg16 => { // 0x89
-                mod = @enumFromInt(biu.getIndex(1) >> 6);
-                const temp_rm = biu.getIndex(1) << 5;
-                rm = @enumFromInt(temp_rm >> 5);
-
-                stepSize = movGetInstructionLength(mod, rm);
-                // std.debug.print("DEBUG: 0x89: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, stepSize });
+            BinaryInstructions.mov_immediate_regmem8,
+            BinaryInstructions.mov_immediate_regmem16,
+            => {
+                // 0x8c, 0x8e
             },
-            BinaryInstructions.mov_dest_reg8_regmem8 => { // 0x8A
-                mod = @enumFromInt(biu.getIndex(1) >> 6);
-                const temp_rm = biu.getIndex(1) << 5;
-                rm = @enumFromInt(temp_rm >> 5);
-
-                stepSize = movGetInstructionLength(mod, rm);
-                // std.debug.print("DEBUG: 0x8A: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, stepSize });
+            BinaryInstructions.mov_mem8_acc8,
+            BinaryInstructions.mov_mem16_acc16,
+            BinaryInstructions.mov_acc8_mem8,
+            BinaryInstructions.mov_acc16_mem16,
+            => {
+                // 0xA0, 0xA1, 0xA2, 0xA3
             },
-            BinaryInstructions.mov_dest_reg16_regmem16 => { // 0x8B
-                mod = @enumFromInt(biu.getIndex(1) >> 6);
-                const temp_rm = biu.getIndex(1) << 5;
-                rm = @enumFromInt(temp_rm >> 5);
-
-                stepSize = movGetInstructionLength(mod, rm);
-                // std.debug.print("DEBUG: 0x8B: Mod {any}, R/M {any} = {d} bytes\n", .{ mod, rm, stepSize });
+            BinaryInstructions.mov_immediate_reg_al,
+            BinaryInstructions.mov_immediate_reg_bl,
+            BinaryInstructions.mov_immediate_reg_cl,
+            BinaryInstructions.mov_immediate_reg_dl,
+            BinaryInstructions.mov_immediate_reg_ah,
+            BinaryInstructions.mov_immediate_reg_bh,
+            BinaryInstructions.mov_immediate_reg_ch,
+            BinaryInstructions.mov_immediate_reg_dh,
+            BinaryInstructions.mov_immediate_reg_ax,
+            BinaryInstructions.mov_immediate_reg_cx,
+            BinaryInstructions.mov_immediate_reg_dx,
+            BinaryInstructions.mov_immediate_reg_bx,
+            BinaryInstructions.mov_immediate_reg_sp,
+            BinaryInstructions.mov_immediate_reg_bp,
+            BinaryInstructions.mov_immediate_reg_si,
+            BinaryInstructions.mov_immediate_reg_di,
+            => {
+                // 0xB0 - 0xBF
             },
-            else => {
-                log.err("{s}: 0x{x} ({s}) not implemented yet.", .{
-                    @errorName(SimulatorError.InstructionError),
-                    InstructionBytes[0],
-                    @tagName(instruction),
-                });
+            BinaryInstructions.mov_seg_regmem,
+            BinaryInstructions.mov_regmem_seg,
+            => {
+                // 0xC6, 0xC7
             },
+            // else => {
+            //     log.err("{s}: 0x{x} ({s}) not implemented yet.", .{
+            //         @errorName(SimulatorError.InstructionError),
+            //         InstructionBytes[0],
+            //         @tagName(instruction),
+            //     });
+            // },
         }
 
         switch (stepSize) {
@@ -1132,19 +1277,9 @@ pub fn main() !void {
                 };
             },
             else => {
-                log.err("{s}: Instruction size of {d} bytes not valid.", .{ @errorName(SimulatorError.InstructionError), stepSize });
+                log.err("{s}: Instruction size of {d} bytes not valid.", .{ @errorName(SimulatorError.InstructionSizeError), stepSize });
             },
         }
-
-        // std.debug.print("---0x{x}-{any}-- Mod: {any}, R/M: {any}\n", .{ @intFromEnum(instruction), instruction, mod, rm });
-        // std.debug.print("1: {b:0>8}, {d}\n2: {b:0>8}, {d}\n3: {b:0>8}, {d}\n4: {b:0>8}, {d}\n5: {b:0>8}, {d}\n6: {b:0>8}, {d}\n", .{
-        //     InstructionBytes[0], activeByte,
-        //     InstructionBytes[1], activeByte + 1,
-        //     InstructionBytes[2], activeByte + 2,
-        //     InstructionBytes[3], activeByte + 3,
-        //     InstructionBytes[4], activeByte + 4,
-        //     InstructionBytes[5], activeByte + 5,
-        // });
 
         var payload: DecodePayload = undefined;
         switch (instruction) {
@@ -1203,6 +1338,7 @@ pub fn main() !void {
                 // });
 
                 const instruction_info: InstructionInfo = getInstructionSourceAndDest(
+                    &registers,
                     d,
                     w,
                     reg,
@@ -1210,15 +1346,42 @@ pub fn main() !void {
                     rm,
                 );
 
-                print("{s} {s},{s}\n", .{
+                const source = InstructionInfo.source;
+                const destination = InstructionInfo.destination;
+
+                print("{s} ", .{
                     payload.mov_instruction.mnemonic,
-                    @tagName(instruction_info.destination),
-                    @tagName(instruction_info.source),
                 });
-                OutputWriter.print("{s} {s},{s}\n", .{
+
+
+                switch (destination) {
+                    .destination => {
+                        print("{s}", .{@tagName(destination)})
+                    },
+                    .destination_index => {
+
+                    },
+                }
+
+                switch (source) {
+                    .source => {
+
+                    },
+                    .source_index => {
+
+                    },
+                }
+
+                print("{s} {any},{any}\n", .{
                     payload.mov_instruction.mnemonic,
-                    @tagName(instruction_info.destination),
-                    @tagName(instruction_info.source),
+                    instruction_info.destination orelse instruction_info.destination_index,
+                    instruction_info.source orelse instruction_info.source_index,
+                });
+
+                OutputWriter.print("{s} {any},{any}\n", .{
+                    payload.mov_instruction.mnemonic,
+                    @tagName(instruction_info.destination) orelse instruction_info.destination_index,
+                    @tagName(instruction_info.source) orelse instruction_info.source_index,
                 }) catch |err| {
                     log.err("{s}: Something went wrong trying to write to the output file.", .{@errorName(err)});
                 };
@@ -1227,7 +1390,7 @@ pub fn main() !void {
 
         if (activeByte + stepSize == maxFileSizeBytes or activeByte + stepSize >= file_contents.len) {
             depleted = true;
-            std.debug.print("+++Simulation+finished++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n", .{});
+            std.debug.print("+++Simulation+finished++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
         } else {
             if (activeByte + stepSize > 999) {
                 // std.debug.print("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
@@ -1253,7 +1416,7 @@ fn runAssemblyTest(
     // const log = std.log.scoped(.runAssemblyTest);
 
     print("\n+++Testing+Phase++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
-    print("Assembling generated ASM file and comparing with original binary...\n", .{});
+    print("Assemble generatas .asm file and compare with original binary input...\n", .{});
 
     const assembled_binary_path = "./assembled_output";
 
@@ -1296,12 +1459,12 @@ fn runAssemblyTest(
     );
 
     if (compare_result) {
-        print("SUCCESS: The generated assembly mathes the original binary!\n", .{});
+        print("SUCCESS: The generated assembly matches the original binary!\n", .{});
     } else {
-        print("FAILURE: The generated assembly does not match the original binary.\n", .{});
+        print("FAILURE: The generated assembly does NOT match the original binary.\n", .{});
     }
 
-    print("+++Testing+Complete+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
+    print("+++Testing+Complete+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n", .{});
 }
 
 fn compareFiles(
@@ -1338,12 +1501,14 @@ fn compareFiles(
     return std.mem.eql(u8, input_content, output_content);
 }
 
-test "TEST listing_0037_single_register_mov" {
-    // Since the index of the byte array loaded from file needs
-    // to move allong at the correct speed, meaning if a
-    // instruction takes three bytes the cursor also needs to
-    // move forward three bytes.
+// Since the index of the byte array loaded from file needs
+// to move allong at the correct speed, meaning if a
+// instruction takes three bytes the cursor also needs to
+// move forward three bytes.
 
+// TODO: Add test cases for different instruction sizes
+
+test "TEST listing_0037_single_register_mov" {
     // MOV
     // listing_0037_single_register_mov
     // 0x89
