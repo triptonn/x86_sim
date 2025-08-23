@@ -390,30 +390,30 @@ fn getInstructionSourceAndDest(registers: *Register, d: DValue, w: WValue, reg: 
         },
     }
 
-    const destination_payload: DestinationInfo = undefined;
+    var destination_payload: DestinationInfo = undefined;
     if (true) {
         destination_payload = DestinationInfo{
-            .destination = dest,
+            .address = dest,
         };
     } else {
         destination_payload = DestinationInfo{
-            .destination_index = dest_index,
+            .index = dest_index,
         };
     }
-    const source_payload: SourceInfo = undefined;
+    var source_payload: SourceInfo = undefined;
     if (true) {
         source_payload = SourceInfo{
-            .source = source,
+            .address = source,
         };
     } else {
         source_payload = SourceInfo{
-            .source_index = source_index,
+            .index = source_index,
         };
     }
 
     return InstructionInfo{
-        .destination = destination_payload,
-        .source = source_payload,
+        .destination_info = destination_payload,
+        .source_info = source_payload,
     };
 }
 
@@ -485,18 +485,28 @@ fn movGetInstructionLength(mod: ModValue, rm: RmValue) u3 {
 }
 
 const InstructionInfo = struct {
-    destination: DestinationInfo,
-    source: SourceInfo,
+    destination_info: DestinationInfo,
+    source_info: SourceInfo,
 };
 
-const DestinationInfo = union {
-    destination: address,
-    destination_index: u20,
+const DestinationInfoIdentifiers = enum {
+    address,
+    index,
 };
 
-const SourceInfo = union {
-    source: address,
-    source_index: u20,
+const DestinationInfo = union(DestinationInfoIdentifiers) {
+    address: address,
+    index: u20,
+};
+
+const SourceInfoIdentifiers = enum {
+    address,
+    index,
+};
+
+const SourceInfo = union(SourceInfoIdentifiers) {
+    address: address,
+    index: u20,
 };
 
 /// Matching binary values against instruction- and register enum's. Returns names of the
@@ -1346,45 +1356,86 @@ pub fn main() !void {
                     rm,
                 );
 
-                const source = InstructionInfo.source;
-                const destination = InstructionInfo.destination;
+                const source_payload = instruction_info.source_info;
+                const destination_payload = instruction_info.destination_info;
 
                 print("{s} ", .{
                     payload.mov_instruction.mnemonic,
                 });
-
-
-                switch (destination) {
-                    .destination => {
-                        print("{s}", .{@tagName(destination)})
-                    },
-                    .destination_index => {
-
-                    },
-                }
-
-                switch (source) {
-                    .source => {
-
-                    },
-                    .source_index => {
-
-                    },
-                }
-
-                print("{s} {any},{any}\n", .{
-                    payload.mov_instruction.mnemonic,
-                    instruction_info.destination orelse instruction_info.destination_index,
-                    instruction_info.source orelse instruction_info.source_index,
-                });
-
-                OutputWriter.print("{s} {any},{any}\n", .{
-                    payload.mov_instruction.mnemonic,
-                    @tagName(instruction_info.destination) orelse instruction_info.destination_index,
-                    @tagName(instruction_info.source) orelse instruction_info.source_index,
-                }) catch |err| {
-                    log.err("{s}: Something went wrong trying to write to the output file.", .{@errorName(err)});
+                OutputWriter.print("{s} ", .{payload.mov_instruction.mnemonic}) catch |err| {
+                    log.err(
+                        "{s}: Something went wrong trying to write instruction mnemonic {s} to the output file.",
+                        .{ @errorName(err), payload.mov_instruction.mnemonic },
+                    );
                 };
+
+                switch (destination_payload) {
+                    .address => {
+                        print("{s},", .{@tagName(destination_payload.address)});
+                        OutputWriter.print(
+                            "{s},",
+                            .{@tagName(destination_payload.address)},
+                        ) catch |err| {
+                            log.err(
+                                "{s}: Something went wrong trying to write destination {any} the output file.",
+                                .{ @errorName(err), destination_payload.address },
+                            );
+                        };
+                    },
+                    .index => {
+                        print("{x},", .{destination_payload.index});
+                        OutputWriter.print(
+                            "{x},",
+                            .{destination_payload.index},
+                        ) catch |err| {
+                            log.err(
+                                "{s}: Something went wrong trying to write destination index {any} to the output file.",
+                                .{ @errorName(err), destination_payload.index },
+                            );
+                        };
+                    },
+                }
+
+                switch (source_payload) {
+                    .address => {
+                        print("{s}\n", .{@tagName(source_payload.address)});
+                        OutputWriter.print(
+                            "{s}\n",
+                            .{@tagName(source_payload.address)},
+                        ) catch |err| {
+                            log.err(
+                                "{s}: Something went wrong trying to write source {any} to the output file.",
+                                .{ @errorName(err), source_payload.address },
+                            );
+                        };
+                    },
+                    .index => {
+                        print("{x}\n", .{source_payload.index});
+                        OutputWriter.print(
+                            "{x}\n",
+                            .{source_payload.index},
+                        ) catch |err| {
+                            log.err(
+                                "{s}: Something went wrong trying to write source index {any} to the output file.",
+                                .{ @errorName(err), source_payload.index },
+                            );
+                        };
+                    },
+                }
+
+                // print("{s} {any},{any}\n", .{
+                //     payload.mov_instruction.mnemonic,
+                //     instruction_info.destination orelse instruction_info.destination_index,
+                //     instruction_info.source orelse instruction_info.source_index,
+                // });
+
+                // OutputWriter.print("{s} {any},{any}\n", .{
+                //     payload.mov_instruction.mnemonic,
+                //     @tagName(instruction_info.destination) orelse instruction_info.destination_index,
+                //     @tagName(instruction_info.source) orelse instruction_info.source_index,
+                // }) catch |err| {
+                //     log.err("{s}: Something went wrong trying to write to the output file.", .{@errorName(err)});
+                // };
             },
         }
 
