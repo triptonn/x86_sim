@@ -10,3 +10,6 @@
 
 # VSCode
 *.code-workspace
+
+# Testing
+/disassemble.asm
