@@ -266,8 +266,10 @@ fn getInstructionSourceAndDest(
     ) InstructionInfo {
     var dest: address = undefined;
     var source: address = undefined;
-    var dest_index: u20 = undefined;
-    var source_index: u20 = undefined;
+    var dest_effective_address: u20 = undefined;
+    var source_effective_address: u20 = undefined;
+    var dest_address_calculation: EffectiveAddressCalculation = undefined;
+    var source_address_calculation: EffectiveAddressCalculation = undefined;
     const regIsSource: bool = if (d == DValue.source) true else false;
 
     // Checking what the REG field encodes
@@ -347,49 +349,49 @@ fn getInstructionSourceAndDest(
                 .ALAX_BXSI_BXSID8_BXSID16 => {
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
                     if (regIsSource) {
-                        dest_index = (@as(u20, bx_value) << 4) + registers.getSI();
+                        dest_effective_address = (@as(u20, bx_value) << 4) + registers.getSI();
                     } else {
-                        source_index = (@as(u20, bx_value) << 4) + registers.getSI();
+                        source_effective_address = (@as(u20, bx_value) << 4) + registers.getSI();
                     }
                 },
                 .CLCX_BXDI_BXDID8_BXDID16 => {
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
                     if (regIsSource) {
-                        dest_index = (@as(u20, bx_value) << 4) + registers.getDI();
+                        dest_effective_address = (@as(u20, bx_value) << 4) + registers.getDI();
                     } else {
-                        source_index = (@as(u20, bx_value) << 4) + registers.getDI();
+                        source_effective_address = (@as(u20, bx_value) << 4) + registers.getDI();
                     }
                 },
                 .DLDX_BPSI_BPSID8_BPSID16 => {
                     if (regIsSource) {
-                        dest_index = (@as(u20, registers.getBP()) << 4) + registers.getSI();
+                        dest_effective_address = (@as(u20, registers.getBP()) << 4) + registers.getSI();
                     } else {
-                        source_index = (@as(u20, registers.getBP()) << 4) + registers.getSI();
+                        source_effective_address = (@as(u20, registers.getBP()) << 4) + registers.getSI();
                     }
                 },
                 .BLBX_BPDI_BPDID8_BPDID16 => {
                     if (regIsSource) {
-                        dest_index = (@as(u20, registers.getBP()) << 4) + registers.getDI();
+                        dest_effective_address = (@as(u20, registers.getBP()) << 4) + registers.getDI();
                     } else {
-                        source_index = (@as(u20, registers.getBP()) << 4) + registers.getDI();
+                        source_effective_address = (@as(u20, registers.getBP()) << 4) + registers.getDI();
                     }
                 },
                 .AHSP_SI_SID8_SID16 => {
-                    if (regIsSource) dest_index = registers.getSI() else source_index = registers.getSI();
+                    if (regIsSource) dest_effective_address = registers.getSI() else source_effective_address = registers.getSI();
                 },
                 .CHBP_DI_DID8_DID16 => {
-                    if (regIsSource) dest_index = registers.getDI() else source_index = registers.getDI();
+                    if (regIsSource) dest_effective_address = registers.getDI() else source_effective_address = registers.getDI();
                 },
                 .DHSI_DIRECTACCESS_BPD8_BPD16 => {
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
-                    if (regIsSource) dest_index = displacement  else source_index = displacement;
+                    if (regIsSource) dest_effective_address = displacement  else source_effective_address = displacement;
                 },
                 .BHDI_BX_BXD8_BXD16 => {
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
                     if (regIsSource) {
-                        dest_index = (@as(u20, bx_value) << 4);
+                        dest_effective_address = (@as(u20, bx_value) << 4);
                     } else {
-                        source_index = (@as(u20, bx_value) << 4);
+                        source_effective_address = (@as(u20, bx_value) << 4);
                     }
                 },
             }
@@ -398,58 +400,65 @@ fn getInstructionSourceAndDest(
             switch (rm) {
                 .ALAX_BXSI_BXSID8_BXSID16 => {
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
+                    const effective_address_calculation: EffectiveAddressCalculation = EffectiveAddressCalculation{
+                        .base = address.bx,
+                        .index = address.si,
+                        .displacement = DisplacementFormat.d8,
+                    };
                     if (regIsSource) {
-                        dest_index = ((@as(u20, bx_value)) << 4) + registers.getSI() + disp_lo.?;
+                        dest_effective_address = ((@as(u20, bx_value)) << 4) + registers.getSI() + disp_lo.?;
+                        dest_address_calculation = effective_address_calculation; 
                     } else {
-                        source_index = ((@as(u20, bx_value)) << 4) + registers.getSI() + disp_lo.?;
+                        source_effective_address = ((@as(u20, bx_value)) << 4) + registers.getSI() + disp_lo.?;
+                        source_address_calculation = effective_address_calculation;
                     }
                 },
                 .CLCX_BXDI_BXDID8_BXDID16 => {
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
                     if (regIsSource) {
-                        dest_index = ((@as(u20, bx_value)) << 4) + registers.getDI() + disp_lo.?;
+                        dest_effective_address = ((@as(u20, bx_value)) << 4) + registers.getDI() + disp_lo.?;
                     } else {
-                        source_index = ((@as(u20, bx_value)) << 4) + registers.getDI() + disp_lo.?;
+                        source_effective_address = ((@as(u20, bx_value)) << 4) + registers.getDI() + disp_lo.?;
                     }
                 },
                 .DLDX_BPSI_BPSID8_BPSID16 => {
                     const bp_value: u16 = registers.getBP();
                     if (regIsSource) {
-                        dest_index = ((@as(u20, bp_value) << 4) + registers.getSI() + disp_lo.?);
+                        dest_effective_address = ((@as(u20, bp_value) << 4) + registers.getSI() + disp_lo.?);
                     } else {
-                        source_index = ((@as(u20, bp_value) << 4) + registers.getSI() + disp_lo.?);
+                        source_effective_address = ((@as(u20, bp_value) << 4) + registers.getSI() + disp_lo.?);
                     }
                 },
                 .BLBX_BPDI_BPDID8_BPDID16 => {
                     const bp_value: u16 = registers.getBP();
                     if (regIsSource) {
-                        dest_index = ((@as(u20, bp_value) << 4) + registers.getDI() + disp_lo.?);
+                        dest_effective_address = ((@as(u20, bp_value) << 4) + registers.getDI() + disp_lo.?);
                     } else {
-                        source_index = ((@as(u20, bp_value) << 4) + registers.getDI() + disp_lo.?);
+                        source_effective_address = ((@as(u20, bp_value) << 4) + registers.getDI() + disp_lo.?);
                     }
                 },
                 .AHSP_SI_SID8_SID16 => {
                     const si_value: u16 = registers.getSI();
                     if (regIsSource) {
-                        dest_index = ((@as(u20, si_value)) << 4) + disp_lo.?;
+                        dest_effective_address = ((@as(u20, si_value)) << 4) + disp_lo.?;
                     } else {
-                        source_index = ((@as(u20, si_value)) << 4) + disp_lo.?;
+                        source_effective_address = ((@as(u20, si_value)) << 4) + disp_lo.?;
                     }
                 },
                 .CHBP_DI_DID8_DID16 => {
                     const di_value: u16 = registers.getDI();
                     if (regIsSource) {
-                        dest_index = ((@as(u20, di_value)) << 4) + disp_lo.?;
+                        dest_effective_address = ((@as(u20, di_value)) << 4) + disp_lo.?;
                     } else {
-                        source_index = ((@as(u20, di_value)) << 4) + disp_lo.?;
+                        source_effective_address = ((@as(u20, di_value)) << 4) + disp_lo.?;
                     }
                 },
                 .DHSI_DIRECTACCESS_BPD8_BPD16 => {
                     const bp_value: u16 = registers.getBP();
                     if (regIsSource) {
-                        dest_index = ((@as(u20, bp_value) << 4) + disp_lo.?);
+                        dest_effective_address = ((@as(u20, bp_value) << 4) + disp_lo.?);
                     } else {
-                        source_index = ((@as(u20, bp_value) << 4) + disp_lo.?);
+                        source_effective_address = ((@as(u20, bp_value) << 4) + disp_lo.?);
                     }
                 },
                 .BHDI_BX_BXD8_BXD16 => {},
@@ -461,45 +470,45 @@ fn getInstructionSourceAndDest(
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     if (regIsSource) {
-                        dest_index = (@as(u20, bx_value) << 4) + registers.getSI() + displacement;
+                        dest_effective_address = (@as(u20, bx_value) << 4) + registers.getSI() + displacement;
                     } else {
-                        source_index = (@as(u20, bx_value) << 4) + registers.getSI() + displacement;
+                        source_effective_address = (@as(u20, bx_value) << 4) + registers.getSI() + displacement;
                     }
                 },
                 .CLCX_BXDI_BXDID8_BXDID16 => {
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     if (regIsSource) {
-                        dest_index = (@as(u20, bx_value) << 4) + registers.getDI() + displacement;
+                        dest_effective_address = (@as(u20, bx_value) << 4) + registers.getDI() + displacement;
                     } else {
-                        source_index = (@as(u20, bx_value) << 4) + registers.getDI() + displacement;
+                        source_effective_address = (@as(u20, bx_value) << 4) + registers.getDI() + displacement;
                     }
                 },
                 .DLDX_BPSI_BPSID8_BPSID16 => {
                     const bp_value: u16 = registers.getBP();
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     if (regIsSource) {
-                        dest_index = (@as(u20, bp_value) << 4) + registers.getSI() + displacement;
+                        dest_effective_address = (@as(u20, bp_value) << 4) + registers.getSI() + displacement;
                     } else {
-                        source_index = (@as(u20, bp_value) << 4) + registers.getSI() + displacement;
+                        source_effective_address = (@as(u20, bp_value) << 4) + registers.getSI() + displacement;
                     }
                 },
                 .BLBX_BPDI_BPDID8_BPDID16 => {
                     const bp_value: u16 = registers.getBP();
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     if (regIsSource) {
-                        dest_index = (@as(u20, bp_value) << 4) + registers.getDI() + displacement;
+                        dest_effective_address = (@as(u20, bp_value) << 4) + registers.getDI() + displacement;
                     } else {
-                        source_index = (@as(u20, bp_value) << 4) + registers.getDI() + displacement;
+                        source_effective_address = (@as(u20, bp_value) << 4) + registers.getDI() + displacement;
                     }
                 },
                 .AHSP_SI_SID8_SID16 => {
                     const si_value: u16 = registers.getSI();
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     if (regIsSource) {
-                        dest_index = (@as(u20, si_value) << 4) + displacement;
+                        dest_effective_address = (@as(u20, si_value) << 4) + displacement;
                     } else {
-                        source_index = (@as(u20, si_value) << 4) + displacement;
+                        source_effective_address = (@as(u20, si_value) << 4) + displacement;
                     }
                     
                 },
@@ -507,9 +516,9 @@ fn getInstructionSourceAndDest(
                     const di_value: u16 = registers.getDI();
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     if (regIsSource) {
-                        dest_index = (@as(u20, di_value) << 4) + displacement;
+                        dest_effective_address = (@as(u20, di_value) << 4) + displacement;
                     } else {
-                        source_index = (@as(u20, di_value) << 4) + displacement;
+                        source_effective_address = (@as(u20, di_value) << 4) + displacement;
                     }
 
                 },
@@ -517,9 +526,9 @@ fn getInstructionSourceAndDest(
                     const bp_value: u16 = registers.getBP();
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     if (regIsSource) {
-                        dest_index = (@as(u20, bp_value) << 4) + displacement;
+                        dest_effective_address = (@as(u20, bp_value) << 4) + displacement;
                     } else {
-                        source_index = (@as(u20, bp_value) << 4) + displacement;
+                        source_effective_address = (@as(u20, bp_value) << 4) + displacement;
                     }
 
                 },
@@ -527,9 +536,9 @@ fn getInstructionSourceAndDest(
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     if (regIsSource) {
-                        dest_index = (@as(u20, bx_value) << 4) + displacement;
+                        dest_effective_address = (@as(u20, bx_value) << 4) + displacement;
                     } else {
-                        source_index = (@as(u20, bx_value) << 4) + displacement;
+                        source_effective_address = (@as(u20, bx_value) << 4) + displacement;
                     }
                 },
             }
@@ -596,24 +605,35 @@ fn getInstructionSourceAndDest(
         },
     }
 
+
+    // TODO: I dont really know how to handle this here
     var destination_payload: DestinationInfo = undefined;
-    if (true) {
+    if (mod == ModValue.registerModeNoDisplacement and rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
         destination_payload = DestinationInfo{
             .address = dest,
         };
+    } else if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement) {
+        destination_payload = DestinationInfo{
+            .address_calculation = dest_address_calculation,
+        };
     } else {
         destination_payload = DestinationInfo{
-            .index = dest_index,
+            .index = dest,
         };
     }
+
     var source_payload: SourceInfo = undefined;
-    if (true) {
+    if (mod == ModValue.registerModeNoDisplacement and rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
         source_payload = SourceInfo{
             .address = source,
         };
+    } else if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement) {
+        source_payload = SourceInfo{
+            .address_calculation = source_address_calculation,
+        };
     } else {
         source_payload = SourceInfo{
-            .index = source_index,
+            .index = source_effective_address,
         };
     }
 
@@ -695,23 +715,34 @@ const InstructionInfo = struct {
     source_info: SourceInfo,
 };
 
+const EffectiveAddressCalculation = struct {
+    base: ?address,
+    index: ?address,
+    displacement: ?u16,
+    effective_address: u20,
+};
+
 const DestinationInfoIdentifiers = enum {
     address,
+    address_calculation,
     index,
 };
 
 const DestinationInfo = union(DestinationInfoIdentifiers) {
     address: address,
+    address_calculation: EffectiveAddressCalculation,
     index: u20,
 };
 
 const SourceInfoIdentifiers = enum {
     address,
+    address_calculation,
     index,
 };
 
 const SourceInfo = union(SourceInfoIdentifiers) {
     address: address,
+    address_calculation: EffectiveAddressCalculation,
     index: u20,
 };
 
@@ -921,6 +952,8 @@ fn decodeMovWithoutMod(
 /// the General Registers of the Intel 8086 CPU plus an identifier for
 /// a direct address following the instruction as a 16 bit displacement.
 const address = enum { cs, ds, es, ss, ip, ah, al, ax, bh, bl, bx, ch, cl, cx, dh, dl, dx, sp, bp, di, si, directaccess, none };
+
+const DisplacementFormat = enum { d8, d16 };
 
 /// Errors for the bus interface unit of the 8086 Processor
 const BiuError = error{
@@ -1390,8 +1423,8 @@ pub fn main() !void {
         log.err("{s}: File object is not of the correct type.", .{@errorName(SimulatorError.FileError)});
     }
 
-    const output_asm_file_path: []const u8 = "./disassemble.asm";
-    try std.fs.cwd().deleteFile(output_asm_file_path);
+    const output_asm_file_path: []const u8 = "./zig-out/test/disassemble.asm";
+
     const output_asm_file = std.fs.cwd().createFile(output_asm_file_path, open_mode_output_file) catch |err| {
         switch (err) {
             error.FileNotFound => {
@@ -1421,7 +1454,10 @@ pub fn main() !void {
         }
     };
     defer output_asm_file.close();
-    const OutputWriter = std.fs.File.writer(output_asm_file);
+
+    var instruction_buffer: [1024]u8 = undefined;
+    var writer = output_asm_file.writer(&instruction_buffer);
+    var OutputWriter = &writer.interface;
 
     //////////////////////////////////////////
     // Initializing the Simulator           //
@@ -1490,6 +1526,9 @@ pub fn main() !void {
     const file_contents = try input_binary_file.readToEndAlloc(heap_allocator, maxFileSizeBytes);
     print("Instruction byte count: {d}\n", .{file_contents.len});
     print("+++Start+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte});
+
+    print("bits 16\n", .{});
+    try OutputWriter.writeAll("bits 16\n\n");
 
     var depleted: bool = false;
 
@@ -1728,9 +1767,7 @@ pub fn main() !void {
                 const source_payload = instruction_info.source_info;
                 const destination_payload = instruction_info.destination_info;
 
-                print("{s} ", .{
-                    payload.mov_with_mod_instruction.mnemonic,
-                });
+                print("{s} ", .{payload.mov_with_mod_instruction.mnemonic});
                 OutputWriter.print("{s} ", .{payload.mov_with_mod_instruction.mnemonic}) catch |err| {
                     log.err(
                         "{s}: Something went wrong trying to write instruction mnemonic {s} to the output file.",
@@ -1740,10 +1777,10 @@ pub fn main() !void {
 
                 switch (destination_payload) {
                     .address => {
-                        print("{s},", .{@tagName(destination_payload.address)});
+                        print("{t},", .{destination_payload.address});
                         OutputWriter.print(
-                            "{s},",
-                            .{@tagName(destination_payload.address)},
+                            "{t},",
+                            .{destination_payload.address},
                         ) catch |err| {
                             log.err(
                                 "{s}: Something went wrong trying to write destination {any} the output file.",
@@ -1767,10 +1804,10 @@ pub fn main() !void {
 
                 switch (source_payload) {
                     .address => {
-                        print("{s}\n", .{@tagName(source_payload.address)});
+                        print("{t}\n", .{source_payload.address});
                         OutputWriter.print(
-                            "{s}\n",
-                            .{@tagName(source_payload.address)},
+                            "{t}\n",
+                            .{source_payload.address},
                         ) catch |err| {
                             log.err(
                                 "{s}: Something went wrong trying to write source {any} to the output file.",
@@ -1799,15 +1836,13 @@ pub fn main() !void {
                 );
 
                 const dest: RegValue = payload.mov_without_mod_instruction.reg;
-                print("{s} {s},", .{
-                    payload.mov_without_mod_instruction.mnemonic, @tagName(
-                        instruction_info.destination_info.address,
-                    ),
+                print("{s} {t},", .{
+                    payload.mov_without_mod_instruction.mnemonic,
+                    instruction_info.destination_info.address,
                 });
-                OutputWriter.print("{s} {s},", .{
-                    payload.mov_without_mod_instruction.mnemonic, @tagName(
-                        instruction_info.destination_info.address,
-                    ),
+                OutputWriter.print("{s} {t},", .{
+                    payload.mov_without_mod_instruction.mnemonic,
+                    instruction_info.destination_info.address,
                 }) catch |err| {
                     log.err(
                         "{s}: Something went wrong trying to write destination register {any} to the output file.",
@@ -1832,6 +1867,8 @@ pub fn main() !void {
                 };
             },
         }
+
+        try OutputWriter.flush();
 
         if (activeByte + stepSize == maxFileSizeBytes or activeByte + stepSize >= file_contents.len) {
             depleted = true;
@@ -1861,9 +1898,12 @@ fn runAssemblyTest(
     // const log = std.log.scoped(.runAssemblyTest);
 
     print("\n+++Testing+Phase++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
-    print("Assemble generatas .asm file and compare with original binary input...\n", .{});
+    print("Assembler generates .asm file and compares it with the original binary input...\n", .{});
 
-    const assembled_binary_path = "./assembled_output";
+    const cwd_path: []const u8 = try std.process.getCwdAlloc(allocator);
+    defer allocator.free(cwd_path);
+    const assembled_binary_path: []u8 = try std.fs.path.join(allocator, &[_][]const u8{ cwd_path, "zig-out", "test", "reassemble" });
+    defer allocator.free(assembled_binary_path);
 
     const assemble_args = [_][]const u8{
         "nasm",
@@ -1881,22 +1921,31 @@ fn runAssemblyTest(
     try assemble_process.spawn();
     const assemble_result = try assemble_process.wait();
 
-    switch (assemble_result) {
-        .Exited => |code| {
-            if (code == 0) {
-                print("Assembly successfull\n", .{});
-            } else {
-                print("Assembly failed with exit code: {d}\n", .{code});
+    if (assemble_process.stderr) |stderr| {
+        var buffer: [4096]u8 = undefined;
+        var stderr_reader = stderr.reader(&buffer);
+        var err_buffer: [10240]u8 = undefined;
+        const bytes_read = try stderr_reader.read(&err_buffer);
+        const stderr_msg = err_buffer[0..bytes_read];
+        // defer allocator.free(&stderr_msg);
+
+        switch (assemble_result) {
+            .Exited => |code| {
+                if (code == 0) {
+                    print("Assembly successfull\n", .{});
+                } else {
+                    print("Assembly failed with exit code: {d}\nError: {s}\n", .{ code, stderr_msg });
+                    return;
+                }
+            },
+            else => {
+                print("Assembly process terminated unexpectedly\nError: {s}\n", .{stderr_msg});
                 return;
-            }
-        },
-        else => {
-            print("Assembly process terminated unexpectedly\n", .{});
-            return;
-        },
+            },
+        }
     }
 
-    defer std.fs.cwd().deleteFile(assembled_binary_path) catch {};
+    // defer std.fs.cwd().deleteFile(assembled_binary_path) catch {};
     const compare_result = try compareFiles(
         allocator,
         path_to_binary_input,
