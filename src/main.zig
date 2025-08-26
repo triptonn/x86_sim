@@ -177,61 +177,62 @@ const RegValue = enum(u3) {
 
 // zig fmt: on
 fn getInstructionDest(w: WValue, reg: RegValue) InstructionInfo {
-    var dest: address = undefined;
+    const Address = AddressDirectory.Address;
+    var dest: Address = undefined;
     switch (w) {
         .byte => {
             switch (reg) {
                 .ALAX => {
-                    dest = address.al;
+                    dest = Address.al;
                 },
                 .BLBX => {
-                    dest = address.bl;
+                    dest = Address.bl;
                 },
                 .CLCX => {
-                    dest = address.cl;
+                    dest = Address.cl;
                 },
                 .DLDX => {
-                    dest = address.dl;
+                    dest = Address.dl;
                 },
                 .AHSP => {
-                    dest = address.ah;
+                    dest = Address.ah;
                 },
                 .BHDI => {
-                    dest = address.bh;
+                    dest = Address.bh;
                 },
                 .CHBP => {
-                    dest = address.ch;
+                    dest = Address.ch;
                 },
                 .DHSI => {
-                    dest = address.dh;
+                    dest = Address.dh;
                 },
             }
         },
         .word => {
             switch (reg) {
                 .ALAX => {
-                    dest = address.ax;
+                    dest = Address.ax;
                 },
                 .BLBX => {
-                    dest = address.bx;
+                    dest = Address.bx;
                 },
                 .CLCX => {
-                    dest = address.cx;
+                    dest = Address.cx;
                 },
                 .DLDX => {
-                    dest = address.dx;
+                    dest = Address.dx;
                 },
                 .AHSP => {
-                    dest = address.sp;
+                    dest = Address.sp;
                 },
                 .BHDI => {
-                    dest = address.di;
+                    dest = Address.di;
                 },
                 .CHBP => {
-                    dest = address.bp;
+                    dest = Address.bp;
                 },
                 .DHSI => {
-                    dest = address.si;
+                    dest = Address.si;
                 },
             }
         },
@@ -240,7 +241,7 @@ fn getInstructionDest(w: WValue, reg: RegValue) InstructionInfo {
         .address = dest,
     };
     const source_payload = SourceInfo{
-        .address = address.none,
+        .address = Address.none,
     };
     return InstructionInfo{
         .destination_info = destination_payload,
@@ -264,8 +265,9 @@ fn getInstructionSourceAndDest(
     // data: ?u8,
     // w_data: ?u8,
     ) InstructionInfo {
-    var dest: address = undefined;
-    var source: address = undefined;
+    const Address = AddressDirectory.Address;
+    var dest: Address = undefined;
+    var source: Address = undefined;
     var dest_effective_address: u20 = undefined;
     var source_effective_address: u20 = undefined;
     var dest_address_calculation: EffectiveAddressCalculation = undefined;
@@ -277,28 +279,28 @@ fn getInstructionSourceAndDest(
         .byte => {
             switch (reg) {
                 .ALAX => {
-                    if (regIsSource) source = address.al else dest = address.al;
+                    if (regIsSource) source = Address.al else dest = Address.al;
                 },
                 .CLCX => {
-                    if (regIsSource) source = address.cl else dest = address.cl;
+                    if (regIsSource) source = Address.cl else dest = Address.cl;
                 },
                 .DLDX => {
-                    if (regIsSource) source = address.dl else dest = address.dl;
+                    if (regIsSource) source = Address.dl else dest = Address.dl;
                 },
                 .BLBX => {
-                    if (regIsSource) source = address.bl else dest = address.bl;
+                    if (regIsSource) source = Address.bl else dest = Address.bl;
                 },
                 .AHSP => {
-                    if (regIsSource) source = address.ah else dest = address.ah;
+                    if (regIsSource) source = Address.ah else dest = Address.ah;
                 },
                 .CHBP => {
-                    if (regIsSource) source = address.ch else dest = address.ch;
+                    if (regIsSource) source = Address.ch else dest = Address.ch;
                 },
                 .DHSI => {
-                    if (regIsSource) source = address.dh else dest = address.dh;
+                    if (regIsSource) source = Address.dh else dest = Address.dh;
                 },
                 .BHDI => {
-                    if (regIsSource) source = address.bh else dest = address.bh;
+                    if (regIsSource) source = Address.bh else dest = Address.bh;
                 },
             }
 
@@ -306,28 +308,28 @@ fn getInstructionSourceAndDest(
         .word => {
             switch (reg) {
                 .ALAX => {
-                    if (regIsSource) source = address.ax else dest = address.ax;
+                    if (regIsSource) source = Address.ax else dest = Address.ax;
                 },
                 .CLCX => {
-                    if (regIsSource) source = address.cx else dest = address.cx;
+                    if (regIsSource) source = Address.cx else dest = Address.cx;
                 },
                 .DLDX => {
-                    if (regIsSource) source = address.dx else dest = address.dx;
+                    if (regIsSource) source = Address.dx else dest = Address.dx;
                 },
                 .BLBX => {
-                    if (regIsSource) source = address.bx else dest = address.bx;
+                    if (regIsSource) source = Address.bx else dest = Address.bx;
                 },
                 .AHSP => {
-                    if (regIsSource) source = address.sp else dest = address.sp;
+                    if (regIsSource) source = Address.sp else dest = Address.sp;
                 },
                 .CHBP => {
-                    if (regIsSource) source = address.bp else dest = address.bp;
+                    if (regIsSource) source = Address.bp else dest = Address.bp;
                 },
                 .DHSI => {
-                    if (regIsSource) source = address.si else dest = address.si;
+                    if (regIsSource) source = Address.si else dest = Address.si;
                 },
                 .BHDI => {
-                    if (regIsSource) source = address.di else dest = address.di;
+                    if (regIsSource) source = Address.di else dest = Address.di;
                 },
             }
         },
@@ -384,7 +386,33 @@ fn getInstructionSourceAndDest(
                 },
                 .DHSI_DIRECTACCESS_BPD8_BPD16 => {
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
-                    if (regIsSource) dest_effective_address = displacement  else source_effective_address = displacement;
+                    source_effective_address = displacement;
+                    switch (reg) {
+                        .ALAX => {
+                            dest = Address.ax;
+                        },
+                        .BLBX => {
+                            dest = Address.bx;
+                        },
+                        .CLCX => {
+                            dest = Address.cx;
+                        },
+                        .DLDX => {
+                            dest = Address.dx;
+                        },
+                        .AHSP => {
+                            dest = Address.sp;
+                        },
+                        .BHDI => {
+                            dest = Address.di;
+                        },
+                        .CHBP => {
+                            dest = Address.bp;
+                        },
+                        .DHSI => {
+                            dest = Address.si;
+                        },
+                    }
                 },
                 .BHDI_BX_BXD8_BXD16 => {
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
@@ -401,67 +429,115 @@ fn getInstructionSourceAndDest(
                 .ALAX_BXSI_BXSID8_BXSID16 => {
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
                     const effective_address_calculation: EffectiveAddressCalculation = EffectiveAddressCalculation{
-                        .base = address.bx,
-                        .index = address.si,
+                        .base = Address.bx,
+                        .index = Address.si,
                         .displacement = DisplacementFormat.d8,
+                        .effective_address = ((@as(u20, bx_value)) << 4) + registers.getSI() + disp_lo.?,
                     };
                     if (regIsSource) {
-                        dest_effective_address = ((@as(u20, bx_value)) << 4) + registers.getSI() + disp_lo.?;
                         dest_address_calculation = effective_address_calculation; 
                     } else {
-                        source_effective_address = ((@as(u20, bx_value)) << 4) + registers.getSI() + disp_lo.?;
                         source_address_calculation = effective_address_calculation;
                     }
                 },
                 .CLCX_BXDI_BXDID8_BXDID16 => {
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
+                    const effective_address_calculation: EffectiveAddressCalculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.si,
+                        .displacement = DisplacementFormat.d8,
+                        .effective_address = ((@as(u20, bx_value)) << 4) + registers.getDI() + disp_lo.?,
+                    };
                     if (regIsSource) {
-                        dest_effective_address = ((@as(u20, bx_value)) << 4) + registers.getDI() + disp_lo.?;
+                        dest_address_calculation = effective_address_calculation;
                     } else {
-                        source_effective_address = ((@as(u20, bx_value)) << 4) + registers.getDI() + disp_lo.?;
+                        source_address_calculation = effective_address_calculation;
                     }
                 },
                 .DLDX_BPSI_BPSID8_BPSID16 => {
                     const bp_value: u16 = registers.getBP();
+                    const effective_address_calculation: EffectiveAddressCalculation = EffectiveAddressCalculation{
+                        .base = Address.bp,
+                        .index = Address.si,
+                        .displacement = DisplacementFormat.d8,
+                        .effective_address = ((@as(u20, bp_value) << 4) + registers.getSI() + disp_lo.?),
+                    };
                     if (regIsSource) {
-                        dest_effective_address = ((@as(u20, bp_value) << 4) + registers.getSI() + disp_lo.?);
+                        dest_address_calculation = effective_address_calculation;
                     } else {
-                        source_effective_address = ((@as(u20, bp_value) << 4) + registers.getSI() + disp_lo.?);
+                        source_address_calculation = effective_address_calculation;
                     }
                 },
                 .BLBX_BPDI_BPDID8_BPDID16 => {
                     const bp_value: u16 = registers.getBP();
+                    const effective_address_calculation: EffectiveAddressCalculation = EffectiveAddressCalculation{
+                        .base = Address.bp,
+                        .index = Address.di,
+                        .displacement = DisplacementFormat.d8,
+                        .effective_address = ((@as(u20, bp_value) << 4) + registers.getDI() + disp_lo.?),
+                    };
                     if (regIsSource) {
-                        dest_effective_address = ((@as(u20, bp_value) << 4) + registers.getDI() + disp_lo.?);
+                        dest_address_calculation = effective_address_calculation;
                     } else {
-                        source_effective_address = ((@as(u20, bp_value) << 4) + registers.getDI() + disp_lo.?);
+                        source_address_calculation = effective_address_calculation;
                     }
                 },
                 .AHSP_SI_SID8_SID16 => {
                     const si_value: u16 = registers.getSI();
+                    const effective_address_calculation: EffectiveAddressCalculation = EffectiveAddressCalculation{
+                        .base = Address.si,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d8,
+                        .effective_address = ((@as(u20, si_value)) << 4) + disp_lo.?,
+                    };
                     if (regIsSource) {
-                        dest_effective_address = ((@as(u20, si_value)) << 4) + disp_lo.?;
+                        dest_address_calculation = effective_address_calculation;
                     } else {
-                        source_effective_address = ((@as(u20, si_value)) << 4) + disp_lo.?;
+                        source_address_calculation = effective_address_calculation;
                     }
                 },
                 .CHBP_DI_DID8_DID16 => {
                     const di_value: u16 = registers.getDI();
+                    const effective_address_calculation: EffectiveAddressCalculation = EffectiveAddressCalculation{
+                        .base = Address.di,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d8,
+                        .effective_address = ((@as(u20, di_value)) << 4) + disp_lo.?,
+                    };
                     if (regIsSource) {
-                        dest_effective_address = ((@as(u20, di_value)) << 4) + disp_lo.?;
+                        dest_address_calculation = effective_address_calculation;
                     } else {
-                        source_effective_address = ((@as(u20, di_value)) << 4) + disp_lo.?;
+                        source_address_calculation = effective_address_calculation;
                     }
                 },
                 .DHSI_DIRECTACCESS_BPD8_BPD16 => {
                     const bp_value: u16 = registers.getBP();
+                    const effective_address_calculation: EffectiveAddressCalculation = EffectiveAddressCalculation{
+                        .base = Address.bp,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d8,
+                        .effective_address = ((@as(u20, bp_value) << 4) + disp_lo.?),
+                    };
                     if (regIsSource) {
-                        dest_effective_address = ((@as(u20, bp_value) << 4) + disp_lo.?);
+                        dest_address_calculation = effective_address_calculation;
                     } else {
-                        source_effective_address = ((@as(u20, bp_value) << 4) + disp_lo.?);
+                        source_address_calculation = effective_address_calculation;
                     }
                 },
-                .BHDI_BX_BXD8_BXD16 => {},
+                .BHDI_BX_BXD8_BXD16 => {
+                    const bx_value: u16 = registers.getBX(WValue.word, null).value16;
+                    const effective_address_calculation: EffectiveAddressCalculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d8,
+                        .effective_address = ((@as(u20, bx_value) << 4) + disp_lo.?),
+                    };
+                    if (regIsSource) {
+                        dest_address_calculation = effective_address_calculation;
+                    } else {
+                        source_address_calculation = effective_address_calculation;
+                    }
+                },
             }
         },
         .memoryMode16BitDisplacement => {
@@ -548,56 +624,56 @@ fn getInstructionSourceAndDest(
                 .byte => {
                     switch (rm) {
                         .ALAX_BXSI_BXSID8_BXSID16 => {
-                            if (regIsSource) dest = address.al else source = address.al;
+                            if (regIsSource) dest = Address.al else source = Address.al;
                         },
                         .CLCX_BXDI_BXDID8_BXDID16 => {
-                            if (regIsSource) dest = address.cl else source = address.cl;
+                            if (regIsSource) dest = Address.cl else source = Address.cl;
                         },
                         .DLDX_BPSI_BPSID8_BPSID16 => {
-                            if (regIsSource) dest = address.dl else source = address.dl;
+                            if (regIsSource) dest = Address.dl else source = Address.dl;
                         },
                         .BLBX_BPDI_BPDID8_BPDID16 => {
-                            if (regIsSource) dest = address.bl else source = address.bl;
+                            if (regIsSource) dest = Address.bl else source = Address.bl;
                         },
                         .AHSP_SI_SID8_SID16 => {
-                            if (regIsSource) dest = address.ah else source = address.ah;
+                            if (regIsSource) dest = Address.ah else source = Address.ah;
                         },
                         .CHBP_DI_DID8_DID16 => {
-                            if (regIsSource) dest = address.ch else source = address.ch;
+                            if (regIsSource) dest = Address.ch else source = Address.ch;
                         },
                         .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                            if (regIsSource) dest = address.dh else source = address.dh;
+                            if (regIsSource) dest = Address.dh else source = Address.dh;
                         },
                         .BHDI_BX_BXD8_BXD16 => {
-                            if (regIsSource) dest = address.bh else source = address.bh;
+                            if (regIsSource) dest = Address.bh else source = Address.bh;
                         },
                     }
                 },
                 .word => {
                     switch (rm) {
                         .ALAX_BXSI_BXSID8_BXSID16 => {
-                            if (regIsSource) dest = address.ax else source = address.ax;
+                            if (regIsSource) dest = Address.ax else source = Address.ax;
                         },
                         .CLCX_BXDI_BXDID8_BXDID16 => {
-                            if (regIsSource) dest = address.cx else source = address.cx;
+                            if (regIsSource) dest = Address.cx else source = Address.cx;
                         },
                         .DLDX_BPSI_BPSID8_BPSID16 => {
-                            if (regIsSource) dest = address.dx else source = address.dx;
+                            if (regIsSource) dest = Address.dx else source = Address.dx;
                         },
                         .BLBX_BPDI_BPDID8_BPDID16 => {
-                            if (regIsSource) dest = address.bx else source = address.bx;
+                            if (regIsSource) dest = Address.bx else source = Address.bx;
                         },
                         .AHSP_SI_SID8_SID16 => {
-                            if (regIsSource) dest = address.sp else source = address.sp;
+                            if (regIsSource) dest = Address.sp else source = Address.sp;
                         },
                         .CHBP_DI_DID8_DID16 => {
-                            if (regIsSource) dest = address.bp else source = address.bp;
+                            if (regIsSource) dest = Address.bp else source = Address.bp;
                         },
                         .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                            if (regIsSource) dest = address.si else source = address.si;
+                            if (regIsSource) dest = Address.si else source = Address.si;
                         },
                         .BHDI_BX_BXD8_BXD16 => {
-                            if (regIsSource) dest = address.di else source = address.di;
+                            if (regIsSource) dest = Address.di else source = Address.di;
                         },
                     }
                 },
@@ -605,27 +681,67 @@ fn getInstructionSourceAndDest(
         },
     }
 
-
-    // TODO: I dont really know how to handle this here
     var destination_payload: DestinationInfo = undefined;
-    if (mod == ModValue.registerModeNoDisplacement and rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
+    if (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
         destination_payload = DestinationInfo{
             .address = dest,
         };
+    } else if (mod == ModValue.memoryModeNoDisplacement) {
+        destination_payload = DestinationInfo{
+            .address_calculation = EffectiveAddressCalculation{
+                .base = switch (rm) {
+                    .ALAX_BXSI_BXSID8_BXSID16 => Address.bx,
+                    .CLCX_BXDI_BXDID8_BXDID16 => Address.bx,
+                    .DLDX_BPSI_BPSID8_BPSID16 => Address.bp,
+                    .BLBX_BPDI_BPDID8_BPDID16 => Address.bp,
+                    .AHSP_SI_SID8_SID16 => Address.si,
+                    .CHBP_DI_DID8_DID16 => Address.di,
+                    .BHDI_BX_BXD8_BXD16 => Address.bx,
+                    else => Address.none,
+                },
+                .index = switch (rm) {
+                    .ALAX_BXSI_BXSID8_BXSID16 => Address.si,
+                    .CLCX_BXDI_BXDID8_BXDID16 => Address.di,
+                    .DLDX_BPSI_BPSID8_BPSID16 => Address.si,
+                    .BLBX_BPDI_BPDID8_BPDID16 => Address.di,
+                    .AHSP_SI_SID8_SID16 => Address.none,
+                    .CHBP_DI_DID8_DID16 => Address.none,
+                    .BHDI_BX_BXD8_BXD16 => Address.none,
+                    else => Address.none,
+                },
+                .displacement = null,
+                .effective_address = dest_effective_address,
+            }
+        };
     } else if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement) {
         destination_payload = DestinationInfo{
-            .address_calculation = dest_address_calculation,
+            .address_calculation = EffectiveAddressCalculation{
+                .base = dest,
+                .index = Address.none,
+                .displacement = if (mod == ModValue.memoryMode8BitDisplacement) DisplacementFormat.d8 else DisplacementFormat.d16,
+                .effective_address = if (mod == ModValue.memoryMode8BitDisplacement) @as(u16, disp_lo.?) else (@as(u16, disp_hi.?) << 4) + disp_lo.?,
+            },
         };
-    } else {
+    } else if (mod == ModValue.registerModeNoDisplacement) {
         destination_payload = DestinationInfo{
-            .index = dest,
+            .address_calculation = EffectiveAddressCalculation{
+                .base = dest,
+                .index = Address.none,
+                .displacement = if (w == WValue.byte) DisplacementFormat.d8 else DisplacementFormat.d16,
+                .effective_address = dest_effective_address,
+            },
         };
     }
 
     var source_payload: SourceInfo = undefined;
-    if (mod == ModValue.registerModeNoDisplacement and rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
+    if (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
         source_payload = SourceInfo{
-            .address = source,
+            .address_calculation = EffectiveAddressCalculation{
+                .base = AddressDirectory.addressFrom(reg, w),
+                .index = Address.none, 
+                .displacement = null,
+                .effective_address = source_effective_address,
+            },
         };
     } else if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement) {
         source_payload = SourceInfo{
@@ -716,9 +832,9 @@ const InstructionInfo = struct {
 };
 
 const EffectiveAddressCalculation = struct {
-    base: ?address,
-    index: ?address,
-    displacement: ?u16,
+    base: ?AddressDirectory.Address,
+    index: ?AddressDirectory.Address,
+    displacement: ?DisplacementFormat,
     effective_address: u20,
 };
 
@@ -729,7 +845,7 @@ const DestinationInfoIdentifiers = enum {
 };
 
 const DestinationInfo = union(DestinationInfoIdentifiers) {
-    address: address,
+    address: AddressDirectory.Address,
     address_calculation: EffectiveAddressCalculation,
     index: u20,
 };
@@ -741,7 +857,7 @@ const SourceInfoIdentifiers = enum {
 };
 
 const SourceInfo = union(SourceInfoIdentifiers) {
-    address: address,
+    address: AddressDirectory.Address,
     address_calculation: EffectiveAddressCalculation,
     index: u20,
 };
@@ -951,8 +1067,38 @@ fn decodeMovWithoutMod(
 /// Identifiers of the Internal Communication Registers as well as
 /// the General Registers of the Intel 8086 CPU plus an identifier for
 /// a direct address following the instruction as a 16 bit displacement.
-const address = enum { cs, ds, es, ss, ip, ah, al, ax, bh, bl, bx, ch, cl, cx, dh, dl, dx, sp, bp, di, si, directaccess, none };
-
+const AddressDirectory = struct {
+    const Address = enum { cs, ds, es, ss, ip, ah, al, ax, bh, bl, bx, ch, cl, cx, dh, dl, dx, sp, bp, di, si, directaccess, none };
+    pub fn addressFrom(reg: RegValue, w: ?WValue) Address {
+        const w_value = w orelse WValue.byte;
+        switch (reg) {
+            .ALAX => {
+                if (w_value == WValue.word) return Address.ax else return Address.al;
+            },
+            .BLBX => {
+                if (w_value == WValue.word) return Address.bx else return Address.bl;
+            },
+            .CLCX => {
+                if (w_value == WValue.word) return Address.cx else return Address.cl;
+            },
+            .DLDX => {
+                if (w_value == WValue.word) return Address.dx else return Address.dl;
+            },
+            .AHSP => {
+                if (w_value == WValue.word) return Address.sp else return Address.ah;
+            },
+            .BHDI => {
+                if (w_value == WValue.word) return Address.di else return Address.bh;
+            },
+            .CHBP => {
+                if (w_value == WValue.word) return Address.bp else return Address.ch;
+            },
+            .DHSI => {
+                if (w_value == WValue.word) return Address.si else return Address.dh;
+            },
+        }
+    }
+};
 const DisplacementFormat = enum { d8, d16 };
 
 /// Errors for the bus interface unit of the 8086 Processor
@@ -1084,6 +1230,51 @@ const Register = struct {
     _BP: u16, // Base Pointer
     _DI: u16, // Source Index (Offset)
     _SI: u16, // Destination Index (Offset)
+
+    pub fn getReg16FromRegValue(self: *Register, reg: RegValue) RegisterPayload {
+        switch (reg) {
+            .ALAX => {
+                return RegisterPayload{
+                    .value16 = self._AX,
+                };
+            },
+            .BLBX => {
+                return RegisterPayload{
+                    .value16 = self._BX,
+                };
+            },
+            .CLCX => {
+                return RegisterPayload{
+                    .value16 = self._CX,
+                };
+            },
+            .DLDX => {
+                return RegisterPayload{
+                    .value16 = self._DX,
+                };
+            },
+            .AHSP => {
+                return RegisterPayload{
+                    .value16 = self._SP,
+                };
+            },
+            .BHDI => {
+                return RegisterPayload{
+                    .value16 = self._DI,
+                };
+            },
+            .CHBP => {
+                return RegisterPayload{
+                    .value16 = self._BP,
+                };
+            },
+            .DHSI => {
+                return RegisterPayload{
+                    .value16 = self._SI,
+                };
+            },
+        }
+    }
 
     // Internal Communication Register Methods
     pub fn setCS(self: *Register, value: u16) void {
@@ -1788,6 +1979,23 @@ pub fn main() !void {
                             );
                         };
                     },
+                    .address_calculation => {
+                        print("[{t} + {t} + {d}],", .{
+                            destination_payload.address_calculation.base.?,
+                            destination_payload.address_calculation.index.?,
+                            destination_payload.address_calculation.displacement.?,
+                        });
+                        OutputWriter.print("[{t} + {t} + {d}],", .{
+                            destination_payload.address_calculation.base.?,
+                            destination_payload.address_calculation.index.?,
+                            destination_payload.address_calculation.displacement.?,
+                        }) catch |err| {
+                            log.err(
+                                "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                .{ @errorName(err), destination_payload.address_calculation },
+                            );
+                        };
+                    },
                     .index => {
                         print("{x},", .{destination_payload.index});
                         OutputWriter.print(
@@ -1812,6 +2020,23 @@ pub fn main() !void {
                             log.err(
                                 "{s}: Something went wrong trying to write source {any} to the output file.",
                                 .{ @errorName(err), source_payload.address },
+                            );
+                        };
+                    },
+                    .address_calculation => {
+                        print("[{t} + {t} + {d}],\n", .{
+                            source_payload.address_calculation.base.?,
+                            source_payload.address_calculation.index.?,
+                            source_payload.address_calculation.displacement.?,
+                        });
+                        OutputWriter.print("[{t} + {t} + {d}]\n,", .{
+                            source_payload.address_calculation.base.?,
+                            source_payload.address_calculation.index.?,
+                            source_payload.address_calculation.displacement.?,
+                        }) catch |err| {
+                            log.err(
+                                "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                .{ @errorName(err), source_payload.address_calculation },
                             );
                         };
                     },
