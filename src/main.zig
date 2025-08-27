@@ -268,8 +268,7 @@ fn getInstructionSourceAndDest(
     const Address = AddressDirectory.Address;
     var dest: Address = undefined;
     var source: Address = undefined;
-    var dest_effective_address: u20 = undefined;
-    var source_effective_address: u20 = undefined;
+    var immediate_value: u20 = undefined;
     var dest_address_calculation: EffectiveAddressCalculation = undefined;
     var source_address_calculation: EffectiveAddressCalculation = undefined;
     const regIsSource: bool = if (d == DValue.source) true else false;
@@ -356,13 +355,15 @@ fn getInstructionSourceAndDest(
                             .base = Address.bx,
                             .index = Address.si,
                             .displacement = DisplacementFormat.none,
+                            .data = null,
                             .effective_address = (@as(u20, bx_value) << 4) + si_value,
                         };
-                    } else {
+                    } else if (!regIsSource) {
                         source_address_calculation = EffectiveAddressCalculation{
                             .base = Address.bx,
                             .index = Address.si,
                             .displacement = DisplacementFormat.none,
+                            .data = null,
                             .effective_address = (@as(u20, bx_value) << 4) + si_value,
                         };
                     }
@@ -375,13 +376,15 @@ fn getInstructionSourceAndDest(
                             .base = Address.bx,
                             .index = Address.di,
                             .displacement = DisplacementFormat.none,
+                            .data = null,
                             .effective_address = (@as(u20, bx_value) << 4) + di_value,
                         };
-                    } else {
+                    } else if (!regIsSource) {
                         source_address_calculation = EffectiveAddressCalculation{
                             .base = Address.bx,
                             .index = Address.di,
                             .displacement = DisplacementFormat.none,
+                            .data = null,
                             .effective_address = (@as(u20, bx_value) << 4) + di_value,
                         };
                     }
@@ -394,6 +397,7 @@ fn getInstructionSourceAndDest(
                             .base = Address.bp,
                             .index = Address.si,
                             .displacement = DisplacementFormat.none,
+                            .data = null,
                             .effective_address = (@as(u20, bp_value) << 4) + si_value,
 
                         };
@@ -402,6 +406,7 @@ fn getInstructionSourceAndDest(
                             .base = Address.bp,
                             .index = Address.si,
                             .displacement = DisplacementFormat.none,
+                            .data = null,
                             .effective_address = (@as(u20, bp_value) << 4) + si_value,
 
                         };
@@ -415,6 +420,7 @@ fn getInstructionSourceAndDest(
                             .base = Address.bp,
                             .index = Address.di,
                             .displacement = DisplacementFormat.none,
+                            .data = null,
                             .effective_address = (@as(u20, bp_value) << 4) + di_value,
 
                         };
@@ -423,6 +429,7 @@ fn getInstructionSourceAndDest(
                             .base = Address.bp,
                             .index = Address.di,
                             .displacement = DisplacementFormat.none,
+                            .data = null,
                             .effective_address = (@as(u20, bp_value) << 4) + di_value,
 
                         };
@@ -430,85 +437,83 @@ fn getInstructionSourceAndDest(
                 },
                 .AHSP_SI_SID8_SID16 => {
                     if (regIsSource) {
-                        dest_address_calculation = EffectiveAddressCalculation{
-                            .base = Address.si,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.none,
-                            .effective_address = @as(u20, registers.getSI()),
-                        };
+                        dest = Address.si;
                     } else if (!regIsSource) {
-                        source_address_calculation = EffectiveAddressCalculation{
-                            .base = Address.si,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.none,
-                            .effective_address = @as(u20, registers.getSI()),
-                        };
+                        source = Address.si;
                     }
                 },
                 .CHBP_DI_DID8_DID16 => {
                     if (regIsSource) {
-                        dest_address_calculation = EffectiveAddressCalculation{
-                            .base = Address.di,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.none,
-                            .effective_address = @as(u20, registers.getDI()),
-                        };
-                    }
-                    else {
-                        source_address_calculation = EffectiveAddressCalculation{
-                            .base = Address.di,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.none,
-                            .effective_address = @as(u20, registers.getDI()),
-                        };
+                        dest = Address.di;
+                    } else if (!regIsSource) {
+                        source = Address.di;
                     }
                 },
                 .DHSI_DIRECTACCESS_BPD8_BPD16 => {
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
-                    source_effective_address = displacement;
-                    switch (reg) {
-                        .ALAX => {
-                            dest = Address.ax;
-                        },
-                        .BLBX => {
-                            dest = Address.bx;
-                        },
-                        .CLCX => {
-                            dest = Address.cx;
-                        },
-                        .DLDX => {
-                            dest = Address.dx;
-                        },
-                        .AHSP => {
-                            dest = Address.sp;
-                        },
-                        .BHDI => {
-                            dest = Address.di;
-                        },
-                        .CHBP => {
-                            dest = Address.bp;
-                        },
-                        .DHSI => {
-                            dest = Address.si;
-                        },
+                    immediate_value = displacement;
+                    if (regIsSource) {
+                        switch (reg) {
+                            .ALAX => { 
+                                dest = Address.ax;
+                            },
+                            .BLBX => {
+                                dest = Address.bx;
+                            },
+                            .CLCX => {
+                                dest = Address.cx;
+                            },
+                            .DLDX => {
+                                dest = Address.dx;
+                            },
+                            .AHSP => {
+                                dest = Address.sp;
+                            },
+                            .BHDI => {
+                                dest = Address.di;
+                            },
+                            .CHBP => {
+                                dest = Address.bp;
+                            },
+                            .DHSI => {
+                                dest = Address.si;
+                            },
+                        } 
+                    } else if (!regIsSource) {
+                        switch (reg) {
+                            .ALAX => { 
+                                source = Address.ax;
+                            },
+                            .BLBX => {
+                                source = Address.bx;
+                            },
+                            .CLCX => {
+                                source = Address.cx;
+                            },
+                            .DLDX => {
+                                source = Address.dx;
+                            },
+                            .AHSP => {
+                                source = Address.sp;
+                            },
+                            .BHDI => {
+                                source = Address.di;
+                            },
+                            .CHBP => {
+                                source = Address.bp;
+                            },
+                            .DHSI => {
+                                source = Address.si;
+                            },
+                        } 
+
                     }
                 },
                 .BHDI_BX_BXD8_BXD16 => {
                     if (regIsSource) {
-                        dest_address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bx,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.none,
-                            .effective_address = @as(u20, registers.getBX(WValue.word, "hilo").value16),
-                        };
-                    }
-                    else {
-                        source_address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bx,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.none,
-                            .effective_address = @as(u20, registers.getBX(WValue.word, "hilo").value16),
-                        };
+                        dest = Address.bx;
+                    } else if (!regIsSource) {
+                        source = Address.bx;
                     }
                 },
             }
@@ -521,11 +526,12 @@ fn getInstructionSourceAndDest(
                         .base = Address.bx,
                         .index = Address.si,
                         .displacement = DisplacementFormat.d8,
+                        .data = @as(u16, disp_lo.?),
                         .effective_address = ((@as(u20, bx_value)) << 4) + registers.getSI() + disp_lo.?,
                     };
                     if (regIsSource) {
                         dest_address_calculation = effective_address_calculation; 
-                    } else {
+                    } else if (!regIsSource) {
                         source_address_calculation = effective_address_calculation;
                     }
                 },
@@ -533,8 +539,9 @@ fn getInstructionSourceAndDest(
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
                     const effective_address_calculation: EffectiveAddressCalculation = EffectiveAddressCalculation{
                         .base = Address.bx,
-                        .index = Address.si,
+                        .index = Address.di,
                         .displacement = DisplacementFormat.d8,
+                        .data = @as(u16, disp_lo.?),
                         .effective_address = ((@as(u20, bx_value)) << 4) + registers.getDI() + disp_lo.?,
                     };
                     if (regIsSource) {
@@ -549,6 +556,7 @@ fn getInstructionSourceAndDest(
                         .base = Address.bp,
                         .index = Address.si,
                         .displacement = DisplacementFormat.d8,
+                        .data = @as(u16, disp_lo.?),
                         .effective_address = ((@as(u20, bp_value) << 4) + registers.getSI() + disp_lo.?),
                     };
                     if (regIsSource) {
@@ -563,6 +571,7 @@ fn getInstructionSourceAndDest(
                         .base = Address.bp,
                         .index = Address.di,
                         .displacement = DisplacementFormat.d8,
+                        .data = @as(u16, disp_lo.?),
                         .effective_address = ((@as(u20, bp_value) << 4) + registers.getDI() + disp_lo.?),
                     };
                     if (regIsSource) {
@@ -577,6 +586,7 @@ fn getInstructionSourceAndDest(
                         .base = Address.si,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d8,
+                        .data = @as(u16, disp_lo.?),
                         .effective_address = ((@as(u20, si_value)) << 4) + disp_lo.?,
                     };
                     if (regIsSource) {
@@ -591,6 +601,7 @@ fn getInstructionSourceAndDest(
                         .base = Address.di,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d8,
+                        .data = @as(u16, disp_lo.?),
                         .effective_address = ((@as(u20, di_value)) << 4) + disp_lo.?,
                     };
                     if (regIsSource) {
@@ -605,6 +616,7 @@ fn getInstructionSourceAndDest(
                         .base = Address.bp,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d8,
+                        .data = @as(u16, disp_lo.?),
                         .effective_address = ((@as(u20, bp_value) << 4) + disp_lo.?),
                     };
                     if (regIsSource) {
@@ -619,6 +631,7 @@ fn getInstructionSourceAndDest(
                         .base = Address.bx,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d8,
+                        .data = @as(u16, disp_lo.?),
                         .effective_address = ((@as(u20, bx_value) << 4) + disp_lo.?),
                     };
                     if (regIsSource) {
@@ -633,47 +646,112 @@ fn getInstructionSourceAndDest(
             switch (rm) {
                 .ALAX_BXSI_BXSID8_BXSID16 => {
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
+                    const si_value: u16 = registers.getSI();
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     if (regIsSource) {
-                        dest_effective_address = (@as(u20, bx_value) << 4) + registers.getSI() + displacement;
+                        dest_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.si,
+                            .displacement = DisplacementFormat.d16,
+                            .data = displacement,
+                            .effective_address = (@as(u20, bx_value) << 4) + si_value + displacement,
+
+                        };
                     } else {
-                        source_effective_address = (@as(u20, bx_value) << 4) + registers.getSI() + displacement;
+                        source_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.si,
+                            .displacement = DisplacementFormat.d16,
+                            .data = displacement,
+                            .effective_address = (@as(u20, bx_value) << 4) + si_value + displacement,
+                        };
                     }
                 },
                 .CLCX_BXDI_BXDID8_BXDID16 => {
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
+                    const di_value: u16 = registers.getDI();
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     if (regIsSource) {
-                        dest_effective_address = (@as(u20, bx_value) << 4) + registers.getDI() + displacement;
+                        dest_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.di,
+                            .displacement = DisplacementFormat.d16,
+                            .data = displacement,
+                            .effective_address = (@as(u20, bx_value) << 4) + di_value + displacement,
+                        };
                     } else {
-                        source_effective_address = (@as(u20, bx_value) << 4) + registers.getDI() + displacement;
+                        source_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.di,
+                            .displacement = DisplacementFormat.d16,
+                            .data = displacement,
+                            .effective_address = (@as(u20, bx_value) << 4) + di_value + displacement,
+                        };
                     }
                 },
                 .DLDX_BPSI_BPSID8_BPSID16 => {
                     const bp_value: u16 = registers.getBP();
+                    const si_value: u16 = registers.getSI();
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     if (regIsSource) {
-                        dest_effective_address = (@as(u20, bp_value) << 4) + registers.getSI() + displacement;
+                        dest_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.si,
+                            .displacement = DisplacementFormat.d16,
+                            .data = displacement,
+                            .effective_address = (@as(u20, bp_value) << 4) + si_value + displacement,
+                        };
                     } else {
-                        source_effective_address = (@as(u20, bp_value) << 4) + registers.getSI() + displacement;
+                        source_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.si,
+                            .displacement = DisplacementFormat.d16,
+                            .data = displacement,
+                            .effective_address = (@as(u20, bp_value) << 4) + si_value + displacement,
+                        };
                     }
                 },
                 .BLBX_BPDI_BPDID8_BPDID16 => {
                     const bp_value: u16 = registers.getBP();
+                    const di_value: u16 = registers.getDI();
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     if (regIsSource) {
-                        dest_effective_address = (@as(u20, bp_value) << 4) + registers.getDI() + displacement;
+                        dest_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.di,
+                            .displacement = DisplacementFormat.d16,
+                            .data = displacement,
+                            .effective_address = (@as(u20, bp_value) << 4) + di_value + displacement,
+                        };
                     } else {
-                        source_effective_address = (@as(u20, bp_value) << 4) + registers.getDI() + displacement;
+                        source_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.di,
+                            .displacement = DisplacementFormat.d16,
+                            .data = displacement,
+                            .effective_address = (@as(u20, bp_value) << 4) + di_value + displacement,
+                        };
                     }
                 },
                 .AHSP_SI_SID8_SID16 => {
                     const si_value: u16 = registers.getSI();
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     if (regIsSource) {
-                        dest_effective_address = (@as(u20, si_value) << 4) + displacement;
+                        dest_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.si,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d16,
+                            .data = displacement,
+                            .effective_address = (@as(u20, si_value) << 4) + displacement,
+                        };
                     } else {
-                        source_effective_address = (@as(u20, si_value) << 4) + displacement;
+                        source_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.si,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d16,
+                            .data = displacement,
+                            .effective_address = (@as(u20, si_value) << 4) + displacement,
+                        };
                     }
                     
                 },
@@ -681,9 +759,21 @@ fn getInstructionSourceAndDest(
                     const di_value: u16 = registers.getDI();
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     if (regIsSource) {
-                        dest_effective_address = (@as(u20, di_value) << 4) + displacement;
+                        dest_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.di,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d16,
+                            .data = displacement,
+                            .effective_address = (@as(u20, di_value) << 4) + displacement,
+                        };
                     } else {
-                        source_effective_address = (@as(u20, di_value) << 4) + displacement;
+                        source_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.di,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d16,
+                            .data = displacement,
+                            .effective_address = (@as(u20, di_value) << 4) + displacement,
+                        };
                     }
 
                 },
@@ -691,9 +781,21 @@ fn getInstructionSourceAndDest(
                     const bp_value: u16 = registers.getBP();
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     if (regIsSource) {
-                        dest_effective_address = (@as(u20, bp_value) << 4) + displacement;
+                        dest_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d16,
+                            .data = displacement,
+                            .effective_address = (@as(u20, bp_value) << 4) + displacement,
+                        };
                     } else {
-                        source_effective_address = (@as(u20, bp_value) << 4) + displacement;
+                        source_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d16,
+                            .data = displacement,
+                            .effective_address = (@as(u20, bp_value) << 4) + displacement,
+                        };
                     }
 
                 },
@@ -701,9 +803,21 @@ fn getInstructionSourceAndDest(
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     if (regIsSource) {
-                        dest_effective_address = (@as(u20, bx_value) << 4) + displacement;
+                        dest_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d16,
+                            .data = displacement,
+                            .effective_address = (@as(u20, bx_value) << 4) + displacement,
+                        };
                     } else {
-                        source_effective_address = (@as(u20, bx_value) << 4) + displacement;
+                        source_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d16,
+                            .data = displacement,
+                            .effective_address = (@as(u20, bx_value) << 4) + displacement,
+                        };
                     }
                 },
             }
@@ -775,25 +889,43 @@ fn getInstructionSourceAndDest(
         destination_payload = DestinationInfo{
             .address = dest,
         };
-    } else if (mod == ModValue.memoryModeNoDisplacement) {
+    } else if (mod == ModValue.memoryModeNoDisplacement and rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
         if (regIsSource) {
-            destination_payload = DestinationInfo{
-                .address_calculation = dest_address_calculation,
-            };
+            switch (rm) {
+                .ALAX_BXSI_BXSID8_BXSID16,
+                .CLCX_BXDI_BXDID8_BXDID16,
+                .DLDX_BPSI_BPSID8_BPSID16,
+                .BLBX_BPDI_BPDID8_BPDID16 => {
+                    destination_payload = DestinationInfo{
+                        .address_calculation = dest_address_calculation,
+                    };
+                },
+                .AHSP_SI_SID8_SID16,
+                .CHBP_DI_DID8_DID16,
+                .BHDI_BX_BXD8_BXD16 => {
+                    destination_payload = DestinationInfo{
+                        .address = dest,
+                    };
+                },
+                else => {
+                    std.debug.print("Error: Destination Address Calculation is messed up", .{});
+                }
+            }
         } else if (!regIsSource) {
             destination_payload = DestinationInfo{
                 .address = dest,
             };
         }
     } else if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement) {
-        destination_payload = DestinationInfo{
-            .address_calculation = EffectiveAddressCalculation{
-                .base = dest,
-                .index = Address.none,
-                .displacement = if (mod == ModValue.memoryMode8BitDisplacement) DisplacementFormat.d8 else DisplacementFormat.d16,
-                .effective_address = if (mod == ModValue.memoryMode8BitDisplacement) @as(u16, disp_lo.?) else (@as(u16, disp_hi.?) << 4) + disp_lo.?,
-            },
-        };
+        if (regIsSource) {
+            destination_payload = DestinationInfo{
+                .address_calculation = dest_address_calculation,
+            };
+        } else if (!regIsSource) {
+            destination_payload = DestinationInfo{
+                .address_calculation = source_address_calculation,
+            };
+        }
     } else if (mod == ModValue.registerModeNoDisplacement) {
         destination_payload = DestinationInfo{
             .address = dest,
@@ -803,32 +935,49 @@ fn getInstructionSourceAndDest(
     var source_payload: SourceInfo = undefined;
     if (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
         source_payload = SourceInfo{
-            .address_calculation = EffectiveAddressCalculation{
-                .base = AddressDirectory.addressFrom(reg, w),
-                .index = Address.none, 
-                .displacement = null,
-                .effective_address = source_effective_address,
-            },
+            .immediate = immediate_value,
         };
-    } else if (mod == ModValue.memoryModeNoDisplacement) {
+    } else if (mod == ModValue.memoryModeNoDisplacement and rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
         if (regIsSource) {
             source_payload = SourceInfo{
                 .address = source,    
+            };
+        } else if (!regIsSource) {
+            switch (rm) {
+                .AHSP_SI_SID8_SID16,
+                .CHBP_DI_DID8_DID16,
+                .BHDI_BX_BXD8_BXD16 => {
+                    source_payload = SourceInfo{
+                        .address = source,
+                    };
+                },
+                .ALAX_BXSI_BXSID8_BXSID16,
+                .CLCX_BXDI_BXDID8_BXDID16,
+                .DLDX_BPSI_BPSID8_BPSID16,
+                .BLBX_BPDI_BPDID8_BPDID16 => {
+                    source_payload = SourceInfo{
+                        .address_calculation = source_address_calculation,
+                    };
+                },
+                else => {
+                    std.debug.print("Error: Source Address Calculation is messed up", .{});
+                }
+            }
+        }
+    } else if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement) {
+        if (regIsSource) {
+            source_payload = SourceInfo{
+                .address_calculation = dest_address_calculation,
             };
         } else if (!regIsSource) {
             source_payload = SourceInfo{
                 .address_calculation = source_address_calculation,
             };
         }
-    } else if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement) {
-        source_payload = SourceInfo{
-            .address_calculation = source_address_calculation,
-        };
     } else if (mod == ModValue.registerModeNoDisplacement) {
         source_payload = SourceInfo{
             .address = source,
         };
-    } else {
     }
 
     return InstructionInfo{
@@ -913,31 +1062,30 @@ const EffectiveAddressCalculation = struct {
     base: ?AddressDirectory.Address,
     index: ?AddressDirectory.Address,
     displacement: ?DisplacementFormat,
-    effective_address: u20,
+    data: ?u16,
+    effective_address: ?u20,
 };
 
 const DestinationInfoIdentifiers = enum {
     address,
     address_calculation,
-    index,
 };
 
 const DestinationInfo = union(DestinationInfoIdentifiers) {
     address: AddressDirectory.Address,
     address_calculation: EffectiveAddressCalculation,
-    index: u20,
 };
 
 const SourceInfoIdentifiers = enum {
     address,
     address_calculation,
-    index,
+    immediate,
 };
 
 const SourceInfo = union(SourceInfoIdentifiers) {
     address: AddressDirectory.Address,
     address_calculation: EffectiveAddressCalculation,
-    index: u20,
+    immediate: u20,
 };
 
 /// Matching binary values against instruction- and register enum's. Returns names of the
@@ -2012,8 +2160,8 @@ pub fn main() !void {
                     if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
                 );
 
-                const source_payload = instruction_info.source_info;
-                const destination_payload = instruction_info.destination_info;
+                const source = instruction_info.source_info;
+                const destination = instruction_info.destination_info;
 
                 print("{s} ", .{payload.mov_with_mod_instruction.mnemonic});
                 OutputWriter.print("{s} ", .{payload.mov_with_mod_instruction.mnemonic}) catch |err| {
@@ -2023,155 +2171,171 @@ pub fn main() !void {
                     );
                 };
 
-                switch (destination_payload) {
+                switch (destination) {
                     .address => {
-                        print("{t},", .{destination_payload.address});
+                        print("{t},", .{destination.address});
                         OutputWriter.print(
                             "{t},",
-                            .{destination_payload.address},
+                            .{destination.address},
                         ) catch |err| {
                             log.err(
-                                "{s}: Something went wrong trying to write destination {any} the output file.",
-                                .{ @errorName(err), destination_payload.address },
+                                "{s}: Something went wrong trying to write destination {t} the output file.",
+                                .{ @errorName(err), destination.address },
                             );
                         };
                     },
                     .address_calculation => {
                         const Address = AddressDirectory.Address;
-                        if (destination_payload.address_calculation.index == Address.none) {
-                            print("[{t} + {d}],", .{
-                                destination_payload.address_calculation.base.?,
-                                destination_payload.address_calculation.effective_address,
-                            });
-                            OutputWriter.print("[{t} + {d}],", .{
-                                destination_payload.address_calculation.base.?,
-                                destination_payload.address_calculation.effective_address,
-                            }) catch |err| {
-                                log.err(
-                                    "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
-                                    .{ @errorName(err), destination_payload.address_calculation },
-                                );
-                            };
-                        } else if (destination_payload.address_calculation.index != Address.none) {
-                            if (destination_payload.address_calculation.displacement == DisplacementFormat.none) {
-                                print("[{t} + {t}],", .{
-                                    destination_payload.address_calculation.base.?,
-                                    destination_payload.address_calculation.index.?,
+                        if (destination.address_calculation.index == Address.none) {
+                            if (destination.address_calculation.displacement == DisplacementFormat.none) {
+                                print("[{t}],", .{
+                                    destination.address_calculation.base.?,
                                 });
-                                OutputWriter.print("[{t} + {t}],", .{
-                                    destination_payload.address_calculation.base.?,
-                                    destination_payload.address_calculation.index.?,
+                                OutputWriter.print("[{t}],", .{
+                                    destination.address_calculation.base.?,
                                 }) catch |err| {
                                     log.err(
                                         "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
-                                        .{ @errorName(err), destination_payload.address_calculation },
+                                        .{ @errorName(err), destination.address_calculation },
                                     );
                                 };
-                            } else if (destination_payload.address_calculation.displacement != DisplacementFormat.none) {
-                                print("[{t} + {t} + {d}],", .{
-                                    destination_payload.address_calculation.base.?,
-                                    destination_payload.address_calculation.index.?,
-                                    destination_payload.address_calculation.effective_address,
+                            } else if (destination.address_calculation.displacement != DisplacementFormat.none) {
+                                print("[{t} + {d}],", .{
+                                    destination.address_calculation.base.?,
+                                    destination.address_calculation.data.?,
                                 });
-                                OutputWriter.print("[{t} + {t} + {d}],", .{
-                                    destination_payload.address_calculation.base.?,
-                                    destination_payload.address_calculation.index.?,
-                                    destination_payload.address_calculation.effective_address,
+                                OutputWriter.print("[{t} + {d}],", .{
+                                    destination.address_calculation.base.?,
+                                    destination.address_calculation.data.?,
                                 }) catch |err| {
                                     log.err(
                                         "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
-                                        .{ @errorName(err), destination_payload.address_calculation },
+                                        .{ @errorName(err), destination.address_calculation },
+                                    );
+                                };
+                            }
+                        } else if (destination.address_calculation.index != Address.none) {
+                            if (destination.address_calculation.displacement == DisplacementFormat.none) {
+                                print("[{t} + {t}],", .{
+                                    destination.address_calculation.base.?,
+                                    destination.address_calculation.index.?,
+                                });
+                                OutputWriter.print("[{t} + {t}],", .{
+                                    destination.address_calculation.base.?,
+                                    destination.address_calculation.index.?,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), destination.address_calculation },
+                                    );
+                                };
+                            } else if (destination.address_calculation.displacement != DisplacementFormat.none) {
+                                print("[{t} + {t} + {d}],", .{
+                                    destination.address_calculation.base.?,
+                                    destination.address_calculation.index.?,
+                                    destination.address_calculation.data.?,
+                                });
+                                OutputWriter.print("[{t} + {t} + {d}],", .{
+                                    destination.address_calculation.base.?,
+                                    destination.address_calculation.index.?,
+                                    destination.address_calculation.data.?,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), destination.address_calculation },
                                     );
                                 };
                             }
                         }
-                    },
-                    .index => {
-                        print("{x},", .{destination_payload.index});
-                        OutputWriter.print(
-                            "{x},",
-                            .{destination_payload.index},
-                        ) catch |err| {
-                            log.err(
-                                "{s}: Something went wrong trying to write destination index {any} to the output file.",
-                                .{ @errorName(err), destination_payload.index },
-                            );
-                        };
                     },
                 }
 
-                switch (source_payload) {
+                switch (source) {
                     .address => {
-                        print("{t}\n", .{source_payload.address});
+                        print("{t}\n", .{source.address});
                         OutputWriter.print(
                             "{t}\n",
-                            .{source_payload.address},
+                            .{source.address},
                         ) catch |err| {
                             log.err(
                                 "{s}: Something went wrong trying to write source {any} to the output file.",
-                                .{ @errorName(err), source_payload.address },
+                                .{ @errorName(err), source.address },
                             );
                         };
                     },
                     .address_calculation => {
                         const Address = AddressDirectory.Address;
-                        if (source_payload.address_calculation.index == Address.none) {
-                            print("[{t} + {d}],\n", .{
-                                source_payload.address_calculation.base.?,
-                                source_payload.address_calculation.effective_address,
-                            });
-                            OutputWriter.print("[{t} + {d}]\n,", .{
-                                source_payload.address_calculation.base.?,
-                                source_payload.address_calculation.effective_address,
-                            }) catch |err| {
-                                log.err(
-                                    "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
-                                    .{ @errorName(err), source_payload.address_calculation },
-                                );
-                            };
-                        } else if (source_payload.address_calculation.index != Address.none) {
-                            if (source_payload.address_calculation.displacement == DisplacementFormat.none) {
-                                print("[{t} + {t}]\n", .{
-                                    source_payload.address_calculation.base.?,
-                                    source_payload.address_calculation.index.?,
+                        if (source.address_calculation.index == Address.none) {
+                            if (source.address_calculation.displacement == DisplacementFormat.none) {
+                                print("[{t}]\n", .{
+                                    source.address_calculation.base.?,
                                 });
-                                OutputWriter.print("[{t} + {t}]\n,", .{
-                                    source_payload.address_calculation.base.?,
-                                    source_payload.address_calculation.index.?,
+                                OutputWriter.print("[{t}]\n", .{
+                                    source.address_calculation.base.?,
                                 }) catch |err| {
                                     log.err(
                                         "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
-                                        .{ @errorName(err), source_payload.address_calculation },
+                                        .{ @errorName(err), source.address_calculation },
                                     );
                                 };
-                            } else if (source_payload.address_calculation.displacement != DisplacementFormat.none) {
-                                print("[{t} + {t} + {d}]\n", .{
-                                    source_payload.address_calculation.base.?,
-                                    source_payload.address_calculation.index.?,
-                                    source_payload.address_calculation.effective_address,
+                            } else if (source.address_calculation.displacement != DisplacementFormat.none) {
+                                print("[{t} + {d}]\n", .{
+                                    source.address_calculation.base.?,
+                                    source.address_calculation.data.?,
                                 });
-                                OutputWriter.print("[{t} + {t} + {d}]\n,", .{
-                                    source_payload.address_calculation.base.?,
-                                    source_payload.address_calculation.index.?,
-                                    source_payload.address_calculation.effective_address,
+                                OutputWriter.print("[{t} + {d}]\n", .{
+                                    source.address_calculation.base.?,
+                                    source.address_calculation.data.?,
                                 }) catch |err| {
                                     log.err(
                                         "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
-                                        .{ @errorName(err), source_payload.address_calculation },
+                                        .{ @errorName(err), source.address_calculation },
+                                    );
+                                };
+                            }
+                        } else if (source.address_calculation.index != Address.none) {
+                            if (source.address_calculation.displacement == DisplacementFormat.none) {
+                                print("[{t} + {t}]\n", .{
+                                    source.address_calculation.base.?,
+                                    source.address_calculation.index.?,
+                                });
+                                OutputWriter.print("[{t} + {t}]\n", .{
+                                    source.address_calculation.base.?,
+                                    source.address_calculation.index.?,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), source.address_calculation },
+                                    );
+                                };
+                            } else if (source.address_calculation.displacement != DisplacementFormat.none) {
+                                print("[{t} + {t} + {d}]\n", .{
+                                    source.address_calculation.base.?,
+                                    source.address_calculation.index.?,
+                                    source.address_calculation.data.?,
+                                });
+                                OutputWriter.print("[{t} + {t} + {d}]\n", .{
+                                    source.address_calculation.base.?,
+                                    source.address_calculation.index.?,
+                                    source.address_calculation.data.?,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), source.address_calculation },
                                     );
                                 };
                             }
                         }
                     },
-                    .index => {
-                        print("{x}\n", .{source_payload.index});
+                    .immediate => {
+                        print("{d}\n", .{source.immediate});
                         OutputWriter.print(
-                            "{x}\n",
-                            .{source_payload.index},
+                            "{d}\n",
+                            .{source.immediate},
                         ) catch |err| {
                             log.err(
                                 "{s}: Something went wrong trying to write source index {any} to the output file.",
-                                .{ @errorName(err), source_payload.index },
+                                .{ @errorName(err), source.immediate },
                             );
                         };
                     },
@@ -2183,34 +2347,106 @@ pub fn main() !void {
                     payload.mov_without_mod_instruction.reg,
                 );
 
-                const dest: RegValue = payload.mov_without_mod_instruction.reg;
-                print("{s} {t},", .{
+                const destination = instruction_info.destination_info;
+                // const source_payload = instruction_info.source_info;
+
+                print("{s} ", .{
                     payload.mov_without_mod_instruction.mnemonic,
-                    instruction_info.destination_info.address,
                 });
-                OutputWriter.print("{s} {t},", .{
+                OutputWriter.print("{s} ", .{
                     payload.mov_without_mod_instruction.mnemonic,
-                    instruction_info.destination_info.address,
                 }) catch |err| {
                     log.err(
-                        "{s}: Something went wrong trying to write destination register {any} to the output file.",
-                        .{ @errorName(err), @tagName(dest) },
+                        "{s}: Something went wrong trying to write destination register {s} to the output file.",
+                        .{ @errorName(err), payload.mov_without_mod_instruction.mnemonic },
                     );
                 };
-                var value: u16 = undefined;
-                switch (w) {
-                    .byte => {
-                        value = @as(u16, payload.mov_without_mod_instruction.data);
+
+                switch (destination) {
+                    .address => {
+                        print("{t},", .{destination.address});
+                        OutputWriter.print("{t},", .{
+                            destination.address,
+                        }) catch |err| {
+                            log.err(
+                                "{s}: Something went wrong trying to write destination register {t} to the output file.",
+                                .{ @errorName(err), destination.address },
+                            );
+                        };
                     },
-                    .word => {
-                        value = (@as(u16, payload.mov_without_mod_instruction.w_data.?) << 8) + payload.mov_without_mod_instruction.data;
+                    // .address_calculation => {
+                    //     const Address = AddressDirectory.Address;
+                    //     if (destination_payload.address_calculation.index == Address.none) {
+                    //         print("[{t} + {d}],", .{
+                    //             destination_payload.address_calculation.base.?,
+                    //             destination_payload.address_calculation.effective_address,
+                    //         });
+                    //         OutputWriter.print("[{t} + {d}],", .{
+                    //             destination_payload.address_calculation.base.?,
+                    //             destination_payload.address_calculation.effective_address,
+                    //         }) catch |err| {
+                    //             log.err(
+                    //                 "{s}: Something went wrong trying to write destination register {t} to the output file.",
+                    //                 .{ @errorName(err), destination_payload.address },
+                    //             );
+                    //         };
+                    //     } else if (destination_payload.address_calculation.index != Address.none) {
+                    //         print("[{t} + {t} + {d}],", .{
+                    //             destination_payload.address_calculation.base.?,
+                    //             destination_payload.address_calculation.index.?,
+                    //             destination_payload.address_calculation.effective_address,
+                    //         });
+                    //         OutputWriter.print("[{t} + {t} + {d}],", .{
+                    //             destination_payload.address_calculation.base.?,
+                    //             destination_payload.address_calculation.index.?,
+                    //             destination_payload.address_calculation.effective_address,
+                    //         }) catch |err| {
+                    //             log.err(
+                    //                 "{s}: Something went wrong trying to write destination register {t} to the output file.",
+                    //                 .{ @errorName(err), destination_payload.address },
+                    //             );
+                    //         };
+                    //     }
+                    // },
+                    // .index => {},
+                    else => {
+                        print("Error: Not a valid destination address.", .{});
                     },
                 }
-                print("{d}\n", .{value});
-                OutputWriter.print("{d}\n", .{value}) catch |err| {
+
+                // switch (source_payload) {
+                //     .address => {},
+                //     .address_calculation => {},
+                //     .index => {},
+                // }
+
+                // const dest: RegValue = payload.mov_without_mod_instruction.reg;
+                // print("{t},", .{
+                //     instruction_info.destination_info.address,
+                // });
+                // OutputWriter.print("{t},", .{
+                //     instruction_info.destination_info.address,
+                // }) catch |err| {
+                //     log.err(
+                //         "{s}: Something went wrong trying to write destination register {any} to the output file.",
+                //         .{ @errorName(err), @tagName(dest) },
+                //     );
+                // };
+
+                var immediate_value: u16 = undefined;
+                switch (w) {
+                    .byte => {
+                        immediate_value = @as(u16, payload.mov_without_mod_instruction.data);
+                    },
+                    .word => {
+                        immediate_value = (@as(u16, payload.mov_without_mod_instruction.w_data.?) << 8) + payload.mov_without_mod_instruction.data;
+                    },
+                }
+                print("{d}\n", .{immediate_value});
+                OutputWriter.print("{d}\n", .{immediate_value}) catch |err| {
                     log.err(
                         "{s}: Something went wrong trying to write immediate value {any} to the output file.",
-                        .{ @errorName(err), value },
+                        .{ @errorName(err), immediate_value },
                     );
                 };
             },
