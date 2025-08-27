@@ -792,7 +792,9 @@ fn getInstructionSourceAndDest(
             },
         };
     } else if (mod == ModValue.memoryModeNoDisplacement) {
-
+        source_payload = SourceInfo{
+            .address = source,
+        };
     } else if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement) {
         source_payload = SourceInfo{
             .address_calculation = source_address_calculation,
@@ -2010,21 +2012,38 @@ pub fn main() !void {
                         };
                     },
                     .address_calculation => {
-                        print("[{t} + {t} + {d}],", .{
-                            destination_payload.address_calculation.base.?,
-                            destination_payload.address_calculation.index.?,
-                            destination_payload.address_calculation.displacement.?,
-                        });
-                        OutputWriter.print("[{t} + {t} + {d}],", .{
-                            destination_payload.address_calculation.base.?,
-                            destination_payload.address_calculation.index.?,
-                            destination_payload.address_calculation.displacement.?,
-                        }) catch |err| {
-                            log.err(
-                                "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
-                                .{ @errorName(err), destination_payload.address_calculation },
-                            );
-                        };
+                        const Address = AddressDirectory.Address;
+                        if (destination_payload.address_calculation.index == Address.none) {
+                            print("[{t} + {d}],", .{
+                                destination_payload.address_calculation.base.?,
+                                destination_payload.address_calculation.effective_address,
+                            });
+                            OutputWriter.print("[{t} + {d}],", .{
+                                destination_payload.address_calculation.base.?,
+                                destination_payload.address_calculation.effective_address,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), destination_payload.address_calculation },
+                                );
+                            };
+                        } else if (destination_payload.address_calculation.index != Address.none) {
+                            print("[{t} + {t} + {d}],", .{
+                                destination_payload.address_calculation.base.?,
+                                destination_payload.address_calculation.index.?,
+                                destination_payload.address_calculation.effective_address,
+                            });
+                            OutputWriter.print("[{t} + {t} + {d}],", .{
+                                destination_payload.address_calculation.base.?,
+                                destination_payload.address_calculation.index.?,
+                                destination_payload.address_calculation.effective_address,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), destination_payload.address_calculation },
+                                );
+                            };
+                        }
                     },
                     .index => {
                         print("{x},", .{destination_payload.index});
@@ -2054,21 +2073,38 @@ pub fn main() !void {
                         };
                     },
                     .address_calculation => {
-                        print("[{t} + {t} + {d}],\n", .{
-                            source_payload.address_calculation.base.?,
-                            source_payload.address_calculation.index.?,
-                            source_payload.address_calculation.displacement.?,
-                        });
-                        OutputWriter.print("[{t} + {t} + {d}]\n,", .{
-                            source_payload.address_calculation.base.?,
-                            source_payload.address_calculation.index.?,
-                            source_payload.address_calculation.displacement.?,
-                        }) catch |err| {
-                            log.err(
-                                "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
-                                .{ @errorName(err), source_payload.address_calculation },
-                            );
-                        };
+                        const Address = AddressDirectory.Address;
+                        if (source_payload.address_calculation.index == Address.none) {
+                            print("[{t} + {d}],\n", .{
+                                source_payload.address_calculation.base.?,
+                                source_payload.address_calculation.effective_address,
+                            });
+                            OutputWriter.print("[{t} + {d}]\n,", .{
+                                source_payload.address_calculation.base.?,
+                                source_payload.address_calculation.effective_address,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), source_payload.address_calculation },
+                                );
+                            };
+                        } else if (source_payload.address_calculation.index != Address.none) {
+                            print("[{t} + {t} + {d}],\n", .{
+                                source_payload.address_calculation.base.?,
+                                source_payload.address_calculation.index.?,
+                                source_payload.address_calculation.effective_address,
+                            });
+                            OutputWriter.print("[{t} + {t} + {d}]\n,", .{
+                                source_payload.address_calculation.base.?,
+                                source_payload.address_calculation.index.?,
+                                source_payload.address_calculation.effective_address,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), source_payload.address_calculation },
+                                );
+                            };
+                        }
                     },
                     .index => {
                         print("{x}\n", .{source_payload.index});
