@@ -350,39 +350,92 @@ fn getInstructionSourceAndDest(
             switch (rm) {
                 .ALAX_BXSI_BXSID8_BXSID16 => {
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
+                    const si_value: u16 = registers.getSI();
                     if (regIsSource) {
-                        dest_effective_address = (@as(u20, bx_value) << 4) + registers.getSI();
+                        dest = Address.si;
+                        dest_effective_address = (@as(u20, bx_value) << 4) + si_value;
                     } else {
-                        source_effective_address = (@as(u20, bx_value) << 4) + registers.getSI();
+                        source = Address.si;
+                        source_effective_address = (@as(u20, bx_value) << 4) + si_value;
                     }
                 },
                 .CLCX_BXDI_BXDID8_BXDID16 => {
                     const bx_value: u16 = registers.getBX(WValue.word, null).value16;
+                    const di_value: u16 = registers.getDI();
                     if (regIsSource) {
-                        dest_effective_address = (@as(u20, bx_value) << 4) + registers.getDI();
+                        dest_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.di,
+                            .displacement = null,
+                            .effective_address = (@as(u20, bx_value) << 4) + di_value,
+                        };
                     } else {
-                        source_effective_address = (@as(u20, bx_value) << 4) + registers.getDI();
+                        source_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.di,
+                            .displacement = null,
+                            .effective_address = (@as(u20, bx_value) << 4) + di_value,
+                        };
                     }
                 },
                 .DLDX_BPSI_BPSID8_BPSID16 => {
+                    const bp_value = registers.getBP();
+                    const si_value = registers.getSI();
                     if (regIsSource) {
-                        dest_effective_address = (@as(u20, registers.getBP()) << 4) + registers.getSI();
+                        dest_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.si,
+                            .displacement = null,
+                            .effective_address = (@as(u20, bp_value) << 4) + si_value,
+
+                        };
                     } else {
-                        source_effective_address = (@as(u20, registers.getBP()) << 4) + registers.getSI();
+                        source_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.si,
+                            .displacement = null,
+                            .effective_address = (@as(u20, bp_value) << 4) + si_value,
+
+                        };
                     }
                 },
                 .BLBX_BPDI_BPDID8_BPDID16 => {
+                    const bp_value = registers.getBP();
+                    const di_value: u16 = registers.getDI();
                     if (regIsSource) {
-                        dest_effective_address = (@as(u20, registers.getBP()) << 4) + registers.getDI();
+                        dest_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.di,
+                            .displacement = null,
+                            .effective_address = (@as(u20, bp_value) << 4) + di_value,
+
+                        };
                     } else {
-                        source_effective_address = (@as(u20, registers.getBP()) << 4) + registers.getDI();
+                        source_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.di,
+                            .displacement = null,
+                            .effective_address = (@as(u20, bp_value) << 4) + di_value,
+
+                        };
                     }
                 },
                 .AHSP_SI_SID8_SID16 => {
-                    if (regIsSource) dest_effective_address = registers.getSI() else source_effective_address = registers.getSI();
+                    if (regIsSource) {
+                        dest = Address.si;
+                        dest_effective_address = registers.getSI();
+                    } else {
+                        source = Address.si;
+                        source_effective_address = registers.getSI();
+                    }
                 },
                 .CHBP_DI_DID8_DID16 => {
-                    if (regIsSource) dest_effective_address = registers.getDI() else source_effective_address = registers.getDI();
+                    const di_value = registers.getDI();
+                    if (regIsSource) {
+                        dest_effective_address = di_value;
+                    } else {    
+                        source_effective_address = di_value;
+                    }
                 },
                 .DHSI_DIRECTACCESS_BPD8_BPD16 => {
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
@@ -724,12 +777,7 @@ fn getInstructionSourceAndDest(
         };
     } else if (mod == ModValue.registerModeNoDisplacement) {
         destination_payload = DestinationInfo{
-            .address_calculation = EffectiveAddressCalculation{
-                .base = dest,
-                .index = Address.none,
-                .displacement = if (w == WValue.byte) DisplacementFormat.d8 else DisplacementFormat.d16,
-                .effective_address = dest_effective_address,
-            },
+            .address = dest,
         };
     }
 
@@ -743,14 +791,17 @@ fn getInstructionSourceAndDest(
                 .effective_address = source_effective_address,
             },
         };
+    } else if (mod == ModValue.memoryModeNoDisplacement) {
+
     } else if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement) {
         source_payload = SourceInfo{
             .address_calculation = source_address_calculation,
         };
-    } else {
+    } else if (mod == ModValue.registerModeNoDisplacement) {
         source_payload = SourceInfo{
-            .index = source_effective_address,
+            .address = source,
         };
+    } else {
     }
 
     return InstructionInfo{
@@ -1794,13 +1845,6 @@ pub fn main() !void {
             => {
                 // 0xC6, 0xC7
             },
-            // else => {
-            //     log.err("{s}: 0x{x} ({s}) not implemented yet.", .{
-            //         @errorName(SimulatorError.InstructionError),
-            //         InstructionBytes[0],
-            //         @tagName(instruction),
-            //     });
-            // },
         }
 
         switch (stepSize) {
@@ -1871,16 +1915,11 @@ pub fn main() !void {
 
         var payload: DecodePayload = undefined;
         switch (instruction) {
-            .mov_source_regmem8_reg8 => {
-                payload = decodeMovWithMod(mod, rm, InstructionBytes);
-            },
-            .mov_source_regmem16_reg16 => {
-                payload = decodeMovWithMod(mod, rm, InstructionBytes);
-            },
-            .mov_dest_reg8_regmem8 => {
-                payload = decodeMovWithMod(mod, rm, InstructionBytes);
-            },
-            .mov_dest_reg16_regmem16 => {
+            .mov_source_regmem8_reg8,
+            .mov_source_regmem16_reg16,
+            .mov_dest_reg8_regmem8,
+            .mov_dest_reg16_regmem16,
+            => {
                 payload = decodeMovWithMod(mod, rm, InstructionBytes);
             },
             .mov_immediate_reg_al,
@@ -1935,15 +1974,6 @@ pub fn main() !void {
                 const d: DValue = payload.mov_with_mod_instruction.d;
                 w = payload.mov_with_mod_instruction.w;
                 const reg: RegValue = payload.mov_with_mod_instruction.reg;
-                // std.debug.print("Instruction: 0x{x}: Mod: {b}, Reg: {any}, R/M: {any}, DISP-LO: {b:0>8}, DISP-HI: {b:0>8}\n", .{
-                //     @intFromEnum(instruction),
-                //     @intFromEnum(mod),
-                //     reg,
-                //     rm,
-                //     if (stepSize == 3 or stepSize == 4) payload.mov_instruction.disp_lo.? else instruction_bytes[2],
-                //     if (stepSize == 4) payload.mov_instruction.disp_hi.? else instruction_bytes[3],
-                // });
-
                 const instruction_info: InstructionInfo = getInstructionSourceAndDest(
                     &registers,
                     d,
