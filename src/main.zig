@@ -19,12 +19,12 @@ const BinaryInstructions = enum(u8) {
     // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
     // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
     // MOV: Register/memory to/from register  | 1 0 0 0 1 0|D|W | MOD| REG | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|
-    // MOV: Immediate to register/memory      | 1 1 0 0 0 1 1|W | MOD|0 0 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      |   data if W=1   |
-    // MOV: Immediate to register             | 1 0 1 1|W| reg  |      data       |   data if W=1   |<-----------------------XXX------------------------->|
-    // MOV: Memory to accumulator             | 1 0 1 0 0 0 0|W |     addr-lo     |     addr-hi     |<-----------------------XXX------------------------->|
-    // MOV: Accumulator to memory             | 1 0 1 0 0 0 1|W |     addr-lo     |     addr-hi     |<-----------------------XXX------------------------->|
     // MOV: Segment reg. to register/memory   | 1 0 0 0 1 1 0 0 | MOD|0|SR | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|
     // MOV: Register/memory to segment reg.   | 1 0 0 0 1 1 1 0 | MOD|0|SR | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|
+    // MOV: Memory to accumulator             | 1 0 1 0 0 0 0|W |     addr-lo     |     addr-hi     |<-----------------------XXX------------------------->|
+    // MOV: Accumulator to memory             | 1 0 1 0 0 0 1|W |     addr-lo     |     addr-hi     |<-----------------------XXX------------------------->|
+    // MOV: Immediate to register             | 1 0 1 1|W| reg  |      data       |   data if W=1   |<-----------------------XXX------------------------->|
+    // MOV: Immediate to register/memory      | 1 1 0 0 0 1 1|W | MOD|0 0 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      |   data if W=1   |
 
     /// 8 bit Register/memory to/from register with Reg defining the source
     /// and R/M defining the destination. If R/M is .DHSI_DIRECTACCESS_BPD8_BPD16
@@ -81,9 +81,9 @@ const BinaryInstructions = enum(u8) {
     mov_immediate_reg_si        = 0xBE,
     /// 16 bit Immediate to register
     mov_immediate_reg_di        = 0xBF,
-    /// Segment register to register/memory if second byte of format 0x|MOD|000|R/M|
+    /// Segment register to register/memory if second byte of format 0x|MOD|0|SR|R/M|
     mov_seg_regmem              = 0xC6,
-    /// Register/memory to segment register if second byte of format 0x|MOD|000|R/M|
+    /// Register/memory to segment register if second byte of format 0x|MOD|0|SR|R/M|
     mov_regmem_seg              = 0xC7,
 };
 
@@ -104,10 +104,11 @@ const SimulatorError = error{
 // register / memory to / from register: 0x88, 0x89, 0x8A, 0x8B
 const MovWithModInstruction = struct{
     mnemonic: []const u8,
-    d: DValue,
-    w: WValue,
+    d: ?DValue,
+    w: ?WValue,
     mod: ModValue,
-    reg: RegValue,
+    reg: ?RegValue,
+    sr: ?SrValue,
     rm: RmValue,
     disp_lo: ?u8,
     disp_hi: ?u8,
@@ -118,9 +119,11 @@ const MovWithModInstruction = struct{
 const MovWithoutModInstruction = struct{
     mnemonic: []const u8,
     w: WValue,
-    reg: RegValue,
-    data: u8,
+    reg: ?RegValue,
+    data: ?u8,
     w_data: ?u8,
+    addr_lo: ?u8,
+    addr_hi: ?u8,
 };
 
 const DecodedPayloadIdentifier = enum{
@@ -176,7 +179,7 @@ const RegValue = enum(u3) {
 
 
 // zig fmt: on
-fn getInstructionDest(w: WValue, reg: RegValue) InstructionInfo {
+fn getImmediateMovInstructionDest(w: WValue, reg: RegValue) InstructionInfo {
     const Address = AddressDirectory.Address;
     var dest: Address = undefined;
     switch (w) {
@@ -253,7 +256,7 @@ fn getInstructionDest(w: WValue, reg: RegValue) InstructionInfo {
 /// Given the fields decoded from the instruction bytes this function returns
 /// the addresses of source and destination. These can be registers or memory
 /// addresses. The values are returned as InstructionInfo.
-fn getInstructionSourceAndDest(
+fn getRegMemMovSourceAndDest(
     registers: *Register,
     d: DValue,
     w: WValue,
@@ -986,7 +989,6 @@ fn getInstructionSourceAndDest(
     };
 }
 
-
 /// Field names encode all possible Register/Register or Register/Memory combinations.
 /// The combinations are in the naming starting with mod=11_mod=00_mod=01_mod=10. In the
 /// case of mod=11, register mode, the first two letters of the name are used if W=0,
@@ -1001,6 +1003,816 @@ const RmValue = enum(u3) {
     DHSI_DIRECTACCESS_BPD8_BPD16       = 0b110,
     BHDI_BX_BXD8_BXD16                 = 0b111,
 };
+
+/// Segment Register values
+const SrValue = enum(u2) {
+    ES  = 0b00,
+    CS  = 0b01,
+    SS  = 0b10,
+    DS  = 0b11,
+};
+
+
+/// Get source and destination for Reg/Mem to segment register operations.
+fn getSegmentRegisterDestinationMov(
+    registers: *Register,
+    mod: ModValue,
+    sr: SrValue,
+    rm: RmValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+) InstructionInfo {
+    const Address = AddressDirectory.Address;
+    var dest: Address = undefined;
+    var source: Address = undefined;
+    var source_address_calculation: EffectiveAddressCalculation = undefined; 
+
+    var destination_payload: DestinationInfo = undefined;
+    var source_payload: SourceInfo = undefined;
+
+    switch(mod) {
+        .memoryModeNoDisplacement => {
+            switch(rm) {
+                .ALAX_BXSI_BXSID8_BXSID16 => {
+                    const bx_value: u16 = registers.getBX(WValue.word, null).value16;
+                    const si_value: u16 = registers.getSI();
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.si,
+                        .displacement = DisplacementFormat.none,
+                        .data = null,
+                        .effective_address = (@as(u20, bx_value) << 4) + si_value,
+                    };
+                },
+                .CLCX_BXDI_BXDID8_BXDID16 => {
+                    const bx_value: u16 = registers.getBX(WValue.word, null).value16;
+                    const di_value: u16 = registers.getDI();
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.di,
+                        .displacement = DisplacementFormat.none,
+                        .data = null,
+                        .effective_address = (@as(u20, bx_value) << 4) + di_value,
+                    };
+                },
+                    .DLDX_BPSI_BPSID8_BPSID16 => {
+                        const bp_value: u16 = registers.getBP();
+                        const si_value: u16 = registers.getSI();
+                        source_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.si,
+                            .displacement = DisplacementFormat.none,
+                            .data = null,
+                            .effective_address = (@as(u20, bp_value) << 4) + si_value,
+                        };
+                    },
+                .BLBX_BPDI_BPDID8_BPDID16 => {
+                    const bp_value: u16 = registers.getBP();
+                    const di_value: u16 = registers.getDI();
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bp,
+                        .index = Address.di,
+                        .displacement = DisplacementFormat.none,
+                        .data = null,
+                        .effective_address = (@as(u20, bp_value) << 4) + di_value,
+                    };
+                },
+                .AHSP_SI_SID8_SID16 => {
+                    const si_value: u16 = registers.getSI();
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.si,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.none,
+                        .data = null,
+                        .effective_address = (@as(u20, si_value) << 4),
+                    };
+                },
+                .CHBP_DI_DID8_DID16 => {
+                    const di_value: u16 = registers.getDI();
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.di,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.none,
+                        .data = null,
+                        .effective_address = (@as(u20, di_value) << 4),
+                    };
+                },
+                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.none,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = @as(u20, displacement),
+                    };
+                },
+                .BHDI_BX_BXD8_BXD16 => {
+                    const bx_value: u16 = registers.getBX(WValue.word, null).value16;
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.none,
+                        .data = null,
+                        .effective_address = (@as(u20, bx_value) << 4),
+                    };
+                },
+            }
+        },
+        .memoryMode8BitDisplacement => {
+            switch(rm) {
+                .ALAX_BXSI_BXSID8_BXSID16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_lo.?);
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.si,
+                        .displacement = DisplacementFormat.d8,
+                        .data = displacement,
+                        .effective_address = @as(u20, bx_value) + si_value + displacement,
+                    };
+                },
+                .CLCX_BXDI_BXDID8_BXDID16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_lo.?);
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.di,
+                        .displacement = DisplacementFormat.d8,
+                        .data = displacement,
+                        .effective_address = @as(u20, bx_value) + di_value + displacement,
+                    };
+                },
+                .DLDX_BPSI_BPSID8_BPSID16 => {
+                    const bp_value = registers.getBP();
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_lo.?);
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bp,
+                        .index = Address.si,
+                        .displacement = DisplacementFormat.d8,
+                        .data = displacement,
+                        .effective_address = @as(u20, bp_value) + si_value + displacement,
+                    };
+                },
+                .BLBX_BPDI_BPDID8_BPDID16 => {
+                    const bp_value = registers.getBP();
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_lo.?);
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bp,
+                        .index = Address.di,
+                        .displacement = DisplacementFormat.d8,
+                        .data = displacement,
+                        .effective_address = @as(u20, bp_value) + di_value + displacement,
+                    };
+                },
+                .AHSP_SI_SID8_SID16 => {
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_lo.?);
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.si,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d8,
+                        .data = displacement,
+                        .effective_address = @as(u20, si_value) + displacement,
+                    };
+                },
+                .CHBP_DI_DID8_DID16 => {
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_lo.?);
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.di,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d8,
+                        .data = displacement,
+                        .effective_address = @as(u20, di_value) + displacement,
+                    };
+                },
+                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                    const bp_value = registers.getBP();
+                    const displacement = @as(u16, disp_lo.?);
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bp,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d8,
+                        .data = displacement,
+                        .effective_address = @as(u20, bp_value) + displacement,
+                    };
+                },
+                .BHDI_BX_BXD8_BXD16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const displacement = @as(u16, disp_lo.?);
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d8,
+                        .data = displacement,
+                        .effective_address = @as(u20, bx_value) + displacement,
+                    };
+                },
+            }
+        },
+        .memoryMode16BitDisplacement => {
+            switch(rm) {
+                .ALAX_BXSI_BXSID8_BXSID16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.si,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = (@as(u20, bx_value) << 4) + si_value + displacement,
+                    };
+                },
+                .CLCX_BXDI_BXDID8_BXDID16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.di,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = (@as(u20, bx_value) << 4) + di_value + displacement,
+                    };
+                },
+                .DLDX_BPSI_BPSID8_BPSID16 => {
+                    const bp_value = registers.getBP();
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bp,
+                        .index = Address.si,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = (@as(u20, bp_value) << 4) + si_value + displacement,
+                    };
+                },
+                .BLBX_BPDI_BPDID8_BPDID16 => {
+                    const bp_value = registers.getBP();
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bp,
+                        .index = Address.di,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = (@as(u20, bp_value) << 4) + di_value + displacement,
+                    };
+                },
+                .AHSP_SI_SID8_SID16 => {
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.si,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = @as(u20, si_value) + displacement,
+                    };
+                },
+                .CHBP_DI_DID8_DID16 => {
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.di,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = @as(u20, di_value) + displacement,
+                    };
+                },
+                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                    const bp_value = registers.getBP();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.none,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = @as(u20, bp_value) + displacement,
+                    };
+                },
+                .BHDI_BX_BXD8_BXD16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    source_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = (@as(u20, bx_value) << 4) + displacement,
+                    };
+                },
+            }
+        },
+        .registerModeNoDisplacement => {
+            switch(rm) {
+                .ALAX_BXSI_BXSID8_BXSID16 => {
+                    source = Address.ax;
+                },
+                .CLCX_BXDI_BXDID8_BXDID16 => {
+                    source = Address.cx;
+                },
+                .DLDX_BPSI_BPSID8_BPSID16 => {
+                    source = Address.dx;
+                },
+                .BLBX_BPDI_BPDID8_BPDID16 => {
+                    source = Address.bx;
+                },
+                .AHSP_SI_SID8_SID16 => {
+                    source = Address.sp;
+                },
+                .CHBP_DI_DID8_DID16 => {
+                    source = Address.bp;
+                },
+                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                    source = Address.si;
+                },
+                .BHDI_BX_BXD8_BXD16 => {
+                    source = Address.di;
+                },
+            }
+        },
+    }
+
+    if (mod == ModValue.registerModeNoDisplacement) {
+        source_payload = SourceInfo{
+            .address = source,
+        };
+    } else {
+        source_payload = SourceInfo{
+            .address_calculation = source_address_calculation
+        };
+    }
+
+    switch(sr) {
+        .ES => {
+            dest = Address.es;
+        },
+        .CS => {
+            dest = Address.cs;
+        },
+        .SS => {
+            dest = Address.ss;
+        },
+        .DS => {
+            dest = Address.ds;
+        },
+    }
+
+    destination_payload = DestinationInfo{
+        .address = dest,
+    };
+
+    return InstructionInfo{
+        .destination_info = destination_payload,
+        .source_info = source_payload,
+    }; 
+}
+
+/// Get source and destination for segment register to Reg/Mem operations.
+fn getSegmentRegisterSourceMov(
+    registers: *Register,
+    mod: ModValue,
+    sr: SrValue,
+    rm: RmValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+) InstructionInfo {
+    const Address = AddressDirectory.Address;
+    var dest: Address = undefined;
+    var source: Address = undefined;
+    var dest_address_calculation: EffectiveAddressCalculation = undefined; 
+
+    var destination_payload: DestinationInfo = undefined;
+    var source_payload: SourceInfo = undefined;
+
+    switch(sr) {
+        .ES => {
+            source = Address.es;
+        },
+        .CS => {
+            source = Address.cs;
+        },
+        .SS => {
+            source = Address.ss;
+        },
+        .DS => {
+            source = Address.ds;
+        },
+    }
+
+    source_payload = SourceInfo{
+        .address = source,
+    };
+
+    switch(mod) {
+        .memoryModeNoDisplacement => {
+            switch(rm) {
+                .ALAX_BXSI_BXSID8_BXSID16 => {
+                    const bx_value: u16 = registers.getBX(WValue.word, null).value16;
+                    const si_value: u16 = registers.getSI();
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.si,
+                        .displacement = DisplacementFormat.none,
+                        .data = null,
+                        .effective_address = (@as(u20, bx_value) << 4) + si_value,
+                    };
+                },
+                .CLCX_BXDI_BXDID8_BXDID16 => {
+                    const bx_value: u16 = registers.getBX(WValue.word, null).value16;
+                    const di_value: u16 = registers.getDI();
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.di,
+                        .displacement = DisplacementFormat.none,
+                        .data = null,
+                        .effective_address = (@as(u20, bx_value) << 4) + di_value,
+                    };
+                },
+                    .DLDX_BPSI_BPSID8_BPSID16 => {
+                        const bp_value: u16 = registers.getBP();
+                        const si_value: u16 = registers.getSI();
+                        dest_address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.si,
+                            .displacement = DisplacementFormat.none,
+                            .data = null,
+                            .effective_address = (@as(u20, bp_value) << 4) + si_value,
+                        };
+                    },
+                .BLBX_BPDI_BPDID8_BPDID16 => {
+                    const bp_value: u16 = registers.getBP();
+                    const di_value: u16 = registers.getDI();
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bp,
+                        .index = Address.di,
+                        .displacement = DisplacementFormat.none,
+                        .data = null,
+                        .effective_address = (@as(u20, bp_value) << 4) + di_value,
+                    };
+                },
+                .AHSP_SI_SID8_SID16 => {
+                    const si_value: u16 = registers.getSI();
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.si,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.none,
+                        .data = null,
+                        .effective_address = (@as(u20, si_value) << 4),
+                    };
+                },
+                .CHBP_DI_DID8_DID16 => {
+                    const di_value: u16 = registers.getDI();
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.di,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.none,
+                        .data = null,
+                        .effective_address = (@as(u20, di_value) << 4),
+                    };
+                },
+                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.none,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = @as(u20, displacement),
+                    };
+                },
+                .BHDI_BX_BXD8_BXD16 => {
+                    const bx_value: u16 = registers.getBX(WValue.word, null).value16;
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.none,
+                        .data = null,
+                        .effective_address = (@as(u20, bx_value) << 4),
+                    };
+                },
+            }
+        },
+        .memoryMode8BitDisplacement => {
+            switch(rm) {
+                .ALAX_BXSI_BXSID8_BXSID16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_lo.?);
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.si,
+                        .displacement = DisplacementFormat.d8,
+                        .data = displacement,
+                        .effective_address = @as(u20, bx_value) + si_value + displacement,
+                    };
+                },
+                .CLCX_BXDI_BXDID8_BXDID16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_lo.?);
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.di,
+                        .displacement = DisplacementFormat.d8,
+                        .data = displacement,
+                        .effective_address = @as(u20, bx_value) + di_value + displacement,
+                    };
+                },
+                .DLDX_BPSI_BPSID8_BPSID16 => {
+                    const bp_value = registers.getBP();
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_lo.?);
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bp,
+                        .index = Address.si,
+                        .displacement = DisplacementFormat.d8,
+                        .data = displacement,
+                        .effective_address = @as(u20, bp_value) + si_value + displacement,
+                    };
+                },
+                .BLBX_BPDI_BPDID8_BPDID16 => {
+                    const bp_value = registers.getBP();
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_lo.?);
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bp,
+                        .index = Address.di,
+                        .displacement = DisplacementFormat.d8,
+                        .data = displacement,
+                        .effective_address = @as(u20, bp_value) + di_value + displacement,
+                    };
+                },
+                .AHSP_SI_SID8_SID16 => {
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_lo.?);
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.si,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d8,
+                        .data = displacement,
+                        .effective_address = @as(u20, si_value) + displacement,
+                    };
+                },
+                .CHBP_DI_DID8_DID16 => {
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_lo.?);
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.di,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d8,
+                        .data = displacement,
+                        .effective_address = @as(u20, di_value) + displacement,
+                    };
+                },
+                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                    const bp_value = registers.getBP();
+                    const displacement = @as(u16, disp_lo.?);
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bp,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d8,
+                        .data = displacement,
+                        .effective_address = @as(u20, bp_value) + displacement,
+                    };
+                },
+                .BHDI_BX_BXD8_BXD16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const displacement = @as(u16, disp_lo.?);
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d8,
+                        .data = displacement,
+                        .effective_address = @as(u20, bx_value) + displacement,
+                    };
+                },
+            }
+        },
+        .memoryMode16BitDisplacement => {
+            switch(rm) {
+                .ALAX_BXSI_BXSID8_BXSID16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.si,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = (@as(u20, bx_value) << 4) + si_value + displacement,
+                    };
+                },
+                .CLCX_BXDI_BXDID8_BXDID16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.di,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = (@as(u20, bx_value) << 4) + di_value + displacement,
+                    };
+                },
+                .DLDX_BPSI_BPSID8_BPSID16 => {
+                    const bp_value = registers.getBP();
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bp,
+                        .index = Address.si,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = (@as(u20, bp_value) << 4) + si_value + displacement,
+                    };
+                },
+                .BLBX_BPDI_BPDID8_BPDID16 => {
+                    const bp_value = registers.getBP();
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bp,
+                        .index = Address.di,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = (@as(u20, bp_value) << 4) + di_value + displacement,
+                    };
+                },
+                .AHSP_SI_SID8_SID16 => {
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.si,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = @as(u20, si_value) + displacement,
+                    };
+                },
+                .CHBP_DI_DID8_DID16 => {
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.di,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = @as(u20, di_value) + displacement,
+                    };
+                },
+                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                    const bp_value = registers.getBP();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.none,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = @as(u20, bp_value) + displacement,
+                    };
+                },
+                .BHDI_BX_BXD8_BXD16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    dest_address_calculation = EffectiveAddressCalculation{
+                        .base = Address.bx,
+                        .index = Address.none,
+                        .displacement = DisplacementFormat.d16,
+                        .data = displacement,
+                        .effective_address = (@as(u20, bx_value) << 4) + displacement,
+                    };
+                },
+            }
+        },
+        .registerModeNoDisplacement => {
+            switch(rm) {
+                .ALAX_BXSI_BXSID8_BXSID16 => {
+                    dest = Address.ax;
+                },
+                .CLCX_BXDI_BXDID8_BXDID16 => {
+                    dest = Address.cx;
+                },
+                .DLDX_BPSI_BPSID8_BPSID16 => {
+                    dest = Address.dx;
+                },
+                .BLBX_BPDI_BPDID8_BPDID16 => {
+                    dest = Address.bx;
+                },
+                .AHSP_SI_SID8_SID16 => {
+                    dest = Address.sp;
+                },
+                .CHBP_DI_DID8_DID16 => {
+                    dest = Address.bp;
+                },
+                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                    dest = Address.si;
+                },
+                .BHDI_BX_BXD8_BXD16 => {
+                    dest = Address.di;
+                },
+            }
+        },
+    }
+
+    if (mod == ModValue.registerModeNoDisplacement) {
+        destination_payload = DestinationInfo{
+            .address = dest,
+        };
+    } else {
+        destination_payload = DestinationInfo{
+            .address_calculation = dest_address_calculation
+        };
+    }
+
+    return InstructionInfo{
+        .destination_info = destination_payload,
+        .source_info = source_payload,
+    }; 
+}
+
+fn getAccumulatorMovInstructionSource(w: WValue, addr_lo: ?u8, addr_hi: ?u8) InstructionInfo {
+    const Address = AddressDirectory.Address;
+    const destination_payload: DestinationInfo = DestinationInfo{
+        .address = Address.ax,
+    };
+    var source_payload: SourceInfo = undefined;
+    switch (w) {
+        .byte => {
+            source_payload = SourceInfo{
+                .address_calculation = EffectiveAddressCalculation{
+                    .base = Address.none,
+                    .index = Address.none,
+                    .displacement = DisplacementFormat.d8,
+                    .data = @as(u16, addr_lo.?),
+                    .effective_address = null,
+                },
+            };
+        },
+        .word => {
+            source_payload = SourceInfo{
+                .address_calculation = EffectiveAddressCalculation{
+                    .base = Address.none,
+                    .index = Address.none,
+                    .displacement = DisplacementFormat.d16,
+                    .data = (@as(u16, addr_hi.?) << 8) + addr_lo.?,
+                    .effective_address = null,
+                },
+            };
+        },
+    }
+    return InstructionInfo{
+        .destination_info = destination_payload,
+        .source_info = source_payload,
+    };
+}
+
+fn getAccumulatorMovInstructionDestination(w: WValue, addr_lo: ?u8, addr_hi: ?u8) InstructionInfo {
+    const Address = AddressDirectory.Address;
+    var destination_payload: DestinationInfo = undefined;
+    switch (w) {
+        .byte => {
+            destination_payload = DestinationInfo{
+                .address_calculation = EffectiveAddressCalculation{
+                    .base = Address.none,
+                    .index = Address.none,
+                    .displacement = DisplacementFormat.d8,
+                    .data = @as(u16, addr_lo.?),
+                    .effective_address = null,
+                },
+            };
+        },
+        .word => {
+            destination_payload = DestinationInfo{
+                .address_calculation = EffectiveAddressCalculation{
+                    .base = Address.none,
+                    .index = Address.none,
+                    .displacement = DisplacementFormat.d16,
+                    .data = (@as(u16, addr_hi.?) << 8) + addr_lo.?,
+                    .effective_address = null,
+                },
+            };
+        },
+    }
+
+    const source_payload: SourceInfo = SourceInfo{
+        .address = Address.ax,
+    };
+
+    return InstructionInfo{
+        .destination_info = destination_payload,
+        .source_info = source_payload,
+    };
+}
+
 
 /// 0 for no sign extension, 1 for extending 8-bit immediate data to 16 bits if W = 1
 const SValue = enum(u1) {
@@ -1095,162 +1907,279 @@ fn decodeMovWithMod(
     rm: RmValue,
     input: [6]u8,
 ) DecodePayload {
+    const log = std.log.scoped(.decodeMovWithMod);
     const mnemonic = "mov";
     const _rm = rm;
     const _mod = mod;
 
-    switch (_mod) {
-        ModValue.memoryModeNoDisplacement => {
-            if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
-                // 2 byte displacement, second byte is most significant
+    const instruction: BinaryInstructions = @enumFromInt(input[0]);
 
-                var temp_d = input[0] >> 1;
-                temp_d = temp_d << 7;
-                temp_d = temp_d >> 7;
-                var temp_w = input[0] << 7;
-                temp_w = temp_w >> 7;
-                var temp_reg = input[1] >> 3;
-                temp_reg = temp_reg << 5;
-                temp_reg = temp_reg >> 5;
+    switch (instruction) {
+        .mov_source_regmem8_reg8,
+        .mov_source_regmem16_reg16,
+        .mov_dest_reg8_regmem8,
+        .mov_dest_reg16_regmem16,
+        => {
+            switch (_mod) {
+                ModValue.memoryModeNoDisplacement => {
+                    if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
+                        // 2 byte displacement, second byte is most significant
 
-                const d: u1 = @intCast(temp_d);
-                const w: u1 = @intCast(temp_w);
-                const reg: u3 = @intCast(temp_reg);
+                        var temp_d = input[0] >> 1;
+                        temp_d = temp_d << 7;
+                        temp_d = temp_d >> 7;
+                        var temp_w = input[0] << 7;
+                        temp_w = temp_w >> 7;
+                        var temp_reg = input[1] >> 3;
+                        temp_reg = temp_reg << 5;
+                        temp_reg = temp_reg >> 5;
 
-                const result = DecodePayload{
-                    .mov_with_mod_instruction = MovWithModInstruction{
-                        .mnemonic = mnemonic,
-                        .d = @enumFromInt(d),
-                        .w = @enumFromInt(w),
-                        .mod = _mod,
-                        .reg = @enumFromInt(reg),
-                        .rm = _rm,
-                        .disp_lo = input[2],
-                        .disp_hi = input[3],
-                        .data = null,
-                        .w_data = null,
-                    },
-                };
-                return result;
-            } else {
-                var temp_d = input[0] >> 1;
-                temp_d = temp_d << 7;
-                temp_d = temp_d >> 7;
-                var temp_w = input[0] << 7;
-                temp_w = temp_w >> 7;
-                var temp_reg = input[1] >> 3;
-                temp_reg = temp_reg << 5;
-                temp_reg = temp_reg >> 5;
+                        const d: u1 = @intCast(temp_d);
+                        const w: u1 = @intCast(temp_w);
+                        const reg: u3 = @intCast(temp_reg);
 
-                const d: u1 = @intCast(temp_d);
-                const w: u1 = @intCast(temp_w);
-                const reg: u3 = @intCast(temp_reg);
+                        const result = DecodePayload{
+                            .mov_with_mod_instruction = MovWithModInstruction{
+                                .mnemonic = mnemonic,
+                                .d = @enumFromInt(d),
+                                .w = @enumFromInt(w),
+                                .mod = _mod,
+                                .reg = @enumFromInt(reg),
+                                .sr = null,
+                                .rm = _rm,
+                                .disp_lo = input[2],
+                                .disp_hi = input[3],
+                                .data = null,
+                                .w_data = null,
+                            },
+                        };
+                        return result;
+                    } else {
+                        var temp_d = input[0] >> 1;
+                        temp_d = temp_d << 7;
+                        temp_d = temp_d >> 7;
+                        var temp_w = input[0] << 7;
+                        temp_w = temp_w >> 7;
+                        var temp_reg = input[1] >> 3;
+                        temp_reg = temp_reg << 5;
+                        temp_reg = temp_reg >> 5;
 
-                const result = DecodePayload{
-                    .mov_with_mod_instruction = MovWithModInstruction{
-                        .mnemonic = mnemonic,
-                        .d = @enumFromInt(d),
-                        .w = @enumFromInt(w),
-                        .mod = _mod,
-                        .reg = @enumFromInt(reg),
-                        .rm = _rm,
-                        .disp_lo = null,
-                        .disp_hi = null,
-                        .data = null,
-                        .w_data = null,
-                    },
-                };
-                return result;
+                        const d: u1 = @intCast(temp_d);
+                        const w: u1 = @intCast(temp_w);
+                        const reg: u3 = @intCast(temp_reg);
+
+                        const result = DecodePayload{
+                            .mov_with_mod_instruction = MovWithModInstruction{
+                                .mnemonic = mnemonic,
+                                .d = @enumFromInt(d),
+                                .w = @enumFromInt(w),
+                                .mod = _mod,
+                                .reg = @enumFromInt(reg),
+                                .sr = null,
+                                .rm = _rm,
+                                .disp_lo = null,
+                                .disp_hi = null,
+                                .data = null,
+                                .w_data = null,
+                            },
+                        };
+                        return result;
+                    }
+                },
+                ModValue.memoryMode8BitDisplacement => {
+                    var temp_d = input[0] >> 1;
+                    temp_d = temp_d << 7;
+                    temp_d = temp_d >> 7;
+                    var temp_w = input[0] << 7;
+                    temp_w = temp_w >> 7;
+                    var temp_reg = input[1] >> 3;
+                    temp_reg = temp_reg << 5;
+                    temp_reg = temp_reg >> 5;
+
+                    const d: u1 = @intCast(temp_d);
+                    const w: u1 = @intCast(temp_w);
+                    const reg: u3 = @intCast(temp_reg);
+
+                    const result = DecodePayload{
+                        .mov_with_mod_instruction = MovWithModInstruction{
+                            .mnemonic = mnemonic,
+                            .d = @enumFromInt(d),
+                            .w = @enumFromInt(w),
+                            .mod = _mod,
+                            .reg = @enumFromInt(reg),
+                            .sr = null,
+                            .rm = _rm,
+                            .disp_lo = input[2],
+                            .disp_hi = null,
+                            .data = null,
+                            .w_data = null,
+                        },
+                    };
+                    return result;
+                },
+                ModValue.memoryMode16BitDisplacement => {
+                    var temp_d = input[0] >> 1;
+                    temp_d = temp_d << 7;
+                    temp_d = temp_d >> 7;
+                    var temp_w = input[0] << 7;
+                    temp_w = temp_w >> 7;
+                    var temp_reg = input[1] >> 3;
+                    temp_reg = temp_reg << 5;
+                    temp_reg = temp_reg >> 5;
+
+                    const d: u1 = @intCast(temp_d);
+                    const w: u1 = @intCast(temp_w);
+                    const reg: u3 = @intCast(temp_reg);
+
+                    const result = DecodePayload{
+                        .mov_with_mod_instruction = MovWithModInstruction{
+                            .mnemonic = mnemonic,
+                            .d = @enumFromInt(d),
+                            .w = @enumFromInt(w),
+                            .mod = _mod,
+                            .reg = @enumFromInt(reg),
+                            .sr = null,
+                            .rm = _rm,
+                            .disp_lo = input[2],
+                            .disp_hi = input[3],
+                            .data = null,
+                            .w_data = null,
+                        },
+                    };
+                    return result;
+                },
+                ModValue.registerModeNoDisplacement => {
+                    var temp_d = input[0] >> 1;
+                    temp_d = temp_d << 7;
+                    temp_d = temp_d >> 7;
+                    var temp_w = input[0] << 7;
+                    temp_w = temp_w >> 7;
+                    var temp_reg = input[1] >> 3;
+                    temp_reg = temp_reg << 5;
+                    temp_reg = temp_reg >> 5;
+
+                    const d: u1 = @intCast(temp_d);
+                    const w: u1 = @intCast(temp_w);
+                    const reg: u3 = @intCast(temp_reg);
+
+                    const result = DecodePayload{
+                        .mov_with_mod_instruction = MovWithModInstruction{
+                            .mnemonic = mnemonic,
+                            .d = @enumFromInt(d),
+                            .w = @enumFromInt(w),
+                            .mod = _mod,
+                            .reg = @enumFromInt(reg),
+                            .sr = null,
+                            .rm = _rm,
+                            .disp_lo = null,
+                            .disp_hi = null,
+                            .data = null,
+                            .w_data = null,
+                        },
+                    };
+                    return result;
+                },
             }
         },
-        ModValue.memoryMode8BitDisplacement => {
-            var temp_d = input[0] >> 1;
-            temp_d = temp_d << 7;
-            temp_d = temp_d >> 7;
-            var temp_w = input[0] << 7;
-            temp_w = temp_w >> 7;
-            var temp_reg = input[1] >> 3;
-            temp_reg = temp_reg << 5;
-            temp_reg = temp_reg >> 5;
+        .mov_seg_regmem,
+        .mov_regmem_seg,
+        => {
+            switch (_mod) {
+                ModValue.memoryModeNoDisplacement => {
+                    var temp_sr = input[1] << 3;
+                    temp_sr = temp_sr >> 6;
+                    const sr: u2 = @intCast(temp_sr);
 
-            const d: u1 = @intCast(temp_d);
-            const w: u1 = @intCast(temp_w);
-            const reg: u3 = @intCast(temp_reg);
-
-            const result = DecodePayload{
-                .mov_with_mod_instruction = MovWithModInstruction{
-                    .mnemonic = mnemonic,
-                    .d = @enumFromInt(d),
-                    .w = @enumFromInt(w),
-                    .mod = _mod,
-                    .reg = @enumFromInt(reg),
-                    .rm = _rm,
-                    .disp_lo = input[2],
-                    .disp_hi = null,
-                    .data = null,
-                    .w_data = null,
+                    const result = DecodePayload{
+                        .mov_with_mod_instruction = MovWithModInstruction{
+                            .mnemonic = mnemonic,
+                            .d = null,
+                            .w = null,
+                            .mod = _mod,
+                            .reg = null,
+                            .sr = @enumFromInt(sr),
+                            .rm = _rm,
+                            .disp_lo = if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
+                            .disp_hi = if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[3] else null,
+                            .data = null,
+                            .w_data = null,
+                        },
+                    };
+                    return result;
                 },
-            };
-            return result;
+                ModValue.memoryMode8BitDisplacement => {
+                    var temp_sr = input[1] << 3;
+                    temp_sr = temp_sr >> 6;
+                    const sr: u2 = @intCast(temp_sr);
+
+                    const result = DecodePayload{
+                        .mov_with_mod_instruction = MovWithModInstruction{
+                            .mnemonic = mnemonic,
+                            .d = null,
+                            .w = null,
+                            .mod = _mod,
+                            .reg = null,
+                            .sr = @enumFromInt(sr),
+                            .rm = _rm,
+                            .disp_lo = input[2],
+                            .disp_hi = null,
+                            .data = null,
+                            .w_data = null,
+                        },
+                    };
+                    return result;
+                },
+                ModValue.memoryMode16BitDisplacement => {
+                    var temp_sr = input[1] << 3;
+                    temp_sr = temp_sr >> 6;
+                    const sr: u2 = @intCast(temp_sr);
+
+                    const result = DecodePayload{
+                        .mov_with_mod_instruction = MovWithModInstruction{
+                            .mnemonic = mnemonic,
+                            .d = null,
+                            .w = null,
+                            .mod = _mod,
+                            .reg = null,
+                            .sr = @enumFromInt(sr),
+                            .rm = _rm,
+                            .disp_lo = input[2],
+                            .disp_hi = input[3],
+                            .data = null,
+                            .w_data = null,
+                        },
+                    };
+                    return result;
+                },
+                ModValue.registerModeNoDisplacement => {
+                    var temp_sr = input[1] << 3;
+                    temp_sr = temp_sr >> 6;
+                    const sr: u2 = @intCast(temp_sr);
+
+                    const result = DecodePayload{
+                        .mov_with_mod_instruction = MovWithModInstruction{
+                            .mnemonic = mnemonic,
+                            .d = null,
+                            .w = null,
+                            .mod = _mod,
+                            .reg = null,
+                            .sr = @enumFromInt(sr),
+                            .rm = _rm,
+                            .disp_lo = null,
+                            .disp_hi = null,
+                            .data = null,
+                            .w_data = null,
+                        },
+                    };
+                    return result;
+                },
+            }
         },
-        ModValue.memoryMode16BitDisplacement => {
-            var temp_d = input[0] >> 1;
-            temp_d = temp_d << 7;
-            temp_d = temp_d >> 7;
-            var temp_w = input[0] << 7;
-            temp_w = temp_w >> 7;
-            var temp_reg = input[1] >> 3;
-            temp_reg = temp_reg << 5;
-            temp_reg = temp_reg >> 5;
-
-            const d: u1 = @intCast(temp_d);
-            const w: u1 = @intCast(temp_w);
-            const reg: u3 = @intCast(temp_reg);
-
+        else => {
             const result = DecodePayload{
-                .mov_with_mod_instruction = MovWithModInstruction{
-                    .mnemonic = mnemonic,
-                    .d = @enumFromInt(d),
-                    .w = @enumFromInt(w),
-                    .mod = _mod,
-                    .reg = @enumFromInt(reg),
-                    .rm = _rm,
-                    .disp_lo = input[2],
-                    .disp_hi = input[3],
-                    .data = null,
-                    .w_data = null,
-                },
+                .err = DecodeInstructionError.NotYetImplementet,
             };
-            return result;
-        },
-        ModValue.registerModeNoDisplacement => {
-            var temp_d = input[0] >> 1;
-            temp_d = temp_d << 7;
-            temp_d = temp_d >> 7;
-            var temp_w = input[0] << 7;
-            temp_w = temp_w >> 7;
-            var temp_reg = input[1] >> 3;
-            temp_reg = temp_reg << 5;
-            temp_reg = temp_reg >> 5;
-
-            const d: u1 = @intCast(temp_d);
-            const w: u1 = @intCast(temp_w);
-            const reg: u3 = @intCast(temp_reg);
-
-            const result = DecodePayload{
-                .mov_with_mod_instruction = MovWithModInstruction{
-                    .mnemonic = mnemonic,
-                    .d = @enumFromInt(d),
-                    .w = @enumFromInt(w),
-                    .mod = _mod,
-                    .reg = @enumFromInt(reg),
-                    .rm = _rm,
-                    .disp_lo = null,
-                    .disp_hi = null,
-                    .data = null,
-                    .w_data = null,
-                },
-            };
+            log.err("Error: Decode mov with mod field not possible. Instruction not yet implemented.", .{});
             return result;
         },
     }
@@ -1260,31 +2189,103 @@ fn decodeMovWithoutMod(
     w: WValue,
     input: [6]u8,
 ) DecodePayload {
+    const log = std.log.scoped(.decodeMovWithoutMod);
+
     const temp_reg: u8 = input[0] << 5;
     const reg: RegValue = @enumFromInt(temp_reg >> 5);
-    switch (w) {
-        .byte => {
-            const result = DecodePayload{
-                .mov_without_mod_instruction = MovWithoutModInstruction{
-                    .mnemonic = "mov",
-                    .w = w,
-                    .reg = reg,
-                    .data = input[1],
-                    .w_data = null,
+
+    const instruction: BinaryInstructions = @enumFromInt(input[0]);
+
+    switch (instruction) {
+        .mov_immediate_reg_al,
+        .mov_immediate_reg_cl,
+        .mov_immediate_reg_dl,
+        .mov_immediate_reg_bl,
+        .mov_immediate_reg_ah,
+        .mov_immediate_reg_ch,
+        .mov_immediate_reg_dh,
+        .mov_immediate_reg_bh,
+        .mov_immediate_reg_ax,
+        .mov_immediate_reg_cx,
+        .mov_immediate_reg_dx,
+        .mov_immediate_reg_bx,
+        .mov_immediate_reg_sp,
+        .mov_immediate_reg_bp,
+        .mov_immediate_reg_si,
+        .mov_immediate_reg_di,
+        => {
+            switch (w) {
+                .byte => {
+                    const result = DecodePayload{
+                        .mov_without_mod_instruction = MovWithoutModInstruction{
+                            .mnemonic = "mov",
+                            .w = w,
+                            .reg = reg,
+                            .data = input[1],
+                            .w_data = null,
+                            .addr_lo = null,
+                            .addr_hi = null,
+                        },
+                    };
+                    return result;
                 },
-            };
-            return result;
+                .word => {
+                    const result = DecodePayload{
+                        .mov_without_mod_instruction = MovWithoutModInstruction{
+                            .mnemonic = "mov",
+                            .w = w,
+                            .reg = reg,
+                            .data = input[1],
+                            .w_data = input[2],
+                            .addr_lo = null,
+                            .addr_hi = null,
+                        },
+                    };
+                    return result;
+                },
+            }
         },
-        .word => {
-            const result = DecodePayload{
-                .mov_without_mod_instruction = MovWithoutModInstruction{
-                    .mnemonic = "mov",
-                    .w = w,
-                    .reg = reg,
-                    .data = input[1],
-                    .w_data = input[2],
+        .mov_mem8_acc8,
+        .mov_mem16_acc16,
+        .mov_acc8_mem8,
+        .mov_acc16_mem16,
+        => {
+            switch (w) {
+                .byte => {
+                    const result = DecodePayload{
+                        .mov_without_mod_instruction = MovWithoutModInstruction{
+                            .mnemonic = "mov",
+                            .w = w,
+                            .reg = null,
+                            .data = null,
+                            .w_data = null,
+                            .addr_lo = input[1],
+                            .addr_hi = null,
+                        },
+                    };
+                    return result;
                 },
+                .word => {
+                    const result = DecodePayload{
+                        .mov_without_mod_instruction = MovWithoutModInstruction{
+                            .mnemonic = "mov",
+                            .w = w,
+                            .reg = null,
+                            .data = null,
+                            .w_data = null,
+                            .addr_lo = input[1],
+                            .addr_hi = input[2],
+                        },
+                    };
+                    return result;
+                },
+            }
+        },
+        else => {
+            const result = DecodePayload{
+                .err = DecodeInstructionError.NotYetImplementet,
             };
+            log.err("Error: Decode mov without mod field not possible. Instruction not yet implemented.", .{});
             return result;
         },
     }
@@ -2007,7 +3008,7 @@ pub fn main() !void {
             BinaryInstructions.mov_immediate_reg_si,
             BinaryInstructions.mov_immediate_reg_di,
             => {
-                // 0xB0 - 0xBF
+                // 0xC0 - 0xCF
                 const first_byte = biu.getIndex(0);
 
                 const temp_w: u8 = first_byte << 4;
@@ -2019,6 +3020,12 @@ pub fn main() !void {
             BinaryInstructions.mov_regmem_seg,
             => {
                 // 0xC6, 0xC7
+                const second_byte = biu.getIndex(1);
+                mod = @enumFromInt(second_byte >> 6);
+                const temp_rm = second_byte << 5;
+                rm = @enumFromInt(temp_rm >> 5);
+
+                stepSize = movGetInstructionLength(mod, rm);
             },
         }
 
@@ -2094,6 +3101,8 @@ pub fn main() !void {
             .mov_source_regmem16_reg16,
             .mov_dest_reg8_regmem8,
             .mov_dest_reg16_regmem16,
+            .mov_seg_regmem,
+            .mov_regmem_seg,
             => {
                 payload = decodeMovWithMod(mod, rm, InstructionBytes);
             },
@@ -2113,6 +3122,10 @@ pub fn main() !void {
             .mov_immediate_reg_sp,
             .mov_immediate_reg_di,
             .mov_immediate_reg_si,
+            .mov_acc8_mem8,
+            .mov_acc16_mem16,
+            .mov_mem8_acc8,
+            .mov_mem16_acc16,
             => {
                 payload = decodeMovWithoutMod(w, InstructionBytes);
             },
@@ -2146,19 +3159,53 @@ pub fn main() !void {
                 }
             },
             .mov_with_mod_instruction => {
-                const d: DValue = payload.mov_with_mod_instruction.d;
-                w = payload.mov_with_mod_instruction.w;
-                const reg: RegValue = payload.mov_with_mod_instruction.reg;
-                const instruction_info: InstructionInfo = getInstructionSourceAndDest(
-                    &registers,
-                    d,
-                    w,
-                    reg,
-                    mod,
-                    rm,
-                    if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[2] else null,
-                    if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
-                );
+                var instruction_info: InstructionInfo = undefined;
+                switch (instruction) {
+                    .mov_source_regmem8_reg8,
+                    .mov_source_regmem16_reg16,
+                    .mov_dest_reg8_regmem8,
+                    .mov_dest_reg16_regmem16,
+                    => {
+                        const d: DValue = payload.mov_with_mod_instruction.d.?;
+                        w = payload.mov_with_mod_instruction.w.?;
+                        const reg: RegValue = payload.mov_with_mod_instruction.reg.?;
+                        instruction_info = getRegMemMovSourceAndDest(
+                            &registers,
+                            d,
+                            w,
+                            reg,
+                            mod,
+                            rm,
+                            if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[2] else null,
+                            if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
+                        );
+                    },
+                    .mov_regmem_seg => {
+                        const sr: SrValue = payload.mov_with_mod_instruction.sr.?;
+                        instruction_info = getSegmentRegisterDestinationMov(
+                            &registers,
+                            mod,
+                            sr,
+                            rm,
+                            if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[2] else null,
+                            if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
+                        );
+                    },
+                    .mov_seg_regmem => {
+                        const sr: SrValue = payload.mov_with_mod_instruction.sr.?;
+                        instruction_info = getSegmentRegisterSourceMov(
+                            &registers,
+                            mod,
+                            sr,
+                            rm,
+                            if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[2] else null,
+                            if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
+                        );
+                    },
+                    else => {
+                        log.err("Error: Instruction 0x{x} not implemented yet", .{instruction});
+                    },
+                }
 
                 const source = instruction_info.source_info;
                 const destination = instruction_info.destination_info;
@@ -2173,9 +3220,9 @@ pub fn main() !void {
 
                 switch (destination) {
                     .address => {
-                        print("{t},", .{destination.address});
+                        print("{t}, ", .{destination.address});
                         OutputWriter.print(
-                            "{t},",
+                            "{t}, ",
                             .{destination.address},
                         ) catch |err| {
                             log.err(
@@ -2188,10 +3235,10 @@ pub fn main() !void {
                         const Address = AddressDirectory.Address;
                         if (destination.address_calculation.index == Address.none) {
                             if (destination.address_calculation.displacement == DisplacementFormat.none) {
-                                print("[{t}],", .{
+                                print("[{t}], ", .{
                                     destination.address_calculation.base.?,
                                 });
-                                OutputWriter.print("[{t}],", .{
+                                OutputWriter.print("[{t}], ", .{
                                     destination.address_calculation.base.?,
                                 }) catch |err| {
                                     log.err(
@@ -2200,10 +3247,10 @@ pub fn main() !void {
                                     );
                                 };
                             } else if (destination.address_calculation.displacement != DisplacementFormat.none and destination.address_calculation.data.? == 0) {
-                                print("[{t}],", .{
+                                print("[{t}], ", .{
                                     destination.address_calculation.base.?,
                                 });
-                                OutputWriter.print("[{t}],", .{
+                                OutputWriter.print("[{t}], ", .{
                                     destination.address_calculation.base.?,
                                 }) catch |err| {
                                     log.err(
@@ -2212,11 +3259,11 @@ pub fn main() !void {
                                     );
                                 };
                             } else if (destination.address_calculation.displacement != DisplacementFormat.none) {
-                                print("[{t} + {d}],", .{
+                                print("[{t} + {d}], ", .{
                                     destination.address_calculation.base.?,
                                     destination.address_calculation.data.?,
                                 });
-                                OutputWriter.print("[{t} + {d}],", .{
+                                OutputWriter.print("[{t} + {d}], ", .{
                                     destination.address_calculation.base.?,
                                     destination.address_calculation.data.?,
                                 }) catch |err| {
@@ -2228,11 +3275,11 @@ pub fn main() !void {
                             }
                         } else if (destination.address_calculation.index != Address.none) {
                             if (destination.address_calculation.displacement == DisplacementFormat.none) {
-                                print("[{t} + {t}],", .{
+                                print("[{t} + {t}], ", .{
                                     destination.address_calculation.base.?,
                                     destination.address_calculation.index.?,
                                 });
-                                OutputWriter.print("[{t} + {t}],", .{
+                                OutputWriter.print("[{t} + {t}], ", .{
                                     destination.address_calculation.base.?,
                                     destination.address_calculation.index.?,
                                 }) catch |err| {
@@ -2242,12 +3289,12 @@ pub fn main() !void {
                                     );
                                 };
                             } else if (destination.address_calculation.displacement != DisplacementFormat.none) {
-                                print("[{t} + {t} + {d}],", .{
+                                print("[{t} + {t} + {d}], ", .{
                                     destination.address_calculation.base.?,
                                     destination.address_calculation.index.?,
                                     destination.address_calculation.data.?,
                                 });
-                                OutputWriter.print("[{t} + {t} + {d}],", .{
+                                OutputWriter.print("[{t} + {t} + {d}], ", .{
                                     destination.address_calculation.base.?,
                                     destination.address_calculation.index.?,
                                     destination.address_calculation.data.?,
@@ -2366,10 +3413,52 @@ pub fn main() !void {
                 }
             },
             .mov_without_mod_instruction => {
-                const instruction_info: InstructionInfo = getInstructionDest(
-                    payload.mov_without_mod_instruction.w,
-                    payload.mov_without_mod_instruction.reg,
-                );
+                var instruction_info: InstructionInfo = undefined;
+                switch (instruction) {
+                    .mov_immediate_reg_al,
+                    .mov_immediate_reg_cl,
+                    .mov_immediate_reg_dl,
+                    .mov_immediate_reg_bl,
+                    .mov_immediate_reg_ah,
+                    .mov_immediate_reg_ch,
+                    .mov_immediate_reg_dh,
+                    .mov_immediate_reg_bh,
+                    .mov_immediate_reg_ax,
+                    .mov_immediate_reg_cx,
+                    .mov_immediate_reg_dx,
+                    .mov_immediate_reg_bx,
+                    .mov_immediate_reg_bp,
+                    .mov_immediate_reg_sp,
+                    .mov_immediate_reg_si,
+                    .mov_immediate_reg_di,
+                    => {
+                        instruction_info = getImmediateMovInstructionDest(
+                            payload.mov_without_mod_instruction.w,
+                            payload.mov_without_mod_instruction.reg.?,
+                        );
+                    },
+                    .mov_mem8_acc8,
+                    .mov_mem16_acc16,
+                    => {
+                        instruction_info = getAccumulatorMovInstructionSource(
+                            payload.mov_without_mod_instruction.w,
+                            payload.mov_without_mod_instruction.addr_lo,
+                            payload.mov_without_mod_instruction.addr_hi,
+                        );
+                    },
+                    .mov_acc8_mem8,
+                    .mov_acc16_mem16,
+                    => {
+                        instruction_info = getAccumulatorMovInstructionDestination(
+                            payload.mov_without_mod_instruction.w,
+                            payload.mov_without_mod_instruction.addr_lo,
+                            payload.mov_without_mod_instruction.addr_hi,
+                        );
+                    },
+                    else => {
+                        log.err("Error: Instruction 0x{x} not implemented yet", .{instruction});
+                    },
+                }
 
                 const destination = instruction_info.destination_info;
                 // const source_payload = instruction_info.source_info;
@@ -2398,72 +3487,18 @@ pub fn main() !void {
                             );
                         };
                     },
-                    // .address_calculation => {
-                    //     const Address = AddressDirectory.Address;
-                    //     if (destination_payload.address_calculation.index == Address.none) {
-                    //         print("[{t} + {d}],", .{
-                    //             destination_payload.address_calculation.base.?,
-                    //             destination_payload.address_calculation.effective_address,
-                    //         });
-                    //         OutputWriter.print("[{t} + {d}],", .{
-                    //             destination_payload.address_calculation.base.?,
-                    //             destination_payload.address_calculation.effective_address,
-                    //         }) catch |err| {
-                    //             log.err(
-                    //                 "{s}: Something went wrong trying to write destination register {t} to the output file.",
-                    //                 .{ @errorName(err), destination_payload.address },
-                    //             );
-                    //         };
-                    //     } else if (destination_payload.address_calculation.index != Address.none) {
-                    //         print("[{t} + {t} + {d}],", .{
-                    //             destination_payload.address_calculation.base.?,
-                    //             destination_payload.address_calculation.index.?,
-                    //             destination_payload.address_calculation.effective_address,
-                    //         });
-                    //         OutputWriter.print("[{t} + {t} + {d}],", .{
-                    //             destination_payload.address_calculation.base.?,
-                    //             destination_payload.address_calculation.index.?,
-                    //             destination_payload.address_calculation.effective_address,
-                    //         }) catch |err| {
-                    //             log.err(
-                    //                 "{s}: Something went wrong trying to write destination register {t} to the output file.",
-                    //                 .{ @errorName(err), destination_payload.address },
-                    //             );
-                    //         };
-                    //     }
-                    // },
-                    // .index => {},
                     else => {
                         print("Error: Not a valid destination address.", .{});
                     },
                 }
 
-                // switch (source_payload) {
-                //     .address => {},
-                //     .address_calculation => {},
-                //     .index => {},
-                // }
-
-                // const dest: RegValue = payload.mov_without_mod_instruction.reg;
-                // print("{t},", .{
-                //     instruction_info.destination_info.address,
-                // });
-                // OutputWriter.print("{t},", .{
-                //     instruction_info.destination_info.address,
-                // }) catch |err| {
-                //     log.err(
-                //         "{s}: Something went wrong trying to write destination register {any} to the output file.",
-                //         .{ @errorName(err), @tagName(dest) },
-                //     );
-                // };
-
                 var immediate_value: u16 = undefined;
                 switch (w) {
                     .byte => {
-                        immediate_value = @as(u16, payload.mov_without_mod_instruction.data);
+                        immediate_value = @as(u16, payload.mov_without_mod_instruction.data.?);
                     },
                     .word => {
-                        immediate_value = (@as(u16, payload.mov_without_mod_instruction.w_data.?) << 8) + payload.mov_without_mod_instruction.data;
+                        immediate_value = (@as(u16, payload.mov_without_mod_instruction.w_data.?) << 8) + payload.mov_without_mod_instruction.data.?;
                     },
                 }
                 print("{d}\n", .{immediate_value});
@@ -2748,3 +3783,5 @@ test "TEST listing_0039_more_movs" {
         test_output_payload_0x8A_mod_memory_mode_16_bit_displacement,
     );
 }
+
+test "TEST_listing_0040_challenge_movs" {}
