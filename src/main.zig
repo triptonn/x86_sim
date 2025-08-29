@@ -9,7 +9,6 @@
 // ========================================================================
 
 const std = @import("std");
-const logger = @import("log.zig");
 
 // const DecodeError = error{ InvalidInstruction, InvalidRegister, NotYetImplemented };
 
@@ -112,16 +111,26 @@ const BinaryInstructions = enum(u8) {
 };
 
 // Error:
-// register / memory to / from register: 0x88, 0x89, 0x8A, 0x8B
-const DecodeInstructionError = error{
-    DecodeError,
-    NotYetImplementet,
-};
-
 const SimulatorError = error{
     FileError,
+    DecodeError,
     InstructionError,
     InstructionSizeError,
+    NotYetImplemented,
+    WriteFailed,
+};
+
+const DecodeInstructionError = error{
+    DecodeError,
+    InstructionError,
+    NotYetImplemented,
+    WriteFailed,
+};
+
+const MakeAssemblyError = error{
+    InstructionError,
+    NotYetImplemented,
+    WriteFailed,
 };
 
 // MovInstruction
@@ -166,6 +175,42 @@ const DecodePayload = union(DecodedPayloadIdentifier) {
     mov_without_mod_instruction: MovWithoutModInstruction,
 };
 
+
+const InstructionInfo = struct {
+    destination_info: DestinationInfo,
+    source_info: SourceInfo,
+};
+
+const EffectiveAddressCalculation = struct {
+    base: ?AddressDirectory.Address,
+    index: ?AddressDirectory.Address,
+    displacement: ?DisplacementFormat,
+    displacement_value: ?u16,
+    effective_address: ?u20,
+};
+
+const DestinationInfoIdentifiers = enum {
+    address,
+    address_calculation,
+};
+
+const DestinationInfo = union(DestinationInfoIdentifiers) {
+    address: AddressDirectory.Address,
+    address_calculation: EffectiveAddressCalculation,
+};
+
+const SourceInfoIdentifiers = enum {
+    address,
+    address_calculation,
+    immediate,
+};
+
+const SourceInfo = union(SourceInfoIdentifiers) {
+    address: AddressDirectory.Address,
+    address_calculation: EffectiveAddressCalculation,
+    immediate: u20,
+};
+
 /// (* .memoryModeNoDisplacement has 16 Bit displacement if
 /// R/M = 110)
 const ModValue = enum(u2) {
@@ -203,7 +248,7 @@ const RegValue = enum(u3) {
 
 
 // zig fmt: on
-fn getImmediateMovInstructionDest(w: WValue, reg: RegValue) InstructionInfo {
+fn getImmediateToRegMovDest(w: WValue, reg: RegValue) InstructionInfo {
     const Address = AddressDirectory.Address;
     var dest: Address = undefined;
     switch (w) {
@@ -280,7 +325,7 @@ fn getImmediateMovInstructionDest(w: WValue, reg: RegValue) InstructionInfo {
 /// Given the fields decoded from the instruction bytes this function returns
 /// the addresses of source and destination. These can be registers or memory
 /// addresses. The values are returned as InstructionInfo.
-fn getRegMemMovSourceAndDest(
+fn getRegMemToFromRegMovSourceAndDest(
     registers: *Register,
     d: DValue,
     w: WValue,
@@ -382,7 +427,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bx,
                             .index = Address.si,
                             .displacement = DisplacementFormat.none,
-                            .data = null,
+                            .displacement_value = null,
                             .effective_address = (@as(u20, bx_value) << 4) + si_value,
                         };
                     } else if (!regIsSource) {
@@ -390,7 +435,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bx,
                             .index = Address.si,
                             .displacement = DisplacementFormat.none,
-                            .data = null,
+                            .displacement_value = null,
                             .effective_address = (@as(u20, bx_value) << 4) + si_value,
                         };
                     }
@@ -403,7 +448,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bx,
                             .index = Address.di,
                             .displacement = DisplacementFormat.none,
-                            .data = null,
+                            .displacement_value = null,
                             .effective_address = (@as(u20, bx_value) << 4) + di_value,
                         };
                     } else if (!regIsSource) {
@@ -411,7 +456,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bx,
                             .index = Address.di,
                             .displacement = DisplacementFormat.none,
-                            .data = null,
+                            .displacement_value = null,
                             .effective_address = (@as(u20, bx_value) << 4) + di_value,
                         };
                     }
@@ -424,7 +469,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bp,
                             .index = Address.si,
                             .displacement = DisplacementFormat.none,
-                            .data = null,
+                            .displacement_value = null,
                             .effective_address = (@as(u20, bp_value) << 4) + si_value,
 
                         };
@@ -433,7 +478,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bp,
                             .index = Address.si,
                             .displacement = DisplacementFormat.none,
-                            .data = null,
+                            .displacement_value = null,
                             .effective_address = (@as(u20, bp_value) << 4) + si_value,
 
                         };
@@ -447,7 +492,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bp,
                             .index = Address.di,
                             .displacement = DisplacementFormat.none,
-                            .data = null,
+                            .displacement_value = null,
                             .effective_address = (@as(u20, bp_value) << 4) + di_value,
 
                         };
@@ -456,7 +501,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bp,
                             .index = Address.di,
                             .displacement = DisplacementFormat.none,
-                            .data = null,
+                            .displacement_value = null,
                             .effective_address = (@as(u20, bp_value) << 4) + di_value,
 
                         };
@@ -553,7 +598,7 @@ fn getRegMemMovSourceAndDest(
                         .base = Address.bx,
                         .index = Address.si,
                         .displacement = DisplacementFormat.d8,
-                        .data = @as(u16, disp_lo.?),
+                        .displacement_value = @as(u16, disp_lo.?),
                         .effective_address = ((@as(u20, bx_value)) << 4) + registers.getSI() + disp_lo.?,
                     };
                     if (regIsSource) {
@@ -568,7 +613,7 @@ fn getRegMemMovSourceAndDest(
                         .base = Address.bx,
                         .index = Address.di,
                         .displacement = DisplacementFormat.d8,
-                        .data = @as(u16, disp_lo.?),
+                        .displacement_value = @as(u16, disp_lo.?),
                         .effective_address = ((@as(u20, bx_value)) << 4) + registers.getDI() + disp_lo.?,
                     };
                     if (regIsSource) {
@@ -583,7 +628,7 @@ fn getRegMemMovSourceAndDest(
                         .base = Address.bp,
                         .index = Address.si,
                         .displacement = DisplacementFormat.d8,
-                        .data = @as(u16, disp_lo.?),
+                        .displacement_value = @as(u16, disp_lo.?),
                         .effective_address = ((@as(u20, bp_value) << 4) + registers.getSI() + disp_lo.?),
                     };
                     if (regIsSource) {
@@ -598,7 +643,7 @@ fn getRegMemMovSourceAndDest(
                         .base = Address.bp,
                         .index = Address.di,
                         .displacement = DisplacementFormat.d8,
-                        .data = @as(u16, disp_lo.?),
+                        .displacement_value = @as(u16, disp_lo.?),
                         .effective_address = ((@as(u20, bp_value) << 4) + registers.getDI() + disp_lo.?),
                     };
                     if (regIsSource) {
@@ -613,7 +658,7 @@ fn getRegMemMovSourceAndDest(
                         .base = Address.si,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d8,
-                        .data = @as(u16, disp_lo.?),
+                        .displacement_value = @as(u16, disp_lo.?),
                         .effective_address = ((@as(u20, si_value)) << 4) + disp_lo.?,
                     };
                     if (regIsSource) {
@@ -628,7 +673,7 @@ fn getRegMemMovSourceAndDest(
                         .base = Address.di,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d8,
-                        .data = @as(u16, disp_lo.?),
+                        .displacement_value = @as(u16, disp_lo.?),
                         .effective_address = ((@as(u20, di_value)) << 4) + disp_lo.?,
                     };
                     if (regIsSource) {
@@ -643,7 +688,7 @@ fn getRegMemMovSourceAndDest(
                         .base = Address.bp,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d8,
-                        .data = @as(u16, disp_lo.?),
+                        .displacement_value = @as(u16, disp_lo.?),
                         .effective_address = ((@as(u20, bp_value) << 4) + disp_lo.?),
                     };
                     if (regIsSource) {
@@ -658,7 +703,7 @@ fn getRegMemMovSourceAndDest(
                         .base = Address.bx,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d8,
-                        .data = @as(u16, disp_lo.?),
+                        .displacement_value = @as(u16, disp_lo.?),
                         .effective_address = ((@as(u20, bx_value) << 4) + disp_lo.?),
                     };
                     if (regIsSource) {
@@ -680,7 +725,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bx,
                             .index = Address.si,
                             .displacement = DisplacementFormat.d16,
-                            .data = displacement,
+                            .displacement_value = displacement,
                             .effective_address = (@as(u20, bx_value) << 4) + si_value + displacement,
 
                         };
@@ -689,7 +734,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bx,
                             .index = Address.si,
                             .displacement = DisplacementFormat.d16,
-                            .data = displacement,
+                            .displacement_value = displacement,
                             .effective_address = (@as(u20, bx_value) << 4) + si_value + displacement,
                         };
                     }
@@ -703,7 +748,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bx,
                             .index = Address.di,
                             .displacement = DisplacementFormat.d16,
-                            .data = displacement,
+                            .displacement_value = displacement,
                             .effective_address = (@as(u20, bx_value) << 4) + di_value + displacement,
                         };
                     } else {
@@ -711,7 +756,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bx,
                             .index = Address.di,
                             .displacement = DisplacementFormat.d16,
-                            .data = displacement,
+                            .displacement_value = displacement,
                             .effective_address = (@as(u20, bx_value) << 4) + di_value + displacement,
                         };
                     }
@@ -725,7 +770,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bp,
                             .index = Address.si,
                             .displacement = DisplacementFormat.d16,
-                            .data = displacement,
+                            .displacement_value = displacement,
                             .effective_address = (@as(u20, bp_value) << 4) + si_value + displacement,
                         };
                     } else {
@@ -733,7 +778,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bp,
                             .index = Address.si,
                             .displacement = DisplacementFormat.d16,
-                            .data = displacement,
+                            .displacement_value = displacement,
                             .effective_address = (@as(u20, bp_value) << 4) + si_value + displacement,
                         };
                     }
@@ -747,7 +792,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bp,
                             .index = Address.di,
                             .displacement = DisplacementFormat.d16,
-                            .data = displacement,
+                            .displacement_value = displacement,
                             .effective_address = (@as(u20, bp_value) << 4) + di_value + displacement,
                         };
                     } else {
@@ -755,7 +800,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bp,
                             .index = Address.di,
                             .displacement = DisplacementFormat.d16,
-                            .data = displacement,
+                            .displacement_value = displacement,
                             .effective_address = (@as(u20, bp_value) << 4) + di_value + displacement,
                         };
                     }
@@ -768,7 +813,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.si,
                             .index = Address.none,
                             .displacement = DisplacementFormat.d16,
-                            .data = displacement,
+                            .displacement_value = displacement,
                             .effective_address = (@as(u20, si_value) << 4) + displacement,
                         };
                     } else {
@@ -776,7 +821,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.si,
                             .index = Address.none,
                             .displacement = DisplacementFormat.d16,
-                            .data = displacement,
+                            .displacement_value = displacement,
                             .effective_address = (@as(u20, si_value) << 4) + displacement,
                         };
                     }
@@ -790,7 +835,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.di,
                             .index = Address.none,
                             .displacement = DisplacementFormat.d16,
-                            .data = displacement,
+                            .displacement_value = displacement,
                             .effective_address = (@as(u20, di_value) << 4) + displacement,
                         };
                     } else {
@@ -798,7 +843,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.di,
                             .index = Address.none,
                             .displacement = DisplacementFormat.d16,
-                            .data = displacement,
+                            .displacement_value = displacement,
                             .effective_address = (@as(u20, di_value) << 4) + displacement,
                         };
                     }
@@ -812,7 +857,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bp,
                             .index = Address.none,
                             .displacement = DisplacementFormat.d16,
-                            .data = displacement,
+                            .displacement_value = displacement,
                             .effective_address = (@as(u20, bp_value) << 4) + displacement,
                         };
                     } else {
@@ -820,7 +865,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bp,
                             .index = Address.none,
                             .displacement = DisplacementFormat.d16,
-                            .data = displacement,
+                            .displacement_value = displacement,
                             .effective_address = (@as(u20, bp_value) << 4) + displacement,
                         };
                     }
@@ -834,7 +879,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bx,
                             .index = Address.none,
                             .displacement = DisplacementFormat.d16,
-                            .data = displacement,
+                            .displacement_value = displacement,
                             .effective_address = (@as(u20, bx_value) << 4) + displacement,
                         };
                     } else {
@@ -842,7 +887,7 @@ fn getRegMemMovSourceAndDest(
                             .base = Address.bx,
                             .index = Address.none,
                             .displacement = DisplacementFormat.d16,
-                            .data = displacement,
+                            .displacement_value = displacement,
                             .effective_address = (@as(u20, bx_value) << 4) + displacement,
                         };
                     }
@@ -1038,7 +1083,7 @@ const SrValue = enum(u2) {
 
 
 /// Get source and destination for Reg/Mem to segment register operations.
-fn getSegmentRegisterDestinationMov(
+fn getRegMemToSegMovSourceAndDest(
     registers: *Register,
     mod: ModValue,
     sr: SrValue,
@@ -1064,7 +1109,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.bx,
                         .index = Address.si,
                         .displacement = DisplacementFormat.none,
-                        .data = null,
+                        .displacement_value = null,
                         .effective_address = (@as(u20, bx_value) << 4) + si_value,
                     };
                 },
@@ -1075,7 +1120,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.bx,
                         .index = Address.di,
                         .displacement = DisplacementFormat.none,
-                        .data = null,
+                        .displacement_value = null,
                         .effective_address = (@as(u20, bx_value) << 4) + di_value,
                     };
                 },
@@ -1086,7 +1131,7 @@ fn getSegmentRegisterDestinationMov(
                             .base = Address.bp,
                             .index = Address.si,
                             .displacement = DisplacementFormat.none,
-                            .data = null,
+                            .displacement_value = null,
                             .effective_address = (@as(u20, bp_value) << 4) + si_value,
                         };
                     },
@@ -1097,7 +1142,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.bp,
                         .index = Address.di,
                         .displacement = DisplacementFormat.none,
-                        .data = null,
+                        .displacement_value = null,
                         .effective_address = (@as(u20, bp_value) << 4) + di_value,
                     };
                 },
@@ -1107,7 +1152,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.si,
                         .index = Address.none,
                         .displacement = DisplacementFormat.none,
-                        .data = null,
+                        .displacement_value = null,
                         .effective_address = (@as(u20, si_value) << 4),
                     };
                 },
@@ -1117,7 +1162,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.di,
                         .index = Address.none,
                         .displacement = DisplacementFormat.none,
-                        .data = null,
+                        .displacement_value = null,
                         .effective_address = (@as(u20, di_value) << 4),
                     };
                 },
@@ -1127,7 +1172,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.none,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, displacement),
                     };
                 },
@@ -1137,7 +1182,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.bx,
                         .index = Address.none,
                         .displacement = DisplacementFormat.none,
-                        .data = null,
+                        .displacement_value = null,
                         .effective_address = (@as(u20, bx_value) << 4),
                     };
                 },
@@ -1153,7 +1198,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.bx,
                         .index = Address.si,
                         .displacement = DisplacementFormat.d8,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, bx_value) + si_value + displacement,
                     };
                 },
@@ -1165,7 +1210,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.bx,
                         .index = Address.di,
                         .displacement = DisplacementFormat.d8,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, bx_value) + di_value + displacement,
                     };
                 },
@@ -1177,7 +1222,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.bp,
                         .index = Address.si,
                         .displacement = DisplacementFormat.d8,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, bp_value) + si_value + displacement,
                     };
                 },
@@ -1189,7 +1234,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.bp,
                         .index = Address.di,
                         .displacement = DisplacementFormat.d8,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, bp_value) + di_value + displacement,
                     };
                 },
@@ -1200,7 +1245,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.si,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d8,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, si_value) + displacement,
                     };
                 },
@@ -1211,7 +1256,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.di,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d8,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, di_value) + displacement,
                     };
                 },
@@ -1222,7 +1267,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.bp,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d8,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, bp_value) + displacement,
                     };
                 },
@@ -1233,7 +1278,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.bx,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d8,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, bx_value) + displacement,
                     };
                 },
@@ -1249,7 +1294,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.bx,
                         .index = Address.si,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = (@as(u20, bx_value) << 4) + si_value + displacement,
                     };
                 },
@@ -1261,7 +1306,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.bx,
                         .index = Address.di,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = (@as(u20, bx_value) << 4) + di_value + displacement,
                     };
                 },
@@ -1273,7 +1318,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.bp,
                         .index = Address.si,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = (@as(u20, bp_value) << 4) + si_value + displacement,
                     };
                 },
@@ -1285,7 +1330,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.bp,
                         .index = Address.di,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = (@as(u20, bp_value) << 4) + di_value + displacement,
                     };
                 },
@@ -1296,7 +1341,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.si,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, si_value) + displacement,
                     };
                 },
@@ -1307,7 +1352,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.di,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, di_value) + displacement,
                     };
                 },
@@ -1318,7 +1363,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.none,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, bp_value) + displacement,
                     };
                 },
@@ -1329,7 +1374,7 @@ fn getSegmentRegisterDestinationMov(
                         .base = Address.bx,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = (@as(u20, bx_value) << 4) + displacement,
                     };
                 },
@@ -1401,7 +1446,7 @@ fn getSegmentRegisterDestinationMov(
 }
 
 /// Get source and destination for segment register to Reg/Mem operations.
-fn getSegmentRegisterSourceMov(
+fn getSegToRegMemMovSourceAndDest(
     registers: *Register,
     mod: ModValue,
     sr: SrValue,
@@ -1446,7 +1491,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.bx,
                         .index = Address.si,
                         .displacement = DisplacementFormat.none,
-                        .data = null,
+                        .displacement_value = null,
                         .effective_address = (@as(u20, bx_value) << 4) + si_value,
                     };
                 },
@@ -1457,7 +1502,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.bx,
                         .index = Address.di,
                         .displacement = DisplacementFormat.none,
-                        .data = null,
+                        .displacement_value = null,
                         .effective_address = (@as(u20, bx_value) << 4) + di_value,
                     };
                 },
@@ -1468,7 +1513,7 @@ fn getSegmentRegisterSourceMov(
                             .base = Address.bp,
                             .index = Address.si,
                             .displacement = DisplacementFormat.none,
-                            .data = null,
+                            .displacement_value = null,
                             .effective_address = (@as(u20, bp_value) << 4) + si_value,
                         };
                     },
@@ -1479,7 +1524,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.bp,
                         .index = Address.di,
                         .displacement = DisplacementFormat.none,
-                        .data = null,
+                        .displacement_value = null,
                         .effective_address = (@as(u20, bp_value) << 4) + di_value,
                     };
                 },
@@ -1489,7 +1534,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.si,
                         .index = Address.none,
                         .displacement = DisplacementFormat.none,
-                        .data = null,
+                        .displacement_value = null,
                         .effective_address = (@as(u20, si_value) << 4),
                     };
                 },
@@ -1499,7 +1544,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.di,
                         .index = Address.none,
                         .displacement = DisplacementFormat.none,
-                        .data = null,
+                        .displacement_value = null,
                         .effective_address = (@as(u20, di_value) << 4),
                     };
                 },
@@ -1509,7 +1554,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.none,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, displacement),
                     };
                 },
@@ -1519,7 +1564,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.bx,
                         .index = Address.none,
                         .displacement = DisplacementFormat.none,
-                        .data = null,
+                        .displacement_value = null,
                         .effective_address = (@as(u20, bx_value) << 4),
                     };
                 },
@@ -1535,7 +1580,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.bx,
                         .index = Address.si,
                         .displacement = DisplacementFormat.d8,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, bx_value) + si_value + displacement,
                     };
                 },
@@ -1547,7 +1592,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.bx,
                         .index = Address.di,
                         .displacement = DisplacementFormat.d8,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, bx_value) + di_value + displacement,
                     };
                 },
@@ -1559,7 +1604,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.bp,
                         .index = Address.si,
                         .displacement = DisplacementFormat.d8,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, bp_value) + si_value + displacement,
                     };
                 },
@@ -1571,7 +1616,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.bp,
                         .index = Address.di,
                         .displacement = DisplacementFormat.d8,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, bp_value) + di_value + displacement,
                     };
                 },
@@ -1582,7 +1627,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.si,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d8,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, si_value) + displacement,
                     };
                 },
@@ -1593,7 +1638,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.di,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d8,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, di_value) + displacement,
                     };
                 },
@@ -1604,7 +1649,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.bp,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d8,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, bp_value) + displacement,
                     };
                 },
@@ -1615,7 +1660,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.bx,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d8,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, bx_value) + displacement,
                     };
                 },
@@ -1631,7 +1676,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.bx,
                         .index = Address.si,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = (@as(u20, bx_value) << 4) + si_value + displacement,
                     };
                 },
@@ -1643,7 +1688,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.bx,
                         .index = Address.di,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = (@as(u20, bx_value) << 4) + di_value + displacement,
                     };
                 },
@@ -1655,7 +1700,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.bp,
                         .index = Address.si,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = (@as(u20, bp_value) << 4) + si_value + displacement,
                     };
                 },
@@ -1667,7 +1712,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.bp,
                         .index = Address.di,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = (@as(u20, bp_value) << 4) + di_value + displacement,
                     };
                 },
@@ -1678,7 +1723,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.si,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, si_value) + displacement,
                     };
                 },
@@ -1689,7 +1734,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.di,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, di_value) + displacement,
                     };
                 },
@@ -1700,7 +1745,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.none,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = @as(u20, bp_value) + displacement,
                     };
                 },
@@ -1711,7 +1756,7 @@ fn getSegmentRegisterSourceMov(
                         .base = Address.bx,
                         .index = Address.none,
                         .displacement = DisplacementFormat.d16,
-                        .data = displacement,
+                        .displacement_value = displacement,
                         .effective_address = (@as(u20, bx_value) << 4) + displacement,
                     };
                 },
@@ -1763,7 +1808,7 @@ fn getSegmentRegisterSourceMov(
     }; 
 }
 
-fn getAccumulatorMovInstructionSource(w: WValue, addr_lo: ?u8, addr_hi: ?u8) InstructionInfo {
+fn getMemToAccMovSourceAndDest(w: WValue, addr_lo: ?u8, addr_hi: ?u8) InstructionInfo {
     const Address = AddressDirectory.Address;
     const destination_payload: DestinationInfo = DestinationInfo{
         .address = Address.ax,
@@ -1776,7 +1821,7 @@ fn getAccumulatorMovInstructionSource(w: WValue, addr_lo: ?u8, addr_hi: ?u8) Ins
                     .base = Address.none,
                     .index = Address.none,
                     .displacement = DisplacementFormat.d8,
-                    .data = @as(u16, addr_lo.?),
+                    .displacement_value = @as(u16, addr_lo.?),
                     .effective_address = null,
                 },
             };
@@ -1787,7 +1832,7 @@ fn getAccumulatorMovInstructionSource(w: WValue, addr_lo: ?u8, addr_hi: ?u8) Ins
                     .base = Address.none,
                     .index = Address.none,
                     .displacement = DisplacementFormat.d16,
-                    .data = (@as(u16, addr_hi.?) << 8) + addr_lo.?,
+                    .displacement_value = (@as(u16, addr_hi.?) << 8) + addr_lo.?,
                     .effective_address = null,
                 },
             };
@@ -1799,7 +1844,7 @@ fn getAccumulatorMovInstructionSource(w: WValue, addr_lo: ?u8, addr_hi: ?u8) Ins
     };
 }
 
-fn getAccumulatorMovInstructionDestination(w: WValue, addr_lo: ?u8, addr_hi: ?u8) InstructionInfo {
+fn getAccToMemMovSourceAndDest(w: WValue, addr_lo: ?u8, addr_hi: ?u8,) InstructionInfo {
     const Address = AddressDirectory.Address;
     var destination_payload: DestinationInfo = undefined;
     switch (w) {
@@ -1809,7 +1854,7 @@ fn getAccumulatorMovInstructionDestination(w: WValue, addr_lo: ?u8, addr_hi: ?u8
                     .base = Address.none,
                     .index = Address.none,
                     .displacement = DisplacementFormat.d8,
-                    .data = @as(u16, addr_lo.?),
+                    .displacement_value = @as(u16, addr_lo.?),
                     .effective_address = null,
                 },
             };
@@ -1820,7 +1865,7 @@ fn getAccumulatorMovInstructionDestination(w: WValue, addr_lo: ?u8, addr_hi: ?u8
                     .base = Address.none,
                     .index = Address.none,
                     .displacement = DisplacementFormat.d16,
-                    .data = (@as(u16, addr_hi.?) << 8) + addr_lo.?,
+                    .displacement_value = (@as(u16, addr_hi.?) << 8) + addr_lo.?,
                     .effective_address = null,
                 },
             };
@@ -1837,6 +1882,406 @@ fn getAccumulatorMovInstructionDestination(w: WValue, addr_lo: ?u8, addr_hi: ?u8
     };
 }
 
+// zig fmt: on
+
+fn getImmediateToRegMemMovDest(
+    registers: *Register,
+    mod: ModValue,
+    rm: RmValue,
+    w: WValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+    data: u8,
+    w_data: ?u8,
+) InstructionInfo {
+    const Address = AddressDirectory.Address;
+    const source_payload: SourceInfo = SourceInfo{
+        .immediate = @intCast(if (w == WValue.word) (@as(u16, w_data.?) << 8) + (@as(u16, data)) else @as(u16, data)),
+    };
+
+    var destination_payload: DestinationInfo = undefined;
+    switch (mod) {
+        .memoryModeNoDisplacement => {
+            switch (rm) {
+                .ALAX_BXSI_BXSID8_BXSID16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const si_value = registers.getSI();
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.si,
+                            .displacement = DisplacementFormat.none,
+                            .displacement_value = null,
+                            .effective_address = (@as(u20, bx_value) << 4) + si_value,
+                        },
+                    };
+                },
+                .CLCX_BXDI_BXDID8_BXDID16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const di_value = registers.getDI();
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.di,
+                            .displacement = DisplacementFormat.none,
+                            .displacement_value = null,
+                            .effective_address = (@as(u20, bx_value) << 4) + di_value,
+                        },
+                    };
+                },
+                .DLDX_BPSI_BPSID8_BPSID16 => {
+                    const bp_value = registers.getBP();
+                    const si_value = registers.getSI();
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.si,
+                            .displacement = DisplacementFormat.none,
+                            .displacement_value = null,
+                            .effective_address = (@as(u20, bp_value) << 4) + si_value,
+                        },
+                    };
+                },
+                .BLBX_BPDI_BPDID8_BPDID16 => {
+                    const bp_value = registers.getBP();
+                    const di_value = registers.getDI();
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.di,
+                            .displacement = DisplacementFormat.none,
+                            .displacement_value = null,
+                            .effective_address = (@as(u20, bp_value) << 4) + di_value,
+                        },
+                    };
+                },
+                .AHSP_SI_SID8_SID16 => {
+                    const si_value = registers.getSI();
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.si,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.none,
+                            .displacement_value = null,
+                            .effective_address = (@as(u20, si_value) << 4),
+                        },
+                    };
+                },
+                .CHBP_DI_DID8_DID16 => {
+                    const di_value = registers.getDI();
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.di,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.none,
+                            .displacement_value = null,
+                            .effective_address = (@as(u20, di_value) << 4),
+                        },
+                    };
+                },
+                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.none,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d16,
+                            .displacement_value = displacement,
+                            .effective_address = @as(u20, displacement),
+                        },
+                    };
+                },
+                .BHDI_BX_BXD8_BXD16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.none,
+                            .displacement_value = null,
+                            .effective_address = (@as(u20, bx_value) << 4),
+                        },
+                    };
+                },
+            }
+        },
+        .memoryMode8BitDisplacement => {
+            switch (rm) {
+                .ALAX_BXSI_BXSID8_BXSID16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_lo.?);
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.si,
+                            .displacement = DisplacementFormat.d8,
+                            .displacement_value = displacement,
+                            .effective_address = (@as(u20, bx_value) << 4) + si_value + displacement,
+                        },
+                    };
+                },
+                .CLCX_BXDI_BXDID8_BXDID16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_lo.?);
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.di,
+                            .displacement = DisplacementFormat.d8,
+                            .displacement_value = displacement,
+                            .effective_address = (@as(u20, bx_value) << 4) + di_value + displacement,
+                        },
+                    };
+                },
+                .DLDX_BPSI_BPSID8_BPSID16 => {
+                    const bp_value = registers.getBP();
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_lo.?);
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.si,
+                            .displacement = DisplacementFormat.d8,
+                            .displacement_value = displacement,
+                            .effective_address = (@as(u20, bp_value) << 4) + si_value + displacement,
+                        },
+                    };
+                },
+                .BLBX_BPDI_BPDID8_BPDID16 => {
+                    const bp_value = registers.getBP();
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_lo.?);
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.di,
+                            .displacement = DisplacementFormat.d8,
+                            .displacement_value = displacement,
+                            .effective_address = (@as(u20, bp_value) << 4) + di_value + displacement,
+                        },
+                    };
+                },
+                .AHSP_SI_SID8_SID16 => {
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_lo.?);
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.si,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d8,
+                            .displacement_value = displacement,
+                            .effective_address = (@as(u20, si_value) << 4) + displacement,
+                        },
+                    };
+                },
+                .CHBP_DI_DID8_DID16 => {
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_lo.?);
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.di,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d8,
+                            .displacement_value = displacement,
+                            .effective_address = (@as(u20, di_value) << 4) + displacement,
+                        },
+                    };
+                },
+                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                    const bp_value = registers.getBP();
+                    const displacement = @as(u16, disp_lo.?);
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d8,
+                            .displacement_value = displacement,
+                            .effective_address = (@as(u20, bp_value) << 4) + displacement,
+                        },
+                    };
+                },
+                .BHDI_BX_BXD8_BXD16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const displacement = @as(u16, disp_lo.?);
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d8,
+                            .displacement_value = displacement,
+                            .effective_address = (@as(u20, bx_value) << 4) + displacement,
+                        },
+                    };
+                },
+            }
+        },
+        .memoryMode16BitDisplacement => {
+            switch (rm) {
+                .ALAX_BXSI_BXSID8_BXSID16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.si,
+                            .displacement = DisplacementFormat.d16,
+                            .displacement_value = displacement,
+                            .effective_address = (@as(u20, bx_value) << 4) + si_value + displacement,
+                        },
+                    };
+                },
+                .CLCX_BXDI_BXDID8_BXDID16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.di,
+                            .displacement = DisplacementFormat.d16,
+                            .displacement_value = displacement,
+                            .effective_address = (@as(u20, bx_value) << 4) + di_value + displacement,
+                        },
+                    };
+                },
+                .DLDX_BPSI_BPSID8_BPSID16 => {
+                    const bp_value = registers.getBP();
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.si,
+                            .displacement = DisplacementFormat.d16,
+                            .displacement_value = displacement,
+                            .effective_address = (@as(u20, bp_value) << 4) + si_value + displacement,
+                        },
+                    };
+                },
+                .BLBX_BPDI_BPDID8_BPDID16 => {
+                    const bp_value = registers.getBP();
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.di,
+                            .displacement = DisplacementFormat.d16,
+                            .displacement_value = displacement,
+                            .effective_address = (@as(u20, bp_value) << 4) + di_value + displacement,
+                        },
+                    };
+                },
+                .AHSP_SI_SID8_SID16 => {
+                    const si_value = registers.getSI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.si,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d16,
+                            .displacement_value = displacement,
+                            .effective_address = (@as(u20, si_value) << 4) + displacement,
+                        },
+                    };
+                },
+                .CHBP_DI_DID8_DID16 => {
+                    const di_value = registers.getDI();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.di,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d16,
+                            .displacement_value = displacement,
+                            .effective_address = (@as(u20, di_value) << 4) + displacement,
+                        },
+                    };
+                },
+                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                    const bp_value = registers.getBP();
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bp,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d16,
+                            .displacement_value = displacement,
+                            .effective_address = (@as(u20, bp_value) << 4) + displacement,
+                        },
+                    };
+                },
+                .BHDI_BX_BXD8_BXD16 => {
+                    const bx_value = registers.getBX(WValue.word, null).value16;
+                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    destination_payload = DestinationInfo{
+                        .address_calculation = EffectiveAddressCalculation{
+                            .base = Address.bx,
+                            .index = Address.none,
+                            .displacement = DisplacementFormat.d16,
+                            .displacement_value = displacement,
+                            .effective_address = (@as(u20, bx_value) << 4) + displacement,
+                        },
+                    };
+                },
+            }
+        },
+        .registerModeNoDisplacement => {
+            switch (rm) {
+                .ALAX_BXSI_BXSID8_BXSID16 => {
+                    destination_payload = DestinationInfo{
+                        .address = if (w == WValue.word) Address.ax else Address.al,
+                    };
+                },
+                .CLCX_BXDI_BXDID8_BXDID16 => {
+                    destination_payload = DestinationInfo{
+                        .address = if (w == WValue.word) Address.cx else Address.cl,
+                    };
+                },
+                .DLDX_BPSI_BPSID8_BPSID16 => {
+                    destination_payload = DestinationInfo{
+                        .address = if (w == WValue.word) Address.dx else Address.dl,
+                    };
+                },
+                .BLBX_BPDI_BPDID8_BPDID16 => {
+                    destination_payload = DestinationInfo{
+                        .address = if (w == WValue.word) Address.bx else Address.bl,
+                    };
+                },
+                .AHSP_SI_SID8_SID16 => {
+                    destination_payload = DestinationInfo{
+                        .address = if (w == WValue.word) Address.sp else Address.ah,
+                    };
+                },
+                .CHBP_DI_DID8_DID16 => {
+                    destination_payload = DestinationInfo{
+                        .address = if (w == WValue.word) Address.bp else Address.ch,
+                    };
+                },
+                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                    destination_payload = DestinationInfo{
+                        .address = if (w == WValue.word) Address.si else Address.dh,
+                    };
+                },
+                .BHDI_BX_BXD8_BXD16 => {
+                    destination_payload = DestinationInfo{
+                        .address = if (w == WValue.word) Address.di else Address.bh,
+                    };
+                },
+            }
+        },
+    }
+
+    return InstructionInfo{
+        .destination_info = destination_payload,
+        .source_info = source_payload,
+    };
+}
+
+// zig fmt: off
 
 /// 0 for no sign extension, 1 for extending 8-bit immediate data to 16 bits if W = 1
 const SValue = enum(u1) {
@@ -1888,41 +2333,6 @@ fn movGetInstructionLength(mod: ModValue, rm: RmValue) u3 {
         },
     }
 }
-
-const InstructionInfo = struct {
-    destination_info: DestinationInfo,
-    source_info: SourceInfo,
-};
-
-const EffectiveAddressCalculation = struct {
-    base: ?AddressDirectory.Address,
-    index: ?AddressDirectory.Address,
-    displacement: ?DisplacementFormat,
-    data: ?u16,
-    effective_address: ?u20,
-};
-
-const DestinationInfoIdentifiers = enum {
-    address,
-    address_calculation,
-};
-
-const DestinationInfo = union(DestinationInfoIdentifiers) {
-    address: AddressDirectory.Address,
-    address_calculation: EffectiveAddressCalculation,
-};
-
-const SourceInfoIdentifiers = enum {
-    address,
-    address_calculation,
-    immediate,
-};
-
-const SourceInfo = union(SourceInfoIdentifiers) {
-    address: AddressDirectory.Address,
-    address_calculation: EffectiveAddressCalculation,
-    immediate: u20,
-};
 
 /// Matching binary values against instruction- and register enum's. Returns names of the
 /// instructions and registers as strings in an []u8.
@@ -2292,7 +2702,7 @@ fn decodeMovWithMod(
         },
         else => {
             const result = DecodePayload{
-                .err = DecodeInstructionError.NotYetImplementet,
+                .err = DecodeInstructionError.NotYetImplemented,
             };
             log.err("Error: Decode mov with mod field not possible. Instruction not yet implemented.", .{});
             return result;
@@ -2398,7 +2808,7 @@ fn decodeMovWithoutMod(
         },
         else => {
             const result = DecodePayload{
-                .err = DecodeInstructionError.NotYetImplementet,
+                .err = DecodeInstructionError.NotYetImplemented,
             };
             log.err("Error: Decode mov without mod field not possible. Instruction not yet implemented.", .{});
             return result;
@@ -3254,370 +3664,41 @@ pub fn main() !void {
             },
         }
 
-        switch (payload) {
-            .err => {
-                switch (payload.err) {
-                    DecodeInstructionError.DecodeError => {
-                        log.err("{s}: Instruction 0x{x} could not be decoded.\ncontinue...", .{
-                            @errorName(payload.err),
-                            InstructionBytes[0],
-                        });
-                        continue;
-                    },
-                    DecodeInstructionError.NotYetImplementet => {
-                        log.err("{s}: 0x{x} ({s}) not implemented yet.\ncontinue...", .{
-                            @errorName(payload.err),
-                            InstructionBytes[0],
-                            @tagName(instruction),
-                        });
-                        continue;
-                    },
-                }
-            },
-            .mov_with_mod_instruction => {
-                var instruction_info: InstructionInfo = undefined;
-                switch (instruction) {
-                    .mov_source_regmem8_reg8,
-                    .mov_source_regmem16_reg16,
-                    .mov_dest_reg8_regmem8,
-                    .mov_dest_reg16_regmem16,
-                    => {
-                        const d: DValue = payload.mov_with_mod_instruction.d.?;
-                        w = payload.mov_with_mod_instruction.w.?;
-                        const reg: RegValue = payload.mov_with_mod_instruction.reg.?;
-                        instruction_info = getRegMemMovSourceAndDest(
-                            &registers,
-                            d,
-                            w,
-                            reg,
-                            mod,
-                            rm,
-                            if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[2] else null,
-                            if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
-                        );
-                    },
-                    .mov_immediate_to_regmem16 => {
-                        const sr: SrValue = payload.mov_with_mod_instruction.sr.?;
-                        instruction_info = getSegmentRegisterDestinationMov(
-                            &registers,
-                            mod,
-                            sr,
-                            rm,
-                            if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[2] else null,
-                            if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
-                        );
-                    },
-                    .mov_immediate_to_regmem8 => {
-                        const sr: SrValue = payload.mov_with_mod_instruction.sr.?;
-                        instruction_info = getSegmentRegisterSourceMov(
-                            &registers,
-                            mod,
-                            sr,
-                            rm,
-                            if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[2] else null,
-                            if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
-                        );
-                    },
-                    else => {
-                        log.err("Error: Instruction 0x{x} not implemented yet", .{instruction});
-                    },
-                }
-
-                const source = instruction_info.source_info;
-                const destination = instruction_info.destination_info;
-                makeAssembly(&OutputWriter, destination, source);
-                switch (destination) {
-                    .address => {
-                        print("{t}, ", .{destination.address});
-                        OutputWriter.print(
-                            "{t}, ",
-                            .{destination.address},
-                        ) catch |err| {
-                            log.err(
-                                "{s}: Something went wrong trying to write destination {t} the output file.",
-                                .{ @errorName(err), destination.address },
-                            );
-                        };
-                    },
-                    .address_calculation => {
-                        const Address = AddressDirectory.Address;
-                        if (destination.address_calculation.index == Address.none) {
-                            if (destination.address_calculation.displacement == DisplacementFormat.none) {
-                                print("[{t}], ", .{
-                                    destination.address_calculation.base.?,
-                                });
-                                OutputWriter.print("[{t}], ", .{
-                                    destination.address_calculation.base.?,
-                                }) catch |err| {
-                                    log.err(
-                                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
-                                        .{ @errorName(err), destination.address_calculation },
-                                    );
-                                };
-                            } else if (destination.address_calculation.displacement != DisplacementFormat.none and destination.address_calculation.data.? == 0) {
-                                print("[{t}], ", .{
-                                    destination.address_calculation.base.?,
-                                });
-                                OutputWriter.print("[{t}], ", .{
-                                    destination.address_calculation.base.?,
-                                }) catch |err| {
-                                    log.err(
-                                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
-                                        .{ @errorName(err), destination.address_calculation },
-                                    );
-                                };
-                            } else if (destination.address_calculation.displacement != DisplacementFormat.none) {
-                                print("[{t} + {d}], ", .{
-                                    destination.address_calculation.base.?,
-                                    destination.address_calculation.data.?,
-                                });
-                                OutputWriter.print("[{t} + {d}], ", .{
-                                    destination.address_calculation.base.?,
-                                    destination.address_calculation.data.?,
-                                }) catch |err| {
-                                    log.err(
-                                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
-                                        .{ @errorName(err), destination.address_calculation },
-                                    );
-                                };
-                            }
-                        } else if (destination.address_calculation.index != Address.none) {
-                            if (destination.address_calculation.displacement == DisplacementFormat.none) {
-                                print("[{t} + {t}], ", .{
-                                    destination.address_calculation.base.?,
-                                    destination.address_calculation.index.?,
-                                });
-                                OutputWriter.print("[{t} + {t}], ", .{
-                                    destination.address_calculation.base.?,
-                                    destination.address_calculation.index.?,
-                                }) catch |err| {
-                                    log.err(
-                                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
-                                        .{ @errorName(err), destination.address_calculation },
-                                    );
-                                };
-                            } else if (destination.address_calculation.displacement != DisplacementFormat.none) {
-                                print("[{t} + {t} + {d}], ", .{
-                                    destination.address_calculation.base.?,
-                                    destination.address_calculation.index.?,
-                                    destination.address_calculation.data.?,
-                                });
-                                OutputWriter.print("[{t} + {t} + {d}], ", .{
-                                    destination.address_calculation.base.?,
-                                    destination.address_calculation.index.?,
-                                    destination.address_calculation.data.?,
-                                }) catch |err| {
-                                    log.err(
-                                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
-                                        .{ @errorName(err), destination.address_calculation },
-                                    );
-                                };
-                            }
-                        }
-                    },
-                }
-
-                switch (source) {
-                    .address => {
-                        print("{t}\n", .{source.address});
-                        OutputWriter.print(
-                            "{t}\n",
-                            .{source.address},
-                        ) catch |err| {
-                            log.err(
-                                "{s}: Something went wrong trying to write source {any} to the output file.",
-                                .{ @errorName(err), source.address },
-                            );
-                        };
-                    },
-                    .address_calculation => {
-                        const Address = AddressDirectory.Address;
-                        if (source.address_calculation.index == Address.none) {
-                            if (source.address_calculation.displacement == DisplacementFormat.none) {
-                                print("[{t}]\n", .{
-                                    source.address_calculation.base.?,
-                                });
-                                OutputWriter.print("[{t}]\n", .{
-                                    source.address_calculation.base.?,
-                                }) catch |err| {
-                                    log.err(
-                                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
-                                        .{ @errorName(err), source.address_calculation },
-                                    );
-                                };
-                            } else if (source.address_calculation.displacement != DisplacementFormat.none and source.address_calculation.data.? == 0) {
-                                print("[{t}]\n", .{
-                                    source.address_calculation.base.?,
-                                });
-                                OutputWriter.print("[{t}]\n", .{
-                                    source.address_calculation.base.?,
-                                }) catch |err| {
-                                    log.err(
-                                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
-                                        .{ @errorName(err), source.address_calculation },
-                                    );
-                                };
-                            } else if (source.address_calculation.displacement != DisplacementFormat.none) {
-                                print("[{t} + {d}]\n", .{
-                                    source.address_calculation.base.?,
-                                    source.address_calculation.data.?,
-                                });
-                                OutputWriter.print("[{t} + {d}]\n", .{
-                                    source.address_calculation.base.?,
-                                    source.address_calculation.data.?,
-                                }) catch |err| {
-                                    log.err(
-                                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
-                                        .{ @errorName(err), source.address_calculation },
-                                    );
-                                };
-                            }
-                        } else if (source.address_calculation.index != Address.none) {
-                            if (source.address_calculation.displacement == DisplacementFormat.none) {
-                                print("[{t} + {t}]\n", .{
-                                    source.address_calculation.base.?,
-                                    source.address_calculation.index.?,
-                                });
-                                OutputWriter.print("[{t} + {t}]\n", .{
-                                    source.address_calculation.base.?,
-                                    source.address_calculation.index.?,
-                                }) catch |err| {
-                                    log.err(
-                                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
-                                        .{ @errorName(err), source.address_calculation },
-                                    );
-                                };
-                            } else if (source.address_calculation.displacement != DisplacementFormat.none) {
-                                print("[{t} + {t} + {d}]\n", .{
-                                    source.address_calculation.base.?,
-                                    source.address_calculation.index.?,
-                                    source.address_calculation.data.?,
-                                });
-                                OutputWriter.print("[{t} + {t} + {d}]\n", .{
-                                    source.address_calculation.base.?,
-                                    source.address_calculation.index.?,
-                                    source.address_calculation.data.?,
-                                }) catch |err| {
-                                    log.err(
-                                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
-                                        .{ @errorName(err), source.address_calculation },
-                                    );
-                                };
-                            }
-                        }
-                    },
-                    .immediate => {
-                        print("{d}\n", .{source.immediate});
-                        OutputWriter.print(
-                            "{d}\n",
-                            .{source.immediate},
-                        ) catch |err| {
-                            log.err(
-                                "{s}: Something went wrong trying to write source index {any} to the output file.",
-                                .{ @errorName(err), source.immediate },
-                            );
-                        };
-                    },
-                }
-            },
-            .mov_without_mod_instruction => {
-                var instruction_info: InstructionInfo = undefined;
-                switch (instruction) {
-                    .mov_immediate_reg_al,
-                    .mov_immediate_reg_cl,
-                    .mov_immediate_reg_dl,
-                    .mov_immediate_reg_bl,
-                    .mov_immediate_reg_ah,
-                    .mov_immediate_reg_ch,
-                    .mov_immediate_reg_dh,
-                    .mov_immediate_reg_bh,
-                    .mov_immediate_reg_ax,
-                    .mov_immediate_reg_cx,
-                    .mov_immediate_reg_dx,
-                    .mov_immediate_reg_bx,
-                    .mov_immediate_reg_bp,
-                    .mov_immediate_reg_sp,
-                    .mov_immediate_reg_si,
-                    .mov_immediate_reg_di,
-                    => {
-                        instruction_info = getImmediateMovInstructionDest(
-                            payload.mov_without_mod_instruction.w,
-                            payload.mov_without_mod_instruction.reg.?,
-                        );
-                    },
-                    .mov_mem8_acc8,
-                    .mov_mem16_acc16,
-                    => {
-                        instruction_info = getAccumulatorMovInstructionSource(
-                            payload.mov_without_mod_instruction.w,
-                            payload.mov_without_mod_instruction.addr_lo,
-                            payload.mov_without_mod_instruction.addr_hi,
-                        );
-                    },
-                    .mov_acc8_mem8,
-                    .mov_acc16_mem16,
-                    => {
-                        instruction_info = getAccumulatorMovInstructionDestination(
-                            payload.mov_without_mod_instruction.w,
-                            payload.mov_without_mod_instruction.addr_lo,
-                            payload.mov_without_mod_instruction.addr_hi,
-                        );
-                    },
-                    else => {
-                        log.err("Error: Instruction 0x{x} not implemented yet", .{instruction});
-                    },
-                }
-
-                const destination = instruction_info.destination_info;
-                // const source_payload = instruction_info.source_info;
-
-                print("{s} ", .{
-                    payload.mov_without_mod_instruction.mnemonic,
-                });
-                OutputWriter.print("{s} ", .{
-                    payload.mov_without_mod_instruction.mnemonic,
-                }) catch |err| {
-                    log.err(
-                        "{s}: Something went wrong trying to write destination register {s} to the output file.",
-                        .{ @errorName(err), payload.mov_without_mod_instruction.mnemonic },
-                    );
-                };
-
-                switch (destination) {
-                    .address => {
-                        print("{t},", .{destination.address});
-                        OutputWriter.print("{t},", .{
-                            destination.address,
-                        }) catch |err| {
-                            log.err(
-                                "{s}: Something went wrong trying to write destination register {t} to the output file.",
-                                .{ @errorName(err), destination.address },
-                            );
-                        };
-                    },
-                    else => {
-                        print("Error: Not a valid destination address.", .{});
-                    },
-                }
-
-                var immediate_value: u16 = undefined;
-                switch (w) {
-                    .byte => {
-                        immediate_value = @as(u16, payload.mov_without_mod_instruction.data.?);
-                    },
-                    .word => {
-                        immediate_value = (@as(u16, payload.mov_without_mod_instruction.w_data.?) << 8) + payload.mov_without_mod_instruction.data.?;
-                    },
-                }
-                print("{d}\n", .{immediate_value});
-                OutputWriter.print("{d}\n", .{immediate_value}) catch |err| {
-                    log.err(
-                        "{s}: Something went wrong trying to write immediate value {any} to the output file.",
-                        .{ @errorName(err), immediate_value },
-                    );
-                };
-            },
-        }
+        makeAssembly(
+            &registers,
+            OutputWriter,
+            InstructionBytes,
+            payload,
+        ) catch |err| {
+            switch (err) {
+                DecodeInstructionError.DecodeError => {
+                    log.err("{s}: Instruction 0x{x} could not be decoded.\ncontinue...", .{
+                        @errorName(payload.err),
+                        InstructionBytes[0],
+                    });
+                },
+                DecodeInstructionError.InstructionError => {
+                    log.err("{s}: Instruction 0x{x} could not be decoded.\ncontinue...", .{
+                        @errorName(payload.err),
+                        InstructionBytes[0],
+                    });
+                },
+                DecodeInstructionError.NotYetImplemented => {
+                    log.err("{s}: 0x{x} ({s}) not implemented yet.\ncontinue...", .{
+                        @errorName(payload.err),
+                        InstructionBytes[0],
+                        @tagName(instruction),
+                    });
+                },
+                DecodeInstructionError.WriteFailed => {
+                    log.err("{s}: Failed to write instruction 0x{x} ({s}) to .asm file.\ncontinue...", .{
+                        @errorName(payload.err),
+                        InstructionBytes[0],
+                        @tagName(instruction),
+                    });
+                },
+            }
+        };
 
         try OutputWriter.flush();
 
@@ -3641,11 +3722,400 @@ pub fn main() !void {
 }
 
 fn makeAssembly(
-    output_writer: *std.io.Writer,
-    // destination: DestinationInfo,
-    // source: SourceInfo,
-) void {
-    output_writer.print("", .{});
+    registers: *Register,
+    OutputWriter: *std.io.Writer,
+    InstructionBytes: [6]u8,
+    payload: DecodePayload,
+) DecodeInstructionError!void {
+    const log = std.log.scoped(.makeAssembly);
+
+    switch (payload) {
+        .err => {
+            return payload.err;
+        },
+        .mov_with_mod_instruction => {
+            log.info("{s} ", .{payload.mov_with_mod_instruction.mnemonic});
+            OutputWriter.print("{s} ", .{payload.mov_with_mod_instruction.mnemonic}) catch |err| {
+                return err;
+            };
+
+            const mod = payload.mov_with_mod_instruction.mod;
+            const rm = payload.mov_with_mod_instruction.rm;
+            const instruction: BinaryInstructions = @enumFromInt(InstructionBytes[0]);
+            var instruction_info: InstructionInfo = undefined;
+            switch (instruction) {
+                .mov_source_regmem8_reg8,
+                .mov_source_regmem16_reg16,
+                .mov_dest_reg8_regmem8,
+                .mov_dest_reg16_regmem16,
+                => {
+                    const d: DValue = payload.mov_with_mod_instruction.d.?;
+                    const reg: RegValue = payload.mov_with_mod_instruction.reg.?;
+                    instruction_info = getRegMemToFromRegMovSourceAndDest(
+                        registers,
+                        d,
+                        payload.mov_with_mod_instruction.w.?,
+                        reg,
+                        mod,
+                        rm,
+                        if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[2] else null,
+                        if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
+                    );
+                },
+                .mov_seg_regmem => {
+                    const sr: SrValue = payload.mov_with_mod_instruction.sr.?;
+                    instruction_info = getSegToRegMemMovSourceAndDest(
+                        registers,
+                        mod,
+                        sr,
+                        rm,
+                        if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[2] else null,
+                        if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
+                    );
+                },
+                .mov_regmem_seg => {
+                    const sr: SrValue = payload.mov_with_mod_instruction.sr.?;
+                    instruction_info = getRegMemToSegMovSourceAndDest(
+                        registers,
+                        mod,
+                        sr,
+                        rm,
+                        if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[2] else null,
+                        if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
+                    );
+                },
+                .mov_immediate_to_regmem8 => {
+                    const w = payload.mov_with_mod_instruction.w.?;
+                    instruction_info = getImmediateToRegMemMovDest(
+                        registers,
+                        mod,
+                        rm,
+                        w,
+                        payload.mov_with_mod_instruction.disp_lo.?,
+                        null,
+                        payload.mov_with_mod_instruction.data.?,
+                        if (w == WValue.word) payload.mov_with_mod_instruction.w_data.? else null,
+                    );
+                },
+                .mov_immediate_to_regmem16 => {
+                    const w = payload.mov_with_mod_instruction.w.?;
+                    instruction_info = getImmediateToRegMemMovDest(
+                        registers,
+                        mod,
+                        rm,
+                        w,
+                        payload.mov_with_mod_instruction.disp_lo.?,
+                        payload.mov_with_mod_instruction.disp_hi.?,
+                        payload.mov_with_mod_instruction.data.?,
+                        if (w == WValue.word) payload.mov_with_mod_instruction.w_data.? else null,
+                    );
+                },
+                else => {
+                    log.err("Error: Instruction 0x{x} not implemented yet", .{instruction});
+                },
+            }
+
+            const source = instruction_info.source_info;
+            const destination = instruction_info.destination_info;
+            switch (destination) {
+                .address => {
+                    log.info("{t}, ", .{destination.address});
+                    OutputWriter.print(
+                        "{t}, ",
+                        .{destination.address},
+                    ) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write destination {t} the output file.",
+                            .{ @errorName(err), destination.address },
+                        );
+                    };
+                },
+                .address_calculation => {
+                    const Address = AddressDirectory.Address;
+                    if (destination.address_calculation.index == Address.none) {
+                        if (destination.address_calculation.displacement == DisplacementFormat.none) {
+                            log.info("[{t}], ", .{
+                                destination.address_calculation.base.?,
+                            });
+                            OutputWriter.print("[{t}], ", .{
+                                destination.address_calculation.base.?,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), destination.address_calculation },
+                                );
+                            };
+                        } else if (destination.address_calculation.displacement != DisplacementFormat.none and destination.address_calculation.displacement_value.? == 0) {
+                            log.info("[{t}], ", .{
+                                destination.address_calculation.base.?,
+                            });
+                            OutputWriter.print("[{t}], ", .{
+                                destination.address_calculation.base.?,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), destination.address_calculation },
+                                );
+                            };
+                        } else if (destination.address_calculation.displacement != DisplacementFormat.none) {
+                            log.info("[{t} + {d}], ", .{
+                                destination.address_calculation.base.?,
+                                destination.address_calculation.displacement_value.?,
+                            });
+                            OutputWriter.print("[{t} + {d}], ", .{
+                                destination.address_calculation.base.?,
+                                destination.address_calculation.displacement_value.?,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), destination.address_calculation },
+                                );
+                            };
+                        }
+                    } else if (destination.address_calculation.index != Address.none) {
+                        if (destination.address_calculation.displacement == DisplacementFormat.none) {
+                            log.info("[{t} + {t}], ", .{
+                                destination.address_calculation.base.?,
+                                destination.address_calculation.index.?,
+                            });
+                            OutputWriter.print("[{t} + {t}], ", .{
+                                destination.address_calculation.base.?,
+                                destination.address_calculation.index.?,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), destination.address_calculation },
+                                );
+                            };
+                        } else if (destination.address_calculation.displacement != DisplacementFormat.none) {
+                            log.info("[{t} + {t} + {d}], ", .{
+                                destination.address_calculation.base.?,
+                                destination.address_calculation.index.?,
+                                destination.address_calculation.displacement_value.?,
+                            });
+                            OutputWriter.print("[{t} + {t} + {d}], ", .{
+                                destination.address_calculation.base.?,
+                                destination.address_calculation.index.?,
+                                destination.address_calculation.displacement_value.?,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), destination.address_calculation },
+                                );
+                            };
+                        }
+                    }
+                },
+            }
+
+            switch (source) {
+                .address => {
+                    log.info("{t}\n", .{source.address});
+                    OutputWriter.print(
+                        "{t}\n",
+                        .{source.address},
+                    ) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write source {any} to the output file.",
+                            .{ @errorName(err), source.address },
+                        );
+                    };
+                },
+                .address_calculation => {
+                    const Address = AddressDirectory.Address;
+                    if (source.address_calculation.index == Address.none) {
+                        if (source.address_calculation.displacement == DisplacementFormat.none) {
+                            log.info("[{t}]\n", .{
+                                source.address_calculation.base.?,
+                            });
+                            OutputWriter.print("[{t}]\n", .{
+                                source.address_calculation.base.?,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), source.address_calculation },
+                                );
+                            };
+                        } else if (source.address_calculation.displacement != DisplacementFormat.none and source.address_calculation.displacement_value.? == 0) {
+                            log.info("[{t}]\n", .{
+                                source.address_calculation.base.?,
+                            });
+                            OutputWriter.print("[{t}]\n", .{
+                                source.address_calculation.base.?,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), source.address_calculation },
+                                );
+                            };
+                        } else if (source.address_calculation.displacement != DisplacementFormat.none) {
+                            log.info("[{t} + {d}]\n", .{
+                                source.address_calculation.base.?,
+                                source.address_calculation.displacement_value.?,
+                            });
+                            OutputWriter.print("[{t} + {d}]\n", .{
+                                source.address_calculation.base.?,
+                                source.address_calculation.displacement_value.?,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), source.address_calculation },
+                                );
+                            };
+                        }
+                    } else if (source.address_calculation.index != Address.none) {
+                        if (source.address_calculation.displacement == DisplacementFormat.none) {
+                            log.info("[{t} + {t}]\n", .{
+                                source.address_calculation.base.?,
+                                source.address_calculation.index.?,
+                            });
+                            OutputWriter.print("[{t} + {t}]\n", .{
+                                source.address_calculation.base.?,
+                                source.address_calculation.index.?,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), source.address_calculation },
+                                );
+                            };
+                        } else if (source.address_calculation.displacement != DisplacementFormat.none) {
+                            log.info("[{t} + {t} + {d}]\n", .{
+                                source.address_calculation.base.?,
+                                source.address_calculation.index.?,
+                                source.address_calculation.displacement_value.?,
+                            });
+                            OutputWriter.print("[{t} + {t} + {d}]\n", .{
+                                source.address_calculation.base.?,
+                                source.address_calculation.index.?,
+                                source.address_calculation.displacement_value.?,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), source.address_calculation },
+                                );
+                            };
+                        }
+                    }
+                },
+                .immediate => {
+                    log.info("{d}\n", .{source.immediate});
+                    OutputWriter.print(
+                        "{d}\n",
+                        .{source.immediate},
+                    ) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write source index {any} to the output file.",
+                            .{ @errorName(err), source.immediate },
+                        );
+                    };
+                },
+            }
+        },
+        .mov_without_mod_instruction => {
+            log.info("{s} ", .{payload.mov_without_mod_instruction.mnemonic});
+            OutputWriter.print("{s} ", .{payload.mov_without_mod_instruction.mnemonic}) catch |err| {
+                return err;
+            };
+
+            const instruction: BinaryInstructions = @enumFromInt(InstructionBytes[0]);
+            const w = payload.mov_without_mod_instruction.w;
+            var instruction_info: InstructionInfo = undefined;
+            switch (instruction) {
+                .mov_immediate_reg_al,
+                .mov_immediate_reg_cl,
+                .mov_immediate_reg_dl,
+                .mov_immediate_reg_bl,
+                .mov_immediate_reg_ah,
+                .mov_immediate_reg_ch,
+                .mov_immediate_reg_dh,
+                .mov_immediate_reg_bh,
+                .mov_immediate_reg_ax,
+                .mov_immediate_reg_cx,
+                .mov_immediate_reg_dx,
+                .mov_immediate_reg_bx,
+                .mov_immediate_reg_bp,
+                .mov_immediate_reg_sp,
+                .mov_immediate_reg_si,
+                .mov_immediate_reg_di,
+                => {
+                    instruction_info = getImmediateToRegMovDest(
+                        payload.mov_without_mod_instruction.w,
+                        payload.mov_without_mod_instruction.reg.?,
+                    );
+                },
+                .mov_mem8_acc8,
+                .mov_mem16_acc16,
+                => {
+                    instruction_info = getMemToAccMovSourceAndDest(
+                        payload.mov_without_mod_instruction.w,
+                        payload.mov_without_mod_instruction.addr_lo,
+                        payload.mov_without_mod_instruction.addr_hi,
+                    );
+                },
+                .mov_acc8_mem8,
+                .mov_acc16_mem16,
+                => {
+                    instruction_info = getAccToMemMovSourceAndDest(
+                        payload.mov_without_mod_instruction.w,
+                        payload.mov_without_mod_instruction.addr_lo,
+                        payload.mov_without_mod_instruction.addr_hi,
+                    );
+                },
+                else => {
+                    log.err("Error: Instruction 0x{x} not implemented yet", .{instruction});
+                },
+            }
+
+            const destination = instruction_info.destination_info;
+            // const source_payload = instruction_info.source_info;
+
+            log.info("{s} ", .{
+                payload.mov_without_mod_instruction.mnemonic,
+            });
+            OutputWriter.print("{s} ", .{
+                payload.mov_without_mod_instruction.mnemonic,
+            }) catch |err| {
+                log.err(
+                    "{s}: Something went wrong trying to write destination register {s} to the output file.",
+                    .{ @errorName(err), payload.mov_without_mod_instruction.mnemonic },
+                );
+            };
+
+            switch (destination) {
+                .address => {
+                    log.info("{t},", .{destination.address});
+                    OutputWriter.print("{t},", .{
+                        destination.address,
+                    }) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write destination register {t} to the output file.",
+                            .{ @errorName(err), destination.address },
+                        );
+                    };
+                },
+                else => {
+                    log.err("Error: Not a valid destination address.", .{});
+                },
+            }
+
+            var immediate_value: u16 = undefined;
+            switch (w) {
+                .byte => {
+                    immediate_value = @as(u16, payload.mov_without_mod_instruction.data.?);
+                },
+                .word => {
+                    immediate_value = (@as(u16, payload.mov_without_mod_instruction.w_data.?) << 8) + payload.mov_without_mod_instruction.data.?;
+                },
+            }
+            log.info("{d}\n", .{immediate_value});
+            OutputWriter.print("{d}\n", .{immediate_value}) catch |err| {
+                log.err(
+                    "{s}: Something went wrong trying to write immediate value {any} to the output file.",
+                    .{ @errorName(err), immediate_value },
+                );
+            };
+        },
+    }
 }
 
 fn runAssemblyTest(
@@ -4098,7 +4568,7 @@ test "TEST listing_0039_more_movs" {
 test "TEST_listing_0040_challenge_movs" {
 
     // 0xC6, mod: 0b00, sr: 0b00,
-    const input_0xC6_memory_mode_no_displacement_ES: [6]u8 = [_]u8{
+    const input_0xC6_memory_mode_no_displacement: [6]u8 = [_]u8{
         0b1100_0110, // 0xC6
         0b0000_0011, // 0x03
         0b0000_0111, // 0x07
@@ -4106,18 +4576,18 @@ test "TEST_listing_0040_challenge_movs" {
         0b0000_0000,
         0b0000_0000,
     };
-    const output_payload_0xC6_memory_mode_no_displacement_ES = DecodePayload{
+    const output_payload_0xC6_memory_mode_no_displacement = DecodePayload{
         .mov_with_mod_instruction = MovWithModInstruction{
             .mnemonic = "mov",
             .d = null,
             .w = WValue.byte,
             .mod = ModValue.memoryModeNoDisplacement,
             .reg = null,
-            .sr = SrValue.ES,
+            .sr = null,
             .rm = RmValue.BLBX_BPDI_BPDID8_BPDID16,
             .disp_lo = null,
             .disp_hi = null,
-            .data = input_0xC6_memory_mode_no_displacement_ES[2],
+            .data = input_0xC6_memory_mode_no_displacement[2],
             .w_data = null,
         },
     };
@@ -4125,13 +4595,13 @@ test "TEST_listing_0040_challenge_movs" {
         decodeMovWithMod(
             ModValue.memoryModeNoDisplacement,
             RmValue.BLBX_BPDI_BPDID8_BPDID16,
-            input_0xC6_memory_mode_no_displacement_ES,
+            input_0xC6_memory_mode_no_displacement,
         ),
-        output_payload_0xC6_memory_mode_no_displacement_ES,
+        output_payload_0xC6_memory_mode_no_displacement,
     );
 
     // 0xC7, mod: 0b10, sr: 0b10,
-    const input_0xC7_memory_mode_16_bit_displacement_SS: [6]u8 = [_]u8{
+    const input_0xC7_memory_mode_16_bit_displacement: [6]u8 = [_]u8{
         0b1100_0111, // 0xC7
         0b1001_0100, // 0x94
         0b0100_0010, // 0x42
@@ -4139,27 +4609,27 @@ test "TEST_listing_0040_challenge_movs" {
         0b0010_1100, // 0x2C
         0b0010_0100, // 0x24
     };
-    const output_payload_0xC7_memory_mode_16_bit_displacement_SS = DecodePayload{
+    const output_payload_0xC7_memory_mode_16_bit_displacement = DecodePayload{
         .mov_with_mod_instruction = MovWithModInstruction{
             .mnemonic = "mov",
             .d = null,
             .w = WValue.word,
             .mod = ModValue.memoryMode16BitDisplacement,
             .reg = null,
-            .sr = SrValue.SS,
+            .sr = null,
             .rm = RmValue.AHSP_SI_SID8_SID16,
-            .disp_lo = input_0xC7_memory_mode_16_bit_displacement_SS[2],
-            .disp_hi = input_0xC7_memory_mode_16_bit_displacement_SS[3],
-            .data = input_0xC7_memory_mode_16_bit_displacement_SS[4],
-            .w_data = input_0xC7_memory_mode_16_bit_displacement_SS[5],
+            .disp_lo = input_0xC7_memory_mode_16_bit_displacement[2],
+            .disp_hi = input_0xC7_memory_mode_16_bit_displacement[3],
+            .data = input_0xC7_memory_mode_16_bit_displacement[4],
+            .w_data = input_0xC7_memory_mode_16_bit_displacement[5],
         },
     };
     try std.testing.expectEqual(
         decodeMovWithMod(
             ModValue.memoryMode16BitDisplacement,
             RmValue.AHSP_SI_SID8_SID16,
-            input_0xC7_memory_mode_16_bit_displacement_SS,
+            input_0xC7_memory_mode_16_bit_displacement,
         ),
-        output_payload_0xC7_memory_mode_16_bit_displacement_SS,
+        output_payload_0xC7_memory_mode_16_bit_displacement,
     );
 }
