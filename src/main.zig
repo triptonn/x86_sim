@@ -192,23 +192,27 @@ const EffectiveAddressCalculation = struct {
 const DestinationInfoIdentifiers = enum {
     address,
     address_calculation,
+    mem_addr,
 };
 
 const DestinationInfo = union(DestinationInfoIdentifiers) {
     address: AddressDirectory.Address,
     address_calculation: EffectiveAddressCalculation,
+    mem_addr: u20,
 };
 
 const SourceInfoIdentifiers = enum {
     address,
     address_calculation,
     immediate,
+    mem_addr,
 };
 
 const SourceInfo = union(SourceInfoIdentifiers) {
     address: AddressDirectory.Address,
     address_calculation: EffectiveAddressCalculation,
     immediate: u20,
+    mem_addr: u20,
 };
 
 /// (* .memoryModeNoDisplacement has 16 Bit displacement if
@@ -341,6 +345,8 @@ fn getRegMemToFromRegMovSourceAndDest(
     var dest: Address = undefined;
     var source: Address = undefined;
     var immediate_value: u20 = undefined;
+    var source_mem_addr: u20 = undefined;
+    var destination_mem_addr: u20 = undefined;
     var dest_address_calculation: EffectiveAddressCalculation = undefined;
     var source_address_calculation: EffectiveAddressCalculation = undefined;
     const regIsSource: bool = if (d == DValue.source) true else false;
@@ -521,64 +527,17 @@ fn getRegMemToFromRegMovSourceAndDest(
                         source = Address.di;
                     }
                 },
+
+
+                // TODO: What value should i pass along here? I think
+                // it is an immediate value. Make sure!
                 .DHSI_DIRECTACCESS_BPD8_BPD16 => {
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     immediate_value = displacement;
                     if (regIsSource) {
-                        switch (reg) {
-                            .ALAX => { 
-                                dest = Address.ax;
-                            },
-                            .BLBX => {
-                                dest = Address.bx;
-                            },
-                            .CLCX => {
-                                dest = Address.cx;
-                            },
-                            .DLDX => {
-                                dest = Address.dx;
-                            },
-                            .AHSP => {
-                                dest = Address.sp;
-                            },
-                            .BHDI => {
-                                dest = Address.di;
-                            },
-                            .CHBP => {
-                                dest = Address.bp;
-                            },
-                            .DHSI => {
-                                dest = Address.si;
-                            },
-                        } 
+                        destination_mem_addr = @as(u20, displacement);
                     } else if (!regIsSource) {
-                        switch (reg) {
-                            .ALAX => { 
-                                source = Address.ax;
-                            },
-                            .BLBX => {
-                                source = Address.bx;
-                            },
-                            .CLCX => {
-                                source = Address.cx;
-                            },
-                            .DLDX => {
-                                source = Address.dx;
-                            },
-                            .AHSP => {
-                                source = Address.sp;
-                            },
-                            .BHDI => {
-                                source = Address.di;
-                            },
-                            .CHBP => {
-                                source = Address.bp;
-                            },
-                            .DHSI => {
-                                source = Address.si;
-                            },
-                        } 
-
+                        source_mem_addr = @as(u20, displacement);
                     }
                 },
                 .BHDI_BX_BXD8_BXD16 => {
@@ -959,7 +918,7 @@ fn getRegMemToFromRegMovSourceAndDest(
     var destination_payload: DestinationInfo = undefined;
     if (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
         destination_payload = DestinationInfo{
-            .address = dest,
+            .mem_addr = destination_mem_addr,
         };
     } else if (mod == ModValue.memoryModeNoDisplacement and rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
         if (regIsSource) {
@@ -1007,7 +966,7 @@ fn getRegMemToFromRegMovSourceAndDest(
     var source_payload: SourceInfo = undefined;
     if (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
         source_payload = SourceInfo{
-            .immediate = immediate_value,
+            .mem_addr = source_mem_addr,
         };
     } else if (mod == ModValue.memoryModeNoDisplacement and rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
         if (regIsSource) {
@@ -1810,31 +1769,25 @@ fn getSegToRegMemMovSourceAndDest(
 
 fn getMemToAccMovSourceAndDest(w: WValue, addr_lo: ?u8, addr_hi: ?u8) InstructionInfo {
     const Address = AddressDirectory.Address;
-    const destination_payload: DestinationInfo = DestinationInfo{
-        .address = Address.ax,
-    };
+    var destination_payload: DestinationInfo = undefined;
     var source_payload: SourceInfo = undefined;
     switch (w) {
         .byte => {
+            const addr = (@as(u16, addr_hi.?) << 8) + addr_lo.?;
             source_payload = SourceInfo{
-                .address_calculation = EffectiveAddressCalculation{
-                    .base = Address.none,
-                    .index = Address.none,
-                    .displacement = DisplacementFormat.d8,
-                    .displacement_value = @as(u16, addr_lo.?),
-                    .effective_address = null,
-                },
+                .mem_addr = @as(u20, addr),
+            };
+            destination_payload = DestinationInfo{
+                .address = Address.al,
             };
         },
         .word => {
+            const addr = (@as(u16, addr_hi.?) << 8) + addr_lo.?;
             source_payload = SourceInfo{
-                .address_calculation = EffectiveAddressCalculation{
-                    .base = Address.none,
-                    .index = Address.none,
-                    .displacement = DisplacementFormat.d16,
-                    .displacement_value = (@as(u16, addr_hi.?) << 8) + addr_lo.?,
-                    .effective_address = null,
-                },
+                .mem_addr = @as(u20, addr),
+            };
+            destination_payload = DestinationInfo{
+                .address = Address.ax,
             };
         },
     }
@@ -1847,34 +1800,28 @@ fn getMemToAccMovSourceAndDest(w: WValue, addr_lo: ?u8, addr_hi: ?u8) Instructio
 fn getAccToMemMovSourceAndDest(w: WValue, addr_lo: ?u8, addr_hi: ?u8,) InstructionInfo {
     const Address = AddressDirectory.Address;
     var destination_payload: DestinationInfo = undefined;
+    var source_payload: SourceInfo = undefined;
     switch (w) {
         .byte => {
+            const addr = (@as(u16, addr_hi.?) << 8) + addr_lo.?;
             destination_payload = DestinationInfo{
-                .address_calculation = EffectiveAddressCalculation{
-                    .base = Address.none,
-                    .index = Address.none,
-                    .displacement = DisplacementFormat.d8,
-                    .displacement_value = @as(u16, addr_lo.?),
-                    .effective_address = null,
-                },
+                .mem_addr = @as(u20, addr),
+            };
+            source_payload = SourceInfo{
+                .address = Address.al,
             };
         },
         .word => {
+            const addr = (@as(u16, addr_hi.?) << 8) + addr_lo.?;
             destination_payload = DestinationInfo{
-                .address_calculation = EffectiveAddressCalculation{
-                    .base = Address.none,
-                    .index = Address.none,
-                    .displacement = DisplacementFormat.d16,
-                    .displacement_value = (@as(u16, addr_hi.?) << 8) + addr_lo.?,
-                    .effective_address = null,
-                },
+                .mem_addr = @as(u20, addr),
+            };
+            source_payload = SourceInfo{
+                .address = Address.ax,
             };
         },
     }
 
-    const source_payload: SourceInfo = SourceInfo{
-        .address = Address.ax,
-    };
 
     return InstructionInfo{
         .destination_info = destination_payload,
@@ -2317,19 +2264,108 @@ const ZValue = enum(u1) {
 /// Given the Mod and R/M value of a Mov register/memory to/from register
 /// instruction, this function returns the number of bytes this instruction
 /// consists of.
-fn movGetInstructionLength(mod: ModValue, rm: RmValue) u3 {
-    switch (mod) {
-        .memoryModeNoDisplacement => {
-            if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) return 4 else return 2;
+fn movGetInstructionLength(
+    instruction_name: BinaryInstructions,
+    w: WValue,
+    mod: ?ModValue,
+    rm: ?RmValue,
+) u3 {
+    switch (instruction_name) {
+        .mov_source_regmem8_reg8,
+        .mov_source_regmem16_reg16,
+        .mov_dest_reg8_regmem8,
+        .mov_dest_reg16_regmem16,
+        => {
+            const _mod = mod.?;
+            const _rm = rm.?;
+            switch (_mod) {
+                .memoryModeNoDisplacement => {
+                    if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) return 4 else return 2;
+                },
+                .memoryMode16BitDisplacement => {
+                    return 4;
+                },
+                .memoryMode8BitDisplacement => {
+                    return 3;
+                },
+                .registerModeNoDisplacement => {
+                    return 2;
+                },
+            }
         },
-        .memoryMode16BitDisplacement => {
-            return 4;
+        .mov_immediate_reg_al,
+        .mov_immediate_reg_cl,
+        .mov_immediate_reg_dl,
+        .mov_immediate_reg_bl,
+        .mov_immediate_reg_ah,
+        .mov_immediate_reg_ch,
+        .mov_immediate_reg_dh,
+        .mov_immediate_reg_bh,
+        .mov_immediate_reg_ax,
+        .mov_immediate_reg_cx,
+        .mov_immediate_reg_dx,
+        .mov_immediate_reg_bx,
+        .mov_immediate_reg_sp,
+        .mov_immediate_reg_bp,
+        .mov_immediate_reg_si,
+        .mov_immediate_reg_di,
+        => {
+            if (w == WValue.word) return 3 else return 2;
         },
-        .memoryMode8BitDisplacement => {
+        .mov_seg_regmem,
+        .mov_regmem_seg,
+        => {
+            const _mod = mod.?;
+            const _rm = rm.?;
+            switch (_mod) {
+                .memoryModeNoDisplacement => {
+                    if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) return 4 else return 2;
+                },
+                .memoryMode16BitDisplacement => {
+                    return 4;
+                },
+                .memoryMode8BitDisplacement => {
+                    return 3;
+                },
+                .registerModeNoDisplacement => {
+                    return 2;
+                },
+            }
+        },
+        .mov_mem8_acc8,
+        .mov_mem16_acc16,
+        .mov_acc8_mem8,
+        .mov_acc16_mem16,
+        => {
             return 3;
         },
-        .registerModeNoDisplacement => {
-            return 2;
+        .mov_immediate_to_regmem8,
+        .mov_immediate_to_regmem16,
+        => {
+            const _mod = mod.?;
+            const _rm = rm.?;
+            switch (_mod) {
+                .memoryModeNoDisplacement => {
+                    if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16 and w == WValue.word) {
+                        return 6;
+                    } else if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
+                        return 5;
+                    } else if (_rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16 and w == WValue.word) {
+                        return 4;
+                    } else {
+                        return 3;
+                    }
+                },
+                .memoryMode16BitDisplacement => {
+                    if (w == WValue.word) return 6 else return 5;
+                },
+                .memoryMode8BitDisplacement => {
+                    if (w == WValue.word) return 5 else return 4;
+                },
+                .registerModeNoDisplacement => {
+                    if (w == WValue.word) return 4 else return 3;
+                },
+            }
         },
     }
 }
@@ -2775,36 +2811,18 @@ fn decodeMovWithoutMod(
         .mov_acc8_mem8,
         .mov_acc16_mem16,
         => {
-            switch (w) {
-                .byte => {
-                    const result = DecodePayload{
-                        .mov_without_mod_instruction = MovWithoutModInstruction{
-                            .mnemonic = "mov",
-                            .w = w,
-                            .reg = null,
-                            .data = null,
-                            .w_data = null,
-                            .addr_lo = input[1],
-                            .addr_hi = null,
-                        },
-                    };
-                    return result;
+            const result = DecodePayload{
+                .mov_without_mod_instruction = MovWithoutModInstruction{
+                    .mnemonic = "mov",
+                    .w = w,
+                    .reg = null,
+                    .data = null,
+                    .w_data = null,
+                    .addr_lo = input[1],
+                    .addr_hi = input[2],
                 },
-                .word => {
-                    const result = DecodePayload{
-                        .mov_without_mod_instruction = MovWithoutModInstruction{
-                            .mnemonic = "mov",
-                            .w = w,
-                            .reg = null,
-                            .data = null,
-                            .w_data = null,
-                            .addr_lo = input[1],
-                            .addr_hi = input[2],
-                        },
-                    };
-                    return result;
-                },
-            }
+            };
+            return result;
         },
         else => {
             const result = DecodePayload{
@@ -3309,8 +3327,10 @@ const Memory = struct {
 };
 
 pub fn main() !void {
-    const print = std.debug.print;
-    const log = std.log.scoped(.x86sim);
+    const Log = std.log;
+    const level = Log.Level.info;
+    _ = Log.logEnabled(level, .x86sim);
+    const log = Log.scoped(.x86sim);
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -3460,18 +3480,18 @@ pub fn main() !void {
     // Start of the Simulation Part         //
     //////////////////////////////////////////
 
-    print("\n+++x86+Simulator++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
-    print("Simulating target: {s}\n", .{input_file_path});
+    log.info("\n+++x86+Simulator++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{});
+    log.info("Simulating target: {s}", .{input_file_path});
 
     var activeByte: u16 = 0;
 
     var stepSize: u3 = 2;
     var InstructionBytes: [6]u8 = undefined;
     const file_contents = try input_binary_file.readToEndAlloc(heap_allocator, maxFileSizeBytes);
-    print("Instruction byte count: {d}\n", .{file_contents.len});
-    print("+++Start+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte});
+    log.debug("Instruction byte count: {d}", .{file_contents.len});
+    log.info("+++Start+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte});
 
-    print("bits 16\n", .{});
+    log.info("bits 16\n", .{});
     try OutputWriter.writeAll("bits 16\n\n");
 
     var depleted: bool = false;
@@ -3479,15 +3499,18 @@ pub fn main() !void {
     while (!depleted and activeByte < file_contents.len) : (activeByte += stepSize) {
         const queue_size = 6;
         var queue_index: u3 = 0;
-        // std.debug.print("---BIU-Instruction-Queue-----------------------------------------------------\n", .{});
+        log.debug("---BIU-Instruction-Queue-----------------------------------------------------", .{});
         while (queue_index < queue_size) : (queue_index += 1) {
             biu.setIndex(queue_index, if (activeByte + queue_index < file_contents.len) file_contents[activeByte + queue_index] else u8_init_value);
             if (activeByte + queue_index > file_contents.len - 1) break;
-            // std.debug.print("{d}: {b:0>8}, {d}\n", .{ queue_index, file_contents[activeByte + queue_index], activeByte + queue_index });
+            log.debug("{d}: {b:0>8}, {d}", .{ queue_index, file_contents[activeByte + queue_index], activeByte + queue_index });
             if (queue_index + 1 == 6) break;
         }
 
-        const instruction: BinaryInstructions = @enumFromInt(biu.getIndex(0));
+        const instruction_binary: u8 = biu.getIndex(0);
+        const instruction_name: BinaryInstructions = @enumFromInt(instruction_binary);
+        log.debug("Read instruction: 0x{x}, {t}", .{ instruction_binary, instruction_name });
+        const instruction: BinaryInstructions = @enumFromInt(instruction_binary);
 
         var mod: ModValue = undefined;
         var rm: RmValue = undefined;
@@ -3499,16 +3522,20 @@ pub fn main() !void {
             BinaryInstructions.mov_dest_reg16_regmem16,
             => {
                 // 0x88, 0x89, 0x8A, 0x8B
+                w = @enumFromInt((biu.getIndex(0) << 7) >> 7);
                 mod = @enumFromInt(biu.getIndex(1) >> 6);
-                const temp_rm = biu.getIndex(1) << 5;
-                rm = @enumFromInt(temp_rm >> 5);
+                rm = @enumFromInt((biu.getIndex(1) << 5) >> 5);
 
-                stepSize = movGetInstructionLength(mod, rm);
+                stepSize = movGetInstructionLength(instruction_name, w, mod, rm);
             },
             BinaryInstructions.mov_seg_regmem,
             BinaryInstructions.mov_regmem_seg,
             => {
                 // 0x8c, 0x8e
+                mod = @enumFromInt(biu.getIndex(1) >> 6);
+                rm = @enumFromInt((biu.getIndex(1) << 5) >> 5);
+
+                stepSize = movGetInstructionLength(instruction_name, w, mod, rm);
             },
             BinaryInstructions.mov_mem8_acc8,
             BinaryInstructions.mov_mem16_acc16,
@@ -3516,6 +3543,8 @@ pub fn main() !void {
             BinaryInstructions.mov_acc16_mem16,
             => {
                 // 0xA0, 0xA1, 0xA2, 0xA3
+                w = @enumFromInt((biu.getIndex(0) << 7) >> 7);
+                stepSize = movGetInstructionLength(instruction_name, w, null, null);
             },
             BinaryInstructions.mov_immediate_reg_al,
             BinaryInstructions.mov_immediate_reg_bl,
@@ -3534,24 +3563,19 @@ pub fn main() !void {
             BinaryInstructions.mov_immediate_reg_si,
             BinaryInstructions.mov_immediate_reg_di,
             => {
-                // 0xC0 - 0xCF
-                const first_byte = biu.getIndex(0);
-
-                const temp_w: u8 = first_byte << 4;
-                w = @enumFromInt(temp_w >> 7);
-
-                stepSize = if (w == WValue.byte) 2 else 3;
+                // 0xB0 - 0xBF
+                w = @enumFromInt((biu.getIndex(0) << 7) >> 7);
+                stepSize = if (w == WValue.word) 3 else 2;
             },
             BinaryInstructions.mov_immediate_to_regmem8,
             BinaryInstructions.mov_immediate_to_regmem16,
             => {
                 // 0xC6, 0xC7
                 const second_byte = biu.getIndex(1);
+                w = @enumFromInt((biu.getIndex(0) << 7) >> 7);
                 mod = @enumFromInt(second_byte >> 6);
-                const temp_rm = second_byte << 5;
-                rm = @enumFromInt(temp_rm >> 5);
-
-                stepSize = movGetInstructionLength(mod, rm);
+                rm = @enumFromInt((second_byte << 5) >> 5);
+                stepSize = movGetInstructionLength(instruction_name, w, mod, rm);
             },
         }
 
@@ -3621,6 +3645,13 @@ pub fn main() !void {
             },
         }
 
+        log.debug("InstructionBytes:", .{});
+        var count = activeByte;
+        for (InstructionBytes) |inst| {
+            log.debug("{b:0>8}, 0x{x}, active byte {d}", .{ inst, inst, count });
+            count += 1;
+        }
+
         var payload: DecodePayload = undefined;
         switch (instruction) {
             .mov_source_regmem8_reg8,
@@ -3629,6 +3660,8 @@ pub fn main() !void {
             .mov_dest_reg16_regmem16,
             .mov_immediate_to_regmem8,
             .mov_immediate_to_regmem16,
+            .mov_seg_regmem,
+            .mov_regmem_seg,
             => {
                 payload = decodeMovWithMod(mod, rm, InstructionBytes);
             },
@@ -3654,13 +3687,6 @@ pub fn main() !void {
             .mov_mem16_acc16,
             => {
                 payload = decodeMovWithoutMod(w, InstructionBytes);
-            },
-            else => {
-                log.err("{s}: 0x{x} ({s}) not implemented yet.", .{
-                    @errorName(SimulatorError.InstructionError),
-                    InstructionBytes[0],
-                    @tagName(instruction),
-                });
             },
         }
 
@@ -3702,18 +3728,18 @@ pub fn main() !void {
 
         try OutputWriter.flush();
 
-        if (activeByte + stepSize == maxFileSizeBytes or activeByte + stepSize >= file_contents.len) {
+        if (activeByte + stepSize >= maxFileSizeBytes or activeByte + stepSize >= file_contents.len) {
             depleted = true;
-            std.debug.print("+++Simulation+finished++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
+            log.info("+++Simulation+finished++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{});
         } else {
             if (activeByte + stepSize > 999) {
-                // std.debug.print("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
+                log.debug("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
             } else if (activeByte + stepSize > 99) {
-                // std.debug.print("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
+                log.debug("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
             } else if (activeByte + stepSize > 9) {
-                // std.debug.print("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
+                log.debug("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
             } else {
-                // std.debug.print("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
+                log.debug("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
             }
         }
     }
@@ -3784,28 +3810,17 @@ fn makeAssembly(
                         if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
                     );
                 },
-                .mov_immediate_to_regmem8 => {
+                .mov_immediate_to_regmem8,
+                .mov_immediate_to_regmem16,
+                => {
                     const w = payload.mov_with_mod_instruction.w.?;
                     instruction_info = getImmediateToRegMemMovDest(
                         registers,
                         mod,
                         rm,
                         w,
-                        payload.mov_with_mod_instruction.disp_lo.?,
-                        null,
-                        payload.mov_with_mod_instruction.data.?,
-                        if (w == WValue.word) payload.mov_with_mod_instruction.w_data.? else null,
-                    );
-                },
-                .mov_immediate_to_regmem16 => {
-                    const w = payload.mov_with_mod_instruction.w.?;
-                    instruction_info = getImmediateToRegMemMovDest(
-                        registers,
-                        mod,
-                        rm,
-                        w,
-                        payload.mov_with_mod_instruction.disp_lo.?,
-                        payload.mov_with_mod_instruction.disp_hi.?,
+                        if ((mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) or mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement) payload.mov_with_mod_instruction.disp_lo.? else null,
+                        if ((mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) or mod == ModValue.memoryMode16BitDisplacement) payload.mov_with_mod_instruction.disp_hi.? else null,
                         payload.mov_with_mod_instruction.data.?,
                         if (w == WValue.word) payload.mov_with_mod_instruction.w_data.? else null,
                     );
@@ -3906,11 +3921,22 @@ fn makeAssembly(
                         }
                     }
                 },
+                .mem_addr => {
+                    log.info("Payload.destination.address: [{d}],", .{destination.mem_addr});
+                    OutputWriter.print("[{d}], ", .{
+                        destination.mem_addr,
+                    }) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write to memory address [{d}] to the output file.",
+                            .{ @errorName(err), destination.mem_addr },
+                        );
+                    };
+                },
             }
 
             switch (source) {
                 .address => {
-                    log.info("{t}\n", .{source.address});
+                    log.info("{t}", .{source.address});
                     OutputWriter.print(
                         "{t}\n",
                         .{source.address},
@@ -3925,7 +3951,7 @@ fn makeAssembly(
                     const Address = AddressDirectory.Address;
                     if (source.address_calculation.index == Address.none) {
                         if (source.address_calculation.displacement == DisplacementFormat.none) {
-                            log.info("[{t}]\n", .{
+                            log.info("[{t}]", .{
                                 source.address_calculation.base.?,
                             });
                             OutputWriter.print("[{t}]\n", .{
@@ -3937,7 +3963,7 @@ fn makeAssembly(
                                 );
                             };
                         } else if (source.address_calculation.displacement != DisplacementFormat.none and source.address_calculation.displacement_value.? == 0) {
-                            log.info("[{t}]\n", .{
+                            log.info("[{t}]", .{
                                 source.address_calculation.base.?,
                             });
                             OutputWriter.print("[{t}]\n", .{
@@ -3949,7 +3975,7 @@ fn makeAssembly(
                                 );
                             };
                         } else if (source.address_calculation.displacement != DisplacementFormat.none) {
-                            log.info("[{t} + {d}]\n", .{
+                            log.info("[{t} + {d}]", .{
                                 source.address_calculation.base.?,
                                 source.address_calculation.displacement_value.?,
                             });
@@ -3965,7 +3991,7 @@ fn makeAssembly(
                         }
                     } else if (source.address_calculation.index != Address.none) {
                         if (source.address_calculation.displacement == DisplacementFormat.none) {
-                            log.info("[{t} + {t}]\n", .{
+                            log.info("[{t} + {t}]", .{
                                 source.address_calculation.base.?,
                                 source.address_calculation.index.?,
                             });
@@ -3979,7 +4005,7 @@ fn makeAssembly(
                                 );
                             };
                         } else if (source.address_calculation.displacement != DisplacementFormat.none) {
-                            log.info("[{t} + {t} + {d}]\n", .{
+                            log.info("[{t} + {t} + {d}]", .{
                                 source.address_calculation.base.?,
                                 source.address_calculation.index.?,
                                 source.address_calculation.displacement_value.?,
@@ -3998,7 +4024,7 @@ fn makeAssembly(
                     }
                 },
                 .immediate => {
-                    log.info("{d}\n", .{source.immediate});
+                    log.info("{d}", .{source.immediate});
                     OutputWriter.print(
                         "{d}\n",
                         .{source.immediate},
@@ -4009,6 +4035,9 @@ fn makeAssembly(
                         );
                     };
                 },
+                else => {
+                    return MakeAssemblyError.InstructionError;
+                },
             }
         },
         .mov_without_mod_instruction => {
@@ -4018,7 +4047,7 @@ fn makeAssembly(
             };
 
             const instruction: BinaryInstructions = @enumFromInt(InstructionBytes[0]);
-            const w = payload.mov_without_mod_instruction.w;
+            // const w = payload.mov_without_mod_instruction.w;
             var instruction_info: InstructionInfo = undefined;
             switch (instruction) {
                 .mov_immediate_reg_al,
@@ -4067,24 +4096,10 @@ fn makeAssembly(
             }
 
             const destination = instruction_info.destination_info;
-            // const source_payload = instruction_info.source_info;
-
-            log.info("{s} ", .{
-                payload.mov_without_mod_instruction.mnemonic,
-            });
-            OutputWriter.print("{s} ", .{
-                payload.mov_without_mod_instruction.mnemonic,
-            }) catch |err| {
-                log.err(
-                    "{s}: Something went wrong trying to write destination register {s} to the output file.",
-                    .{ @errorName(err), payload.mov_without_mod_instruction.mnemonic },
-                );
-            };
-
             switch (destination) {
                 .address => {
-                    log.info("{t},", .{destination.address});
-                    OutputWriter.print("{t},", .{
+                    log.info("Payload.destination.address: {t},", .{destination.address});
+                    OutputWriter.print("{t}, ", .{
                         destination.address,
                     }) catch |err| {
                         log.err(
@@ -4093,27 +4108,60 @@ fn makeAssembly(
                         );
                     };
                 },
+                .mem_addr => {
+                    log.info("Payload.destination.address: [{d}],", .{destination.mem_addr});
+                    OutputWriter.print("[{d}], ", .{
+                        destination.mem_addr,
+                    }) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write to memory address [{d}] to the output file.",
+                            .{ @errorName(err), destination.mem_addr },
+                        );
+                    };
+                },
                 else => {
                     log.err("Error: Not a valid destination address.", .{});
                 },
             }
 
-            var immediate_value: u16 = undefined;
-            switch (w) {
-                .byte => {
-                    immediate_value = @as(u16, payload.mov_without_mod_instruction.data.?);
+            const source = instruction_info.source_info;
+            switch (source) {
+                .address => {
+                    log.info("Payload.source.address: {t}", .{source.address});
+                    OutputWriter.print("{t}\n", .{
+                        source.address,
+                    }) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write destination register {t} to the output file.",
+                            .{ @errorName(err), source.address },
+                        );
+                    };
                 },
-                .word => {
-                    immediate_value = (@as(u16, payload.mov_without_mod_instruction.w_data.?) << 8) + payload.mov_without_mod_instruction.data.?;
+                .mem_addr => {
+                    log.info("Payload.source.address: [{d}],", .{source.mem_addr});
+                    OutputWriter.print("[{d}]\n", .{
+                        source.mem_addr,
+                    }) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write to memory address [{d}] to the output file.",
+                            .{ @errorName(err), source.mem_addr },
+                        );
+                    };
+                },
+                .immediate => {
+                    const immediate_value: u16 = (@as(u16, payload.mov_without_mod_instruction.addr_hi.?) << 8) + payload.mov_without_mod_instruction.addr_lo.?;
+                    log.info("Payload.immediate_value: {d}", .{immediate_value});
+                    OutputWriter.print("{d}\n", .{immediate_value}) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write immediate value {any} to the output file.",
+                            .{ @errorName(err), immediate_value },
+                        );
+                    };
+                },
+                else => {
+                    log.err("Error: Not a valid destination address.", .{});
                 },
             }
-            log.info("{d}\n", .{immediate_value});
-            OutputWriter.print("{d}\n", .{immediate_value}) catch |err| {
-                log.err(
-                    "{s}: Something went wrong trying to write immediate value {any} to the output file.",
-                    .{ @errorName(err), immediate_value },
-                );
-            };
         },
     }
 }
@@ -4123,11 +4171,10 @@ fn runAssemblyTest(
     path_to_binary_input: []const u8,
     asm_file_path: []const u8,
 ) !void {
-    const print = std.debug.print;
-    // const log = std.log.scoped(.runAssemblyTest);
+    const log = std.log.scoped(.runAssemblyTest);
 
-    print("\n+++Testing+Phase++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
-    print("Assembler generates .asm file and compares it with the original binary input...\n", .{});
+    log.info("\n+++Testing+Phase++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{});
+    log.info("Assembler generates .asm file and compares it with the original binary input...", .{});
 
     const cwd_path: []const u8 = try std.process.getCwdAlloc(allocator);
     defer allocator.free(cwd_path);
@@ -4161,14 +4208,14 @@ fn runAssemblyTest(
         switch (assemble_result) {
             .Exited => |code| {
                 if (code == 0) {
-                    print("Assembly successfull\n", .{});
+                    log.info("Assembly successfull.", .{});
                 } else {
-                    print("Assembly failed with exit code: {d}\nError: {s}\n", .{ code, stderr_msg });
+                    log.err("Assembly failed with exit code: {d}\nError: {s}", .{ code, stderr_msg });
                     return;
                 }
             },
             else => {
-                print("Assembly process terminated unexpectedly\nError: {s}\n", .{stderr_msg});
+                log.err("Assembly process terminated unexpectedly\nError: {s}", .{stderr_msg});
                 return;
             },
         }
@@ -4182,12 +4229,12 @@ fn runAssemblyTest(
     );
 
     if (compare_result) {
-        print("SUCCESS: The generated assembly matches the original binary!\n", .{});
+        log.info("SUCCESS: The generated assembly matches the original binary!", .{});
     } else {
-        print("FAILURE: The generated assembly does NOT match the original binary.\n", .{});
+        log.info("FAILURE: The generated assembly does NOT match the original binary.", .{});
     }
 
-    print("+++Testing+Complete+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n", .{});
+    log.info("+++Testing+Complete+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{});
 }
 
 fn compareFiles(
@@ -4195,15 +4242,15 @@ fn compareFiles(
     path_to_binary_input: []const u8,
     assembled_binary_path: []const u8,
 ) !bool {
-    const print = std.debug.print;
+    const log = std.log.scoped(.compareFiles);
     const input = std.fs.cwd().openFile(path_to_binary_input, .{}) catch |err| {
-        print("Error opening input {s}: {}\n", .{ path_to_binary_input, err });
+        log.err("Error opening input {s}: {s}", .{ path_to_binary_input, @errorName(err) });
         return false;
     };
     defer input.close();
 
     const output = std.fs.cwd().openFile(assembled_binary_path, .{}) catch |err| {
-        print("Error opening output {s}: {}\n", .{ assembled_binary_path, err });
+        log.err("Error opening output {s}: {s}\n", .{ assembled_binary_path, @errorName(err) });
         return false;
     };
     defer output.close();
@@ -4212,7 +4259,7 @@ fn compareFiles(
     const output_size = try output.getEndPos();
 
     if (input_size != output_size) {
-        print("File sizes differ: input size {d} vs output size {d} bytes\n", .{ input_size, output_size });
+        log.info("File sizes differ: input size {d} vs output size {d} bytes.", .{ input_size, output_size });
     }
 
     const max_file_size = 0xFFF;
