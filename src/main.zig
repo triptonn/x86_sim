@@ -35,29 +35,39 @@ const BinaryInstructions = enum(u8) {
     // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
     // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
     // MOV: Segment reg. to register/memory   | 1 0 0 0 1 1 0 0 | MOD|0|SR | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|
+
+    /// Segment register to register/memory if second byte of format 0x|MOD|0|SR|R/M|
+    mov_seg_regmem              = 0x8C,
+
+    // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
+    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
     // MOV: Register/memory to segment reg.   | 1 0 0 0 1 1 1 0 | MOD|0|SR | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|
 
-
-    /// Immediate to register/memory
-    mov_immediate_regmem8       = 0x8C,
-    /// Immediate to register/memory
-    mov_immediate_regmem16      = 0x8E,
+    /// Register/memory to segment register if second byte of format 0x|MOD|0|SR|R/M|
+    mov_regmem_seg              = 0x8E,
 
     // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
     // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
     // MOV: Memory to accumulator             | 1 0 1 0 0 0 0|W |     addr-lo     |     addr-hi     |<-----------------------XXX------------------------->|
-    // MOV: Accumulator to memory             | 1 0 1 0 0 0 1|W |     addr-lo     |     addr-hi     |<-----------------------XXX------------------------->|
-    // MOV: Immediate to register             | 1 0 1 1|W| reg  |      data       |   data if W=1   |<-----------------------XXX------------------------->|
-    // MOV: Immediate to register/memory      | 1 1 0 0 0 1 1|W | MOD|0 0 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      |   data if W=1   |
 
     /// Memory to accumulator
     mov_mem8_acc8               = 0xA0,
     /// Memory to accumulator
     mov_mem16_acc16             = 0xA1,
+
+    // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
+    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
+    // MOV: Accumulator to memory             | 1 0 1 0 0 0 1|W |     addr-lo     |     addr-hi     |<-----------------------XXX------------------------->|
+
     /// Accumulator to memory
     mov_acc8_mem8               = 0xA2,
     /// Accumulator to memory
     mov_acc16_mem16             = 0xA3,
+
+    // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
+    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
+    // MOV: Immediate to register             | 1 0 1 1|W| reg  |      data       |   data if W=1   |<-----------------------XXX------------------------->|
+
     /// 8 bit Immediate to register
     mov_immediate_reg_al        = 0xB0,
     /// 8 bit Immediate to register
@@ -90,10 +100,15 @@ const BinaryInstructions = enum(u8) {
     mov_immediate_reg_si        = 0xBE,
     /// 16 bit Immediate to register
     mov_immediate_reg_di        = 0xBF,
-    /// Segment register to register/memory if second byte of format 0x|MOD|0|SR|R/M|
-    mov_seg_regmem              = 0xC6,
-    /// Register/memory to segment register if second byte of format 0x|MOD|0|SR|R/M|
-    mov_regmem_seg              = 0xC7,
+
+    // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
+    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
+    // MOV: Immediate to register/memory      | 1 1 0 0 0 1 1|W | MOD|0 0 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      |   data if W=1   |
+
+    /// Immediate to register/memory
+    mov_immediate_to_regmem8    = 0xC6,
+    /// Immediate to register/memory
+    mov_immediate_to_regmem16   = 0xC7,
 };
 
 // Error:
@@ -1888,7 +1903,6 @@ const EffectiveAddressCalculation = struct {
 };
 
 const DestinationInfoIdentifiers = enum {
-    value,
     address,
     address_calculation,
 };
@@ -1925,6 +1939,112 @@ fn decodeMovWithMod(
     const instruction: BinaryInstructions = @enumFromInt(input[0]);
 
     switch (instruction) {
+        .mov_seg_regmem,
+        .mov_regmem_seg,
+        => {
+            switch (_mod) {
+                ModValue.memoryModeNoDisplacement => {
+                    const temp_w = input[0] << 7;
+                    const w: u1 = @intCast(temp_w >> 7);
+
+                    var temp_sr = input[1] << 3;
+                    temp_sr = temp_sr >> 6;
+                    const sr: u2 = @intCast(temp_sr);
+
+                    const result = DecodePayload{
+                        .mov_with_mod_instruction = MovWithModInstruction{
+                            .mnemonic = mnemonic,
+                            .d = null,
+                            .w = @enumFromInt(w),
+                            .mod = _mod,
+                            .reg = null,
+                            .sr = @enumFromInt(sr),
+                            .rm = _rm,
+                            .disp_lo = if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
+                            .disp_hi = if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[3] else null,
+                            .data = if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[4] else input[2],
+                            .w_data = if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16 and w == @intFromEnum(WValue.word)) input[5] else if (w == @intFromEnum(WValue.word)) input[3] else null,
+                        },
+                    };
+                    return result;
+                },
+                ModValue.memoryMode8BitDisplacement => {
+                    const temp_w = input[0] << 7;
+                    const w: u1 = @intCast(temp_w >> 7);
+
+                    var temp_sr = input[1] << 3;
+                    temp_sr = temp_sr >> 6;
+                    const sr: u2 = @intCast(temp_sr);
+
+                    const result = DecodePayload{
+                        .mov_with_mod_instruction = MovWithModInstruction{
+                            .mnemonic = mnemonic,
+                            .d = null,
+                            .w = @enumFromInt(w),
+                            .mod = _mod,
+                            .reg = null,
+                            .sr = @enumFromInt(sr),
+                            .rm = _rm,
+                            .disp_lo = input[2],
+                            .disp_hi = null,
+                            .data = input[3],
+                            .w_data = if (w == @intFromEnum(WValue.word)) input[4] else null,
+                        },
+                    };
+                    return result;
+                },
+                ModValue.memoryMode16BitDisplacement => {
+                    const temp_w = input[0] << 7;
+                    const w: u1 = @intCast(temp_w >> 7);
+
+                    var temp_sr = input[1] << 3;
+                    temp_sr = temp_sr >> 6;
+                    const sr: u2 = @intCast(temp_sr);
+
+                    const result = DecodePayload{
+                        .mov_with_mod_instruction = MovWithModInstruction{
+                            .mnemonic = mnemonic,
+                            .d = null,
+                            .w = @enumFromInt(w),
+                            .mod = _mod,
+                            .reg = null,
+                            .sr = @enumFromInt(sr),
+                            .rm = _rm,
+                            .disp_lo = input[2],
+                            .disp_hi = input[3],
+                            .data = input[4],
+                            .w_data = if (w == @intFromEnum(WValue.word)) input[5] else null,
+                        },
+                    };
+                    return result;
+                },
+                ModValue.registerModeNoDisplacement => {
+                    const temp_w = input[0] << 7;
+                    const w: u1 = @intCast(temp_w >> 7);
+
+                    var temp_sr = input[1] << 3;
+                    temp_sr = temp_sr >> 6;
+                    const sr: u2 = @intCast(temp_sr);
+
+                    const result = DecodePayload{
+                        .mov_with_mod_instruction = MovWithModInstruction{
+                            .mnemonic = mnemonic,
+                            .d = null,
+                            .w = @enumFromInt(w),
+                            .mod = _mod,
+                            .reg = null,
+                            .sr = @enumFromInt(sr),
+                            .rm = _rm,
+                            .disp_lo = null,
+                            .disp_hi = null,
+                            .data = null,
+                            .w_data = null,
+                        },
+                    };
+                    return result;
+                },
+            }
+        },
         .mov_source_regmem8_reg8,
         .mov_source_regmem16_reg16,
         .mov_dest_reg8_regmem8,
@@ -2091,106 +2211,79 @@ fn decodeMovWithMod(
                 },
             }
         },
-        .mov_seg_regmem,
-        .mov_regmem_seg,
+        .mov_immediate_to_regmem8,
+        .mov_immediate_to_regmem16,
         => {
-            switch (_mod) {
-                ModValue.memoryModeNoDisplacement => {
-                    const temp_w = input[0] << 7;
-                    const w: u1 = @intCast(temp_w >> 7);
-
-                    var temp_sr = input[1] << 3;
-                    temp_sr = temp_sr >> 6;
-                    const sr: u2 = @intCast(temp_sr);
-
+            const w: WValue = @enumFromInt((input[0] << 7) >> 7);
+            switch (mod) {
+                .memoryModeNoDisplacement => {
                     const result = DecodePayload{
                         .mov_with_mod_instruction = MovWithModInstruction{
-                            .mnemonic = mnemonic,
+                            .mnemonic = "mov",
                             .d = null,
-                            .w = @enumFromInt(w),
-                            .mod = _mod,
+                            .w = w,
+                            .mod = mod,
                             .reg = null,
-                            .sr = @enumFromInt(sr),
-                            .rm = _rm,
-                            .disp_lo = if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
-                            .disp_hi = if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[3] else null,
-                            .data = if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[4] else input[2],
-                            .w_data = if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16 and w == @intFromEnum(WValue.word)) input[5] else if (w == @intFromEnum(WValue.word)) input[3] else null,
+                            .sr = null,
+                            .rm = rm,
+                            .disp_lo = if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
+                            .disp_hi = if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[3] else null,
+                            .data = if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[4] else input[2],
+                            .w_data = if (w == WValue.word) input[5] else null,
                         },
                     };
                     return result;
                 },
-                ModValue.memoryMode8BitDisplacement => {
-                    const temp_w = input[0] << 7;
-                    const w: u1 = @intCast(temp_w >> 7);
-
-                    var temp_sr = input[1] << 3;
-                    temp_sr = temp_sr >> 6;
-                    const sr: u2 = @intCast(temp_sr);
-
+                .memoryMode8BitDisplacement => {
                     const result = DecodePayload{
                         .mov_with_mod_instruction = MovWithModInstruction{
-                            .mnemonic = mnemonic,
+                            .mnemonic = "mov",
                             .d = null,
-                            .w = @enumFromInt(w),
-                            .mod = _mod,
+                            .w = w,
+                            .mod = mod,
                             .reg = null,
-                            .sr = @enumFromInt(sr),
-                            .rm = _rm,
+                            .sr = null,
+                            .rm = rm,
                             .disp_lo = input[2],
                             .disp_hi = null,
                             .data = input[3],
-                            .w_data = if (w == @intFromEnum(WValue.word)) input[4] else null,
+                            .w_data = if (w == WValue.word) input[4] else null,
                         },
                     };
                     return result;
                 },
-                ModValue.memoryMode16BitDisplacement => {
-                    const temp_w = input[0] << 7;
-                    const w: u1 = @intCast(temp_w >> 7);
-
-                    var temp_sr = input[1] << 3;
-                    temp_sr = temp_sr >> 6;
-                    const sr: u2 = @intCast(temp_sr);
-
+                .memoryMode16BitDisplacement => {
                     const result = DecodePayload{
                         .mov_with_mod_instruction = MovWithModInstruction{
-                            .mnemonic = mnemonic,
+                            .mnemonic = "mov",
                             .d = null,
-                            .w = @enumFromInt(w),
-                            .mod = _mod,
+                            .w = w,
+                            .mod = mod,
                             .reg = null,
-                            .sr = @enumFromInt(sr),
-                            .rm = _rm,
+                            .sr = null,
+                            .rm = rm,
                             .disp_lo = input[2],
                             .disp_hi = input[3],
                             .data = input[4],
-                            .w_data = if (w == @intFromEnum(WValue.word)) input[5] else null,
+                            .w_data = if (w == WValue.word) input[5] else null,
                         },
                     };
                     return result;
                 },
-                ModValue.registerModeNoDisplacement => {
-                    const temp_w = input[0] << 7;
-                    const w: u1 = @intCast(temp_w >> 7);
-
-                    var temp_sr = input[1] << 3;
-                    temp_sr = temp_sr >> 6;
-                    const sr: u2 = @intCast(temp_sr);
-
+                .registerModeNoDisplacement => {
                     const result = DecodePayload{
                         .mov_with_mod_instruction = MovWithModInstruction{
-                            .mnemonic = mnemonic,
+                            .mnemonic = "mov",
                             .d = null,
-                            .w = @enumFromInt(w),
-                            .mod = _mod,
+                            .w = w,
+                            .mod = mod,
                             .reg = null,
-                            .sr = @enumFromInt(sr),
-                            .rm = _rm,
+                            .sr = null,
+                            .rm = rm,
                             .disp_lo = null,
                             .disp_hi = null,
-                            .data = null,
-                            .w_data = null,
+                            .data = input[2],
+                            .w_data = if (w == WValue.word) input[3] else null,
                         },
                     };
                     return result;
@@ -3002,8 +3095,8 @@ pub fn main() !void {
 
                 stepSize = movGetInstructionLength(mod, rm);
             },
-            BinaryInstructions.mov_immediate_regmem8,
-            BinaryInstructions.mov_immediate_regmem16,
+            BinaryInstructions.mov_seg_regmem,
+            BinaryInstructions.mov_regmem_seg,
             => {
                 // 0x8c, 0x8e
             },
@@ -3039,8 +3132,8 @@ pub fn main() !void {
 
                 stepSize = if (w == WValue.byte) 2 else 3;
             },
-            BinaryInstructions.mov_seg_regmem,
-            BinaryInstructions.mov_regmem_seg,
+            BinaryInstructions.mov_immediate_to_regmem8,
+            BinaryInstructions.mov_immediate_to_regmem16,
             => {
                 // 0xC6, 0xC7
                 const second_byte = biu.getIndex(1);
@@ -3124,8 +3217,8 @@ pub fn main() !void {
             .mov_source_regmem16_reg16,
             .mov_dest_reg8_regmem8,
             .mov_dest_reg16_regmem16,
-            .mov_seg_regmem,
-            .mov_regmem_seg,
+            .mov_immediate_to_regmem8,
+            .mov_immediate_to_regmem16,
             => {
                 payload = decodeMovWithMod(mod, rm, InstructionBytes);
             },
@@ -3203,7 +3296,7 @@ pub fn main() !void {
                             if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
                         );
                     },
-                    .mov_regmem_seg => {
+                    .mov_immediate_to_regmem16 => {
                         const sr: SrValue = payload.mov_with_mod_instruction.sr.?;
                         instruction_info = getSegmentRegisterDestinationMov(
                             &registers,
@@ -3214,7 +3307,7 @@ pub fn main() !void {
                             if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
                         );
                     },
-                    .mov_seg_regmem => {
+                    .mov_immediate_to_regmem8 => {
                         const sr: SrValue = payload.mov_with_mod_instruction.sr.?;
                         instruction_info = getSegmentRegisterSourceMov(
                             &registers,
@@ -3232,15 +3325,7 @@ pub fn main() !void {
 
                 const source = instruction_info.source_info;
                 const destination = instruction_info.destination_info;
-
-                print("{s} ", .{payload.mov_with_mod_instruction.mnemonic});
-                OutputWriter.print("{s} ", .{payload.mov_with_mod_instruction.mnemonic}) catch |err| {
-                    log.err(
-                        "{s}: Something went wrong trying to write instruction mnemonic {s} to the output file.",
-                        .{ @errorName(err), payload.mov_with_mod_instruction.mnemonic },
-                    );
-                };
-
+                makeAssembly(&OutputWriter, destination, source);
                 switch (destination) {
                     .address => {
                         print("{t}, ", .{destination.address});
@@ -3553,6 +3638,14 @@ pub fn main() !void {
     }
 
     try runAssemblyTest(args_allocator, input_file_path, output_asm_file_path);
+}
+
+fn makeAssembly(
+    output_writer: *std.io.Writer,
+    // destination: DestinationInfo,
+    // source: SourceInfo,
+) void {
+    output_writer.print("", .{});
 }
 
 fn runAssemblyTest(
