@@ -10,6 +10,9 @@
 
 const std = @import("std");
 
+/// global log level
+const LogLevel: std.log.Level = .info;
+
 // const DecodeError = error{ InvalidInstruction, InvalidRegister, NotYetImplemented };
 
 // zig fmt: off
@@ -345,8 +348,8 @@ fn getRegMemToFromRegMovSourceAndDest(
     var dest: Address = undefined;
     var source: Address = undefined;
     var immediate_value: u20 = undefined;
-    var source_mem_addr: u20 = undefined;
-    var destination_mem_addr: u20 = undefined;
+    const source_mem_addr: u20 = undefined;
+    // var destination_mem_addr: u20 = undefined;
     var dest_address_calculation: EffectiveAddressCalculation = undefined;
     var source_address_calculation: EffectiveAddressCalculation = undefined;
     const regIsSource: bool = if (d == DValue.source) true else false;
@@ -535,9 +538,59 @@ fn getRegMemToFromRegMovSourceAndDest(
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
                     immediate_value = displacement;
                     if (regIsSource) {
-                        destination_mem_addr = @as(u20, displacement);
+                        switch (reg) {
+                            .ALAX => {
+                                dest = Address.al;
+                            },
+                            .CLCX => {
+                                dest = Address.cl;
+                            },
+                            .DLDX => {
+                                dest = Address.dl;
+                            },
+                            .BLBX => {
+                                dest = Address.bl;
+                            },
+                            .AHSP => {
+                                dest = Address.ah;
+                            },
+                            .CHBP => {
+                                dest = Address.ch;
+                            },
+                            .DHSI => {
+                                dest = Address.dh;
+                            },
+                            .BHDI => {
+                                dest = Address.bh;
+                            },
+                        }
                     } else if (!regIsSource) {
-                        source_mem_addr = @as(u20, displacement);
+                        switch (reg) {
+                            .ALAX => {
+                                source = Address.ax;
+                            },
+                            .CLCX => {
+                                source = Address.cx;
+                            },
+                            .DLDX => {
+                                source = Address.dx;
+                            },
+                            .BLBX => {
+                                source = Address.bx;
+                            },
+                            .AHSP => {
+                                source = Address.sp;
+                            },
+                            .CHBP => {
+                                source = Address.bp;
+                            },
+                            .DHSI => {
+                                source = Address.si;
+                            },
+                            .BHDI => {
+                                source = Address.di;
+                            },
+                        }
                     }
                 },
                 .BHDI_BX_BXD8_BXD16 => {
@@ -918,7 +971,7 @@ fn getRegMemToFromRegMovSourceAndDest(
     var destination_payload: DestinationInfo = undefined;
     if (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
         destination_payload = DestinationInfo{
-            .mem_addr = destination_mem_addr,
+            .address = dest,
         };
     } else if (mod == ModValue.memoryModeNoDisplacement and rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
         if (regIsSource) {
@@ -3326,11 +3379,44 @@ const Memory = struct {
     }
 };
 
+pub const std_options: std.Options = .{
+    .log_level = LogLevel,
+    .logFn = projectLog,
+};
+
+pub fn projectLog(
+    comptime level: std.log.Level,
+    comptime scope: @Type(.enum_literal),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    const scope_prefix = "(" ++ switch (scope) {
+        .x86sim,
+        .decodeMovWithMod,
+        .decodeMovWithoutMod,
+        .makeAssembly,
+        .runAssemblyTest,
+        .compareFiles,
+        std.log.default_log_scope,
+        => @tagName(scope),
+        .printer => "Print: ",
+        else => if (@intFromEnum(level) <= @intFromEnum(std.log.Level.err)) @tagName(scope) else return,
+    } ++ "): ";
+
+    const prefix = "[" ++ comptime level.asText() ++ "]" ++ scope_prefix;
+
+    std.debug.lockStdErr();
+    defer std.debug.unlockStdErr();
+    const stderr = std.fs.File.stderr().deprecatedWriter();
+    nosuspend stderr.print(prefix ++ format ++ "\n", args) catch return;
+}
+
 pub fn main() !void {
-    const Log = std.log;
-    const level = Log.Level.info;
-    _ = Log.logEnabled(level, .x86sim);
-    const log = Log.scoped(.x86sim);
+    const print = std.log.scoped(.printer);
+
+    print.debug("Printer test...", .{});
+
+    const x86sim_scope_log = std.log.scoped(.x86sim);
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -3367,15 +3453,15 @@ pub fn main() !void {
     const input_binary_file = std.fs.cwd().openFile(input_file_path, open_mode_input_file) catch |err| {
         switch (err) {
             error.FileNotFound => {
-                log.err("{s}: '{s}':{any}", .{ @errorName(err), input_file_path, @errorReturnTrace() });
+                x86sim_scope_log.err("{s}: '{s}':{any}", .{ @errorName(err), input_file_path, @errorReturnTrace() });
                 std.process.exit(1);
             },
             error.AccessDenied => {
-                log.err("{s}: '{s}':{any}", .{ @errorName(err), input_file_path, @errorReturnTrace() });
+                x86sim_scope_log.err("{s}: '{s}':{any}", .{ @errorName(err), input_file_path, @errorReturnTrace() });
                 std.process.exit(1);
             },
             else => {
-                log.err("{s}: Unable to open file '{s}': {any}\n", .{ @errorName(err), input_file_path, @errorReturnTrace() });
+                x86sim_scope_log.err("{s}: Unable to open file '{s}': {any}\n", .{ @errorName(err), input_file_path, @errorReturnTrace() });
                 std.process.exit(1);
             },
         }
@@ -3383,7 +3469,7 @@ pub fn main() !void {
     defer input_binary_file.close();
 
     if (@TypeOf(input_binary_file) != std.fs.File) {
-        log.err("{s}: File object is not of the correct type.", .{@errorName(SimulatorError.FileError)});
+        x86sim_scope_log.err("{s}: File object is not of the correct type.", .{@errorName(SimulatorError.FileError)});
     }
 
     try std.fs.Dir.makePath(std.fs.cwd(), "./zig-out/test");
@@ -3392,7 +3478,7 @@ pub fn main() !void {
     const output_asm_file = std.fs.cwd().createFile(output_asm_file_path, open_mode_output_file) catch |err| {
         switch (err) {
             error.FileNotFound => {
-                log.err("{s}: '{s}':{any}", .{
+                x86sim_scope_log.err("{s}: '{s}':{any}", .{
                     @errorName(err),
                     output_asm_file_path,
                     @errorReturnTrace(),
@@ -3400,7 +3486,7 @@ pub fn main() !void {
                 std.process.exit(1);
             },
             error.AccessDenied => {
-                log.err("{s}: '{s}':{any}", .{
+                x86sim_scope_log.err("{s}: '{s}':{any}", .{
                     @errorName(err),
                     output_asm_file_path,
                     @errorReturnTrace(),
@@ -3408,7 +3494,7 @@ pub fn main() !void {
                 std.process.exit(1);
             },
             else => {
-                log.err("{s}: Unable to open file '{s}': {any}\n", .{
+                x86sim_scope_log.err("{s}: Unable to open file '{s}': {any}\n", .{
                     @errorName(err),
                     output_asm_file_path,
                     @errorReturnTrace(),
@@ -3467,7 +3553,7 @@ pub fn main() !void {
 
     var memory = Memory{};
     memory.init();
-    log.debug("Test _memory initialization: _memory size = 0x{x}", .{memory._memory.len});
+    x86sim_scope_log.debug("Test _memory initialization: _memory size = 0x{x}", .{memory._memory.len});
 
     // TODO: Put loaded binary input file in simulated memory, update CS to point at the base of the segment
     // TODO: Define the stack and data segments and update DS, ES and SS
@@ -3480,18 +3566,18 @@ pub fn main() !void {
     // Start of the Simulation Part         //
     //////////////////////////////////////////
 
-    log.info("\n+++x86+Simulator++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{});
-    log.info("Simulating target: {s}", .{input_file_path});
+    x86sim_scope_log.info("\n+++x86+Simulator++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{});
+    x86sim_scope_log.info("Simulating target: {s}", .{input_file_path});
 
     var activeByte: u16 = 0;
 
     var stepSize: u3 = 2;
     var InstructionBytes: [6]u8 = undefined;
     const file_contents = try input_binary_file.readToEndAlloc(heap_allocator, maxFileSizeBytes);
-    log.debug("Instruction byte count: {d}", .{file_contents.len});
-    log.info("+++Start+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte});
+    x86sim_scope_log.debug("Instruction byte count: {d}", .{file_contents.len});
+    x86sim_scope_log.info("+++Start+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte});
 
-    log.info("bits 16\n", .{});
+    x86sim_scope_log.info("bits 16\n", .{});
     try OutputWriter.writeAll("bits 16\n\n");
 
     var depleted: bool = false;
@@ -3499,17 +3585,17 @@ pub fn main() !void {
     while (!depleted and activeByte < file_contents.len) : (activeByte += stepSize) {
         const queue_size = 6;
         var queue_index: u3 = 0;
-        log.debug("---BIU-Instruction-Queue-----------------------------------------------------", .{});
+        x86sim_scope_log.debug("---BIU-Instruction-Queue-----------------------------------------------------", .{});
         while (queue_index < queue_size) : (queue_index += 1) {
             biu.setIndex(queue_index, if (activeByte + queue_index < file_contents.len) file_contents[activeByte + queue_index] else u8_init_value);
             if (activeByte + queue_index > file_contents.len - 1) break;
-            log.debug("{d}: {b:0>8}, {d}", .{ queue_index, file_contents[activeByte + queue_index], activeByte + queue_index });
+            x86sim_scope_log.debug("{d}: {b:0>8}, {d}", .{ queue_index, file_contents[activeByte + queue_index], activeByte + queue_index });
             if (queue_index + 1 == 6) break;
         }
 
         const instruction_binary: u8 = biu.getIndex(0);
         const instruction_name: BinaryInstructions = @enumFromInt(instruction_binary);
-        log.debug("Read instruction: 0x{x}, {t}", .{ instruction_binary, instruction_name });
+        x86sim_scope_log.debug("Read instruction: 0x{x}, {t}", .{ instruction_binary, instruction_name });
         const instruction: BinaryInstructions = @enumFromInt(instruction_binary);
 
         var mod: ModValue = undefined;
@@ -3641,14 +3727,14 @@ pub fn main() !void {
                 };
             },
             else => {
-                log.err("{s}: Instruction size of {d} bytes not valid.", .{ @errorName(SimulatorError.InstructionSizeError), stepSize });
+                x86sim_scope_log.err("{s}: Instruction size of {d} bytes not valid.", .{ @errorName(SimulatorError.InstructionSizeError), stepSize });
             },
         }
 
-        log.debug("InstructionBytes:", .{});
+        x86sim_scope_log.debug("InstructionBytes:", .{});
         var count = activeByte;
         for (InstructionBytes) |inst| {
-            log.debug("{b:0>8}, 0x{x}, active byte {d}", .{ inst, inst, count });
+            x86sim_scope_log.debug("{b:0>8}, 0x{x}, active byte {d}", .{ inst, inst, count });
             count += 1;
         }
 
@@ -3698,26 +3784,26 @@ pub fn main() !void {
         ) catch |err| {
             switch (err) {
                 DecodeInstructionError.DecodeError => {
-                    log.err("{s}: Instruction 0x{x} could not be decoded.\ncontinue...", .{
+                    x86sim_scope_log.err("{s}: Instruction 0x{x} could not be decoded.\ncontinue...", .{
                         @errorName(payload.err),
                         InstructionBytes[0],
                     });
                 },
                 DecodeInstructionError.InstructionError => {
-                    log.err("{s}: Instruction 0x{x} could not be decoded.\ncontinue...", .{
+                    x86sim_scope_log.err("{s}: Instruction 0x{x} could not be decoded.\ncontinue...", .{
                         @errorName(payload.err),
                         InstructionBytes[0],
                     });
                 },
                 DecodeInstructionError.NotYetImplemented => {
-                    log.err("{s}: 0x{x} ({s}) not implemented yet.\ncontinue...", .{
+                    x86sim_scope_log.err("{s}: 0x{x} ({s}) not implemented yet.\ncontinue...", .{
                         @errorName(payload.err),
                         InstructionBytes[0],
                         @tagName(instruction),
                     });
                 },
                 DecodeInstructionError.WriteFailed => {
-                    log.err("{s}: Failed to write instruction 0x{x} ({s}) to .asm file.\ncontinue...", .{
+                    x86sim_scope_log.err("{s}: Failed to write instruction 0x{x} ({s}) to .asm file.\ncontinue...", .{
                         @errorName(payload.err),
                         InstructionBytes[0],
                         @tagName(instruction),
@@ -3730,16 +3816,16 @@ pub fn main() !void {
 
         if (activeByte + stepSize >= maxFileSizeBytes or activeByte + stepSize >= file_contents.len) {
             depleted = true;
-            log.info("+++Simulation+finished++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{});
+            x86sim_scope_log.info("+++Simulation+finished++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{});
         } else {
             if (activeByte + stepSize > 999) {
-                log.debug("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
+                x86sim_scope_log.debug("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
             } else if (activeByte + stepSize > 99) {
-                log.debug("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
+                x86sim_scope_log.debug("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
             } else if (activeByte + stepSize > 9) {
-                log.debug("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
+                x86sim_scope_log.debug("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
             } else {
-                log.debug("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
+                x86sim_scope_log.debug("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
             }
         }
     }
@@ -3830,7 +3916,6 @@ fn makeAssembly(
                 },
             }
 
-            const source = instruction_info.source_info;
             const destination = instruction_info.destination_info;
             switch (destination) {
                 .address => {
@@ -3922,7 +4007,7 @@ fn makeAssembly(
                     }
                 },
                 .mem_addr => {
-                    log.info("Payload.destination.address: [{d}],", .{destination.mem_addr});
+                    log.info("[{d}],", .{destination.mem_addr});
                     OutputWriter.print("[{d}], ", .{
                         destination.mem_addr,
                     }) catch |err| {
@@ -3934,6 +4019,7 @@ fn makeAssembly(
                 },
             }
 
+            const source: SourceInfo = instruction_info.source_info;
             switch (source) {
                 .address => {
                     log.info("{t}", .{source.address});
@@ -4035,9 +4121,21 @@ fn makeAssembly(
                         );
                     };
                 },
-                else => {
-                    return MakeAssemblyError.InstructionError;
+                .mem_addr => {
+                    log.info("[{d}]", .{source.mem_addr});
+                    OutputWriter.print(
+                        "[{d}]\n",
+                        .{source.mem_addr},
+                    ) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write source index {any} to the output file.",
+                            .{ @errorName(err), source.mem_addr },
+                        );
+                    };
                 },
+                // else => {
+                //     return MakeAssemblyError.InstructionError;
+                // },
             }
         },
         .mov_without_mod_instruction => {
@@ -4098,7 +4196,7 @@ fn makeAssembly(
             const destination = instruction_info.destination_info;
             switch (destination) {
                 .address => {
-                    log.info("Payload.destination.address: {t},", .{destination.address});
+                    log.info("{t},", .{destination.address});
                     OutputWriter.print("{t}, ", .{
                         destination.address,
                     }) catch |err| {
@@ -4109,7 +4207,7 @@ fn makeAssembly(
                     };
                 },
                 .mem_addr => {
-                    log.info("Payload.destination.address: [{d}],", .{destination.mem_addr});
+                    log.info("[{d}],", .{destination.mem_addr});
                     OutputWriter.print("[{d}], ", .{
                         destination.mem_addr,
                     }) catch |err| {
@@ -4127,7 +4225,7 @@ fn makeAssembly(
             const source = instruction_info.source_info;
             switch (source) {
                 .address => {
-                    log.info("Payload.source.address: {t}", .{source.address});
+                    log.info("{t}", .{source.address});
                     OutputWriter.print("{t}\n", .{
                         source.address,
                     }) catch |err| {
@@ -4138,7 +4236,7 @@ fn makeAssembly(
                     };
                 },
                 .mem_addr => {
-                    log.info("Payload.source.address: [{d}],", .{source.mem_addr});
+                    log.info("[{d}],", .{source.mem_addr});
                     OutputWriter.print("[{d}]\n", .{
                         source.mem_addr,
                     }) catch |err| {
@@ -4150,7 +4248,7 @@ fn makeAssembly(
                 },
                 .immediate => {
                     const immediate_value: u16 = (@as(u16, payload.mov_without_mod_instruction.addr_hi.?) << 8) + payload.mov_without_mod_instruction.addr_lo.?;
-                    log.info("Payload.immediate_value: {d}", .{immediate_value});
+                    log.info("{d}", .{immediate_value});
                     OutputWriter.print("{d}\n", .{immediate_value}) catch |err| {
                         log.err(
                             "{s}: Something went wrong trying to write immediate value {any} to the output file.",
