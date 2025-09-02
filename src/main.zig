@@ -136,8 +136,9 @@ const MakeAssemblyError = error{
     WriteFailed,
 };
 
-// MovInstruction
-// register / memory to / from register: 0x88, 0x89, 0x8A, 0x8B
+/// MovInstruction with mod field
+/// - register/memory to/from register: 0x88, 0x89, 0x8A, 0x8B
+/// - segment register to/from register/memory: 0x8C, 0x8E
 const MovWithModInstruction = struct{
     mnemonic: []const u8,
     d: ?DValue,
@@ -152,6 +153,9 @@ const MovWithModInstruction = struct{
     w_data: ?u8,
 };
 
+/// MovInstruction w/o mod field
+/// - Immediate to register: 0xB0 - 0xBF
+/// - memory to/from accumulator: 0xA0, 0xA1, 0xA2, 0xA3
 const MovWithoutModInstruction = struct{
     mnemonic: []const u8,
     w: WValue,
@@ -162,6 +166,7 @@ const MovWithoutModInstruction = struct{
     addr_hi: ?u8,
 };
 
+/// Enum holding the identifier's for the different DecodePayload fields.
 const DecodedPayloadIdentifier = enum{
     err,
     mov_with_mod_instruction,
@@ -348,8 +353,8 @@ fn getRegMemToFromRegMovSourceAndDest(
     var dest: Address = undefined;
     var source: Address = undefined;
     var immediate_value: u20 = undefined;
-    const source_mem_addr: u20 = undefined;
-    // var destination_mem_addr: u20 = undefined;
+    var source_mem_addr: u20 = undefined;
+    var destination_mem_addr: u20 = undefined;
     var dest_address_calculation: EffectiveAddressCalculation = undefined;
     var source_address_calculation: EffectiveAddressCalculation = undefined;
     const regIsSource: bool = if (d == DValue.source) true else false;
@@ -541,54 +546,70 @@ fn getRegMemToFromRegMovSourceAndDest(
                         switch (reg) {
                             .ALAX => {
                                 dest = Address.al;
+                                destination_mem_addr = immediate_value;
                             },
                             .CLCX => {
                                 dest = Address.cl;
+                                destination_mem_addr = immediate_value;
                             },
                             .DLDX => {
                                 dest = Address.dl;
+                                destination_mem_addr = immediate_value;
                             },
                             .BLBX => {
                                 dest = Address.bl;
+                                destination_mem_addr = immediate_value;
                             },
                             .AHSP => {
                                 dest = Address.ah;
+                                destination_mem_addr = immediate_value;
                             },
                             .CHBP => {
                                 dest = Address.ch;
+                                destination_mem_addr = immediate_value;
                             },
                             .DHSI => {
                                 dest = Address.dh;
+                                destination_mem_addr = immediate_value;
                             },
                             .BHDI => {
                                 dest = Address.bh;
+                                destination_mem_addr = immediate_value;
                             },
                         }
                     } else if (!regIsSource) {
                         switch (reg) {
                             .ALAX => {
                                 source = Address.ax;
+                                source_mem_addr = immediate_value;
                             },
                             .CLCX => {
                                 source = Address.cx;
+                                source_mem_addr = immediate_value;
                             },
                             .DLDX => {
                                 source = Address.dx;
+                                source_mem_addr = immediate_value;
                             },
                             .BLBX => {
                                 source = Address.bx;
+                                source_mem_addr = immediate_value;
                             },
                             .AHSP => {
                                 source = Address.sp;
+                                source_mem_addr = immediate_value;
                             },
                             .CHBP => {
                                 source = Address.bp;
+                                source_mem_addr = immediate_value;
                             },
                             .DHSI => {
                                 source = Address.si;
+                                source_mem_addr = immediate_value;
                             },
                             .BHDI => {
                                 source = Address.di;
+                                source_mem_addr = immediate_value;
                             },
                         }
                     }
