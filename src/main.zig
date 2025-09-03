@@ -332,6 +332,14 @@ fn getImmediateToRegMovDest(w: WValue, reg: RegValue) InstructionInfo {
         .source_info = source_payload,
     };
 }
+
+/// Checks if a displacement value fits inside a 8 bit signed integer
+/// or if a 16 bit signed integer is needed. Returns true if a 8 bit integer
+/// suffices.
+fn shouldUse8BitDisplacement(displacement: i16) bool {
+    return displacement >= -128 and displacement <= 127;
+}
+
 // zig fmt: off
 
 /// Given the fields decoded from the instruction bytes this function returns
@@ -346,13 +354,10 @@ fn getRegMemToFromRegMovSourceAndDest(
     rm: RmValue,
     disp_lo: ?u8,
     disp_hi: ?u8,
-    // data: ?u8,
-    // w_data: ?u8,
     ) InstructionInfo {
     const Address = AddressDirectory.Address;
     var dest: Address = undefined;
     var source: Address = undefined;
-    var immediate_value: u20 = undefined;
     var source_mem_addr: u20 = undefined;
     var destination_mem_addr: u20 = undefined;
     var dest_address_calculation: EffectiveAddressCalculation = undefined;
@@ -541,77 +546,10 @@ fn getRegMemToFromRegMovSourceAndDest(
                 // it is an immediate value. Make sure!
                 .DHSI_DIRECTACCESS_BPD8_BPD16 => {
                     const displacement: u16 = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
-                    immediate_value = displacement;
                     if (regIsSource) {
-                        switch (reg) {
-                            .ALAX => {
-                                dest = Address.al;
-                                destination_mem_addr = immediate_value;
-                            },
-                            .CLCX => {
-                                dest = Address.cl;
-                                destination_mem_addr = immediate_value;
-                            },
-                            .DLDX => {
-                                dest = Address.dl;
-                                destination_mem_addr = immediate_value;
-                            },
-                            .BLBX => {
-                                dest = Address.bl;
-                                destination_mem_addr = immediate_value;
-                            },
-                            .AHSP => {
-                                dest = Address.ah;
-                                destination_mem_addr = immediate_value;
-                            },
-                            .CHBP => {
-                                dest = Address.ch;
-                                destination_mem_addr = immediate_value;
-                            },
-                            .DHSI => {
-                                dest = Address.dh;
-                                destination_mem_addr = immediate_value;
-                            },
-                            .BHDI => {
-                                dest = Address.bh;
-                                destination_mem_addr = immediate_value;
-                            },
-                        }
+                        destination_mem_addr = displacement;
                     } else if (!regIsSource) {
-                        switch (reg) {
-                            .ALAX => {
-                                source = Address.ax;
-                                source_mem_addr = immediate_value;
-                            },
-                            .CLCX => {
-                                source = Address.cx;
-                                source_mem_addr = immediate_value;
-                            },
-                            .DLDX => {
-                                source = Address.dx;
-                                source_mem_addr = immediate_value;
-                            },
-                            .BLBX => {
-                                source = Address.bx;
-                                source_mem_addr = immediate_value;
-                            },
-                            .AHSP => {
-                                source = Address.sp;
-                                source_mem_addr = immediate_value;
-                            },
-                            .CHBP => {
-                                source = Address.bp;
-                                source_mem_addr = immediate_value;
-                            },
-                            .DHSI => {
-                                source = Address.si;
-                                source_mem_addr = immediate_value;
-                            },
-                            .BHDI => {
-                                source = Address.di;
-                                source_mem_addr = immediate_value;
-                            },
-                        }
+                        source_mem_addr = displacement;
                     }
                 },
                 .BHDI_BX_BXD8_BXD16 => {
@@ -4112,6 +4050,13 @@ fn makeAssembly(
                                 );
                             };
                         } else if (source.address_calculation.displacement != DisplacementFormat.none) {
+                            var byte_value: u8 = undefined;
+                            var word_value: u16 = undefined;
+                            if (source.address_calculation.displacement == DisplacementFormat.d8) {
+                                byte_value = @truncate(source.address_calculation.displacement_value.?);
+                            } else {
+                                word_value = source.address_calculation.displacement_value.?;
+                            }
                             log.info("[{t} + {t} + {d}]", .{
                                 source.address_calculation.base.?,
                                 source.address_calculation.index.?,
@@ -4120,7 +4065,7 @@ fn makeAssembly(
                             OutputWriter.print("[{t} + {t} + {d}]\n", .{
                                 source.address_calculation.base.?,
                                 source.address_calculation.index.?,
-                                source.address_calculation.displacement_value.?,
+                                if (source.address_calculation.displacement == DisplacementFormat.d16) word_value else byte_value,
                             }) catch |err| {
                                 log.err(
                                     "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
@@ -4131,16 +4076,40 @@ fn makeAssembly(
                     }
                 },
                 .immediate => {
-                    log.info("{d}", .{source.immediate});
-                    OutputWriter.print(
-                        "{d}\n",
-                        .{source.immediate},
-                    ) catch |err| {
-                        log.err(
-                            "{s}: Something went wrong trying to write source index {any} to the output file.",
-                            .{ @errorName(err), source.immediate },
-                        );
-                    };
+                    if (instruction == BinaryInstructions.mov_immediate_to_regmem8) {
+                        log.info("byte {d}", .{source.immediate});
+                        OutputWriter.print(
+                            "byte {d}\n",
+                            .{source.immediate},
+                        ) catch |err| {
+                            log.err(
+                                "{s}: Something went wrong trying to write source index {any} to the output file.",
+                                .{ @errorName(err), source.immediate },
+                            );
+                        };
+                    } else if (instruction == BinaryInstructions.mov_immediate_to_regmem16) {
+                        log.info("word {d}", .{source.immediate});
+                        OutputWriter.print(
+                            "word {d}\n",
+                            .{source.immediate},
+                        ) catch |err| {
+                            log.err(
+                                "{s}: Something went wrong trying to write source index {any} to the output file.",
+                                .{ @errorName(err), source.immediate },
+                            );
+                        };
+                    } else {
+                        log.info("{d}", .{source.immediate});
+                        OutputWriter.print(
+                            "{d}\n",
+                            .{source.immediate},
+                        ) catch |err| {
+                            log.err(
+                                "{s}: Something went wrong trying to write source index {any} to the output file.",
+                                .{ @errorName(err), source.immediate },
+                            );
+                        };
+                    }
                 },
                 .mem_addr => {
                     log.info("[{d}]", .{source.mem_addr});
@@ -4674,6 +4643,39 @@ test "TEST listing_0039_more_movs" {
         output_payload_0x8B_memory_mode_8_bit_displacement,
     );
 
+    // 0x8B, mod: 0b10, rm: 0b110
+    const input_0x8B_memory_mode_16_bit_displacement: [6]u8 = [_]u8{
+        0b1000_1011,
+        0b1011_0110,
+        0b0101_0101,
+        0b1010_1010,
+        0b0000_0000,
+        0b0000_0000,
+    };
+    const output_payload_0x8B_memory_mode_16_bit_displacement = DecodePayload{
+        .mov_with_mod_instruction = MovWithModInstruction{
+            .mnemonic = "mov",
+            .d = DValue.destination,
+            .w = WValue.word,
+            .mod = ModValue.memoryMode16BitDisplacement,
+            .reg = RegValue.DHSI,
+            .sr = null,
+            .rm = RmValue.DHSI_DIRECTACCESS_BPD8_BPD16,
+            .disp_lo = input_0x8B_memory_mode_16_bit_displacement[2],
+            .disp_hi = input_0x8B_memory_mode_16_bit_displacement[3],
+            .data = null,
+            .w_data = null,
+        },
+    };
+    try std.testing.expectEqual(
+        decodeMovWithMod(
+            ModValue.memoryMode16BitDisplacement,
+            RmValue.DHSI_DIRECTACCESS_BPD8_BPD16,
+            input_0x8B_memory_mode_16_bit_displacement,
+        ),
+        output_payload_0x8B_memory_mode_16_bit_displacement,
+    );
+
     // 0xB2, w: byte
     const input_0xB2_byte: [6]u8 = [_]u8{
         0b1011_0001,
@@ -4797,5 +4799,33 @@ test "TEST_listing_0040_challenge_movs" {
             input_0xC7_memory_mode_16_bit_displacement,
         ),
         output_payload_0xC7_memory_mode_16_bit_displacement,
+    );
+
+    // 0xA1, 0xA2, 0xA3, 0xA4
+    const input_0xA2_memory_to_accumulator: [6]u8 = [_]u8{
+        0b1010_0001, // 0xA2
+        0b0101_0101, // 0x55
+        0b1010_1010, // 0xAA
+        0b0000_0000,
+        0b0000_0000,
+        0b0000_0000,
+    };
+    const output_payload_0xA2_memory_to_accumulator = DecodePayload{
+        .mov_without_mod_instruction = MovWithoutModInstruction{
+            .mnemonic = "mov",
+            .w = WValue.word,
+            .reg = null,
+            .data = null,
+            .w_data = null,
+            .addr_lo = input_0xA2_memory_to_accumulator[1],
+            .addr_hi = input_0xA2_memory_to_accumulator[2],
+        },
+    };
+    try std.testing.expectEqual(
+        decodeMovWithoutMod(
+            WValue.word,
+            input_0xA2_memory_to_accumulator,
+        ),
+        output_payload_0xA2_memory_to_accumulator,
     );
 }
