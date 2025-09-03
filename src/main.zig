@@ -11,7 +11,7 @@
 const std = @import("std");
 
 /// global log level
-const LogLevel: std.log.Level = .info;
+const LogLevel: std.log.Level = .debug;
 
 // const DecodeError = error{ InvalidInstruction, InvalidRegister, NotYetImplemented };
 
@@ -219,7 +219,7 @@ const SourceInfoIdentifiers = enum {
 const SourceInfo = union(SourceInfoIdentifiers) {
     address: AddressDirectory.Address,
     address_calculation: EffectiveAddressCalculation,
-    immediate: u20,
+    immediate: u16,
     mem_addr: u20,
 };
 
@@ -260,9 +260,15 @@ const RegValue = enum(u3) {
 
 
 // zig fmt: on
-fn getImmediateToRegMovDest(w: WValue, reg: RegValue) InstructionInfo {
+fn getImmediateToRegMovDest(w: WValue, reg: RegValue, data: u8, w_data: ?u8) InstructionInfo {
     const Address = AddressDirectory.Address;
     var dest: Address = undefined;
+    var immediate: u16 = undefined;
+    if (w_data != null) {
+        immediate = (@as(u16, w_data.?) << 8) + data;
+    } else {
+        immediate = @as(u16, data);
+    }
     switch (w) {
         .byte => {
             switch (reg) {
@@ -325,7 +331,7 @@ fn getImmediateToRegMovDest(w: WValue, reg: RegValue) InstructionInfo {
         .address = dest,
     };
     const source_payload = SourceInfo{
-        .address = Address.none,
+        .immediate = immediate,
     };
     return InstructionInfo{
         .destination_info = destination_payload,
@@ -1939,7 +1945,7 @@ fn getImmediateToRegMemMovDest(
                     };
                 },
                 .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
                     destination_payload = DestinationInfo{
                         .address_calculation = EffectiveAddressCalculation{
                             .base = Address.none,
@@ -2081,7 +2087,7 @@ fn getImmediateToRegMemMovDest(
                 .ALAX_BXSI_BXSID8_BXSID16 => {
                     const bx_value = registers.getBX(WValue.word, null).value16;
                     const si_value = registers.getSI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
                     destination_payload = DestinationInfo{
                         .address_calculation = EffectiveAddressCalculation{
                             .base = Address.bx,
@@ -2095,7 +2101,7 @@ fn getImmediateToRegMemMovDest(
                 .CLCX_BXDI_BXDID8_BXDID16 => {
                     const bx_value = registers.getBX(WValue.word, null).value16;
                     const di_value = registers.getDI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
                     destination_payload = DestinationInfo{
                         .address_calculation = EffectiveAddressCalculation{
                             .base = Address.bx,
@@ -2109,7 +2115,7 @@ fn getImmediateToRegMemMovDest(
                 .DLDX_BPSI_BPSID8_BPSID16 => {
                     const bp_value = registers.getBP();
                     const si_value = registers.getSI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
                     destination_payload = DestinationInfo{
                         .address_calculation = EffectiveAddressCalculation{
                             .base = Address.bp,
@@ -2123,7 +2129,7 @@ fn getImmediateToRegMemMovDest(
                 .BLBX_BPDI_BPDID8_BPDID16 => {
                     const bp_value = registers.getBP();
                     const di_value = registers.getDI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
                     destination_payload = DestinationInfo{
                         .address_calculation = EffectiveAddressCalculation{
                             .base = Address.bp,
@@ -2136,7 +2142,7 @@ fn getImmediateToRegMemMovDest(
                 },
                 .AHSP_SI_SID8_SID16 => {
                     const si_value = registers.getSI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
                     destination_payload = DestinationInfo{
                         .address_calculation = EffectiveAddressCalculation{
                             .base = Address.si,
@@ -2149,7 +2155,7 @@ fn getImmediateToRegMemMovDest(
                 },
                 .CHBP_DI_DID8_DID16 => {
                     const di_value = registers.getDI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
                     destination_payload = DestinationInfo{
                         .address_calculation = EffectiveAddressCalculation{
                             .base = Address.di,
@@ -2162,7 +2168,7 @@ fn getImmediateToRegMemMovDest(
                 },
                 .DHSI_DIRECTACCESS_BPD8_BPD16 => {
                     const bp_value = registers.getBP();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
                     destination_payload = DestinationInfo{
                         .address_calculation = EffectiveAddressCalculation{
                             .base = Address.bp,
@@ -2175,7 +2181,7 @@ fn getImmediateToRegMemMovDest(
                 },
                 .BHDI_BX_BXD8_BXD16 => {
                     const bx_value = registers.getBX(WValue.word, null).value16;
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
+                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
                     destination_payload = DestinationInfo{
                         .address_calculation = EffectiveAddressCalculation{
                             .base = Address.bx,
@@ -3554,7 +3560,7 @@ pub fn main() !void {
 
         const instruction_binary: u8 = biu.getIndex(0);
         const instruction_name: BinaryInstructions = @enumFromInt(instruction_binary);
-        x86sim_scope_log.debug("Read instruction: 0x{x}, {t}", .{ instruction_binary, instruction_name });
+        x86sim_scope_log.debug("Read instruction: 0x{x:0>2}, {t}", .{ instruction_binary, instruction_name });
         const instruction: BinaryInstructions = @enumFromInt(instruction_binary);
 
         var mod: ModValue = undefined;
@@ -3609,7 +3615,7 @@ pub fn main() !void {
             BinaryInstructions.mov_immediate_reg_di,
             => {
                 // 0xB0 - 0xBF
-                w = @enumFromInt((biu.getIndex(0) << 7) >> 7);
+                w = @enumFromInt((biu.getIndex(0) << 4) >> 7);
                 stepSize = if (w == WValue.word) 3 else 2;
             },
             BinaryInstructions.mov_immediate_to_regmem8,
@@ -3693,7 +3699,7 @@ pub fn main() !void {
         x86sim_scope_log.debug("InstructionBytes:", .{});
         var count = activeByte;
         for (InstructionBytes) |inst| {
-            x86sim_scope_log.debug("{b:0>8}, 0x{x}, active byte {d}", .{ inst, inst, count });
+            x86sim_scope_log.debug("{b:0>8}, 0x{x:0>2}, active byte {d}", .{ inst, inst, count });
             count += 1;
         }
 
@@ -3917,19 +3923,44 @@ fn makeAssembly(
                                 );
                             };
                         } else if (destination.address_calculation.displacement != DisplacementFormat.none) {
-                            log.info("[{t} + {d}], ", .{
-                                destination.address_calculation.base.?,
-                                destination.address_calculation.displacement_value.?,
-                            });
-                            OutputWriter.print("[{t} + {d}], ", .{
-                                destination.address_calculation.base.?,
-                                destination.address_calculation.displacement_value.?,
-                            }) catch |err| {
-                                log.err(
-                                    "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
-                                    .{ @errorName(err), destination.address_calculation },
-                                );
+                            const disp_u16: u16 = @intCast(destination.address_calculation.displacement_value.?);
+                            const disp_signed: i16 = if (destination.address_calculation.displacement == DisplacementFormat.d8) blk: {
+                                const u8val: u8 = @intCast(disp_u16 & 0xFF);
+                                const s8: i8 = @bitCast(u8val);
+                                break :blk @as(i16, s8);
+                            } else blk: {
+                                const s16: i16 = @bitCast(disp_u16);
+                                break :blk s16;
                             };
+                            if (disp_signed < 0) {
+                                log.info("[{t} - {d}], ", .{
+                                    destination.address_calculation.base.?,
+                                    -disp_signed,
+                                });
+                                OutputWriter.print("[{t} - {d}], ", .{
+                                    destination.address_calculation.base.?,
+                                    -disp_signed,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), destination.address_calculation },
+                                    );
+                                };
+                            } else {
+                                log.info("[{t} + {d}], ", .{
+                                    destination.address_calculation.base.?,
+                                    disp_signed,
+                                });
+                                OutputWriter.print("[{t} + {d}], ", .{
+                                    destination.address_calculation.base.?,
+                                    disp_signed,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), destination.address_calculation },
+                                    );
+                                };
+                            }
                         }
                     } else if (destination.address_calculation.index != Address.none) {
                         if (destination.address_calculation.displacement == DisplacementFormat.none) {
@@ -3947,21 +3978,48 @@ fn makeAssembly(
                                 );
                             };
                         } else if (destination.address_calculation.displacement != DisplacementFormat.none) {
-                            log.info("[{t} + {t} + {d}], ", .{
-                                destination.address_calculation.base.?,
-                                destination.address_calculation.index.?,
-                                destination.address_calculation.displacement_value.?,
-                            });
-                            OutputWriter.print("[{t} + {t} + {d}], ", .{
-                                destination.address_calculation.base.?,
-                                destination.address_calculation.index.?,
-                                destination.address_calculation.displacement_value.?,
-                            }) catch |err| {
-                                log.err(
-                                    "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
-                                    .{ @errorName(err), destination.address_calculation },
-                                );
+                            const disp_u16: u16 = @intCast(destination.address_calculation.displacement_value.?);
+                            const disp_signed: i16 = if (destination.address_calculation.displacement == DisplacementFormat.d8) blk: {
+                                const u8val: u8 = @intCast(disp_u16 & 0xFF);
+                                const s8: i8 = @bitCast(u8val);
+                                break :blk @as(i16, s8);
+                            } else blk: {
+                                const s16: i16 = @bitCast(disp_u16);
+                                break :blk s16;
                             };
+                            if (disp_signed < 0) {
+                                log.info("[{t} + {t} - {d}], ", .{
+                                    destination.address_calculation.base.?,
+                                    destination.address_calculation.index.?,
+                                    -disp_signed,
+                                });
+                                OutputWriter.print("[{t} + {t} - {d}], ", .{
+                                    destination.address_calculation.base.?,
+                                    destination.address_calculation.index.?,
+                                    -disp_signed,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), destination.address_calculation },
+                                    );
+                                };
+                            } else {
+                                log.info("[{t} + {t} + {d}], ", .{
+                                    destination.address_calculation.base.?,
+                                    destination.address_calculation.index.?,
+                                    disp_signed,
+                                });
+                                OutputWriter.print("[{t} + {t} + {d}], ", .{
+                                    destination.address_calculation.base.?,
+                                    destination.address_calculation.index.?,
+                                    disp_signed,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), destination.address_calculation },
+                                    );
+                                };
+                            }
                         }
                     }
                 },
@@ -4020,19 +4078,44 @@ fn makeAssembly(
                                 );
                             };
                         } else if (source.address_calculation.displacement != DisplacementFormat.none) {
-                            log.info("[{t} + {d}]", .{
-                                source.address_calculation.base.?,
-                                source.address_calculation.displacement_value.?,
-                            });
-                            OutputWriter.print("[{t} + {d}]\n", .{
-                                source.address_calculation.base.?,
-                                source.address_calculation.displacement_value.?,
-                            }) catch |err| {
-                                log.err(
-                                    "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
-                                    .{ @errorName(err), source.address_calculation },
-                                );
+                            const disp_u16: u16 = @intCast(source.address_calculation.displacement_value.?);
+                            const disp_signed: i16 = if (source.address_calculation.displacement == DisplacementFormat.d8) blk: {
+                                const u8val: u8 = @intCast(disp_u16 & 0xFF);
+                                const s8: i8 = @bitCast(u8val);
+                                break :blk @as(i16, s8);
+                            } else blk: {
+                                const s16: i16 = @bitCast(disp_u16);
+                                break :blk s16;
                             };
+                            if (disp_signed < 0) {
+                                log.info("[{t} - {d}]", .{
+                                    source.address_calculation.base.?,
+                                    -disp_signed,
+                                });
+                                OutputWriter.print("[{t} - {d}]\n", .{
+                                    source.address_calculation.base.?,
+                                    -disp_signed,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), source.address_calculation },
+                                    );
+                                };
+                            } else {
+                                log.info("[{t} + {d}]", .{
+                                    source.address_calculation.base.?,
+                                    disp_signed,
+                                });
+                                OutputWriter.print("[{t} + {d}]\n", .{
+                                    source.address_calculation.base.?,
+                                    disp_signed,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), source.address_calculation },
+                                    );
+                                };
+                            }
                         }
                     } else if (source.address_calculation.index != Address.none) {
                         if (source.address_calculation.displacement == DisplacementFormat.none) {
@@ -4050,28 +4133,48 @@ fn makeAssembly(
                                 );
                             };
                         } else if (source.address_calculation.displacement != DisplacementFormat.none) {
-                            var byte_value: u8 = undefined;
-                            var word_value: u16 = undefined;
-                            if (source.address_calculation.displacement == DisplacementFormat.d8) {
-                                byte_value = @truncate(source.address_calculation.displacement_value.?);
-                            } else {
-                                word_value = source.address_calculation.displacement_value.?;
-                            }
-                            log.info("[{t} + {t} + {d}]", .{
-                                source.address_calculation.base.?,
-                                source.address_calculation.index.?,
-                                source.address_calculation.displacement_value.?,
-                            });
-                            OutputWriter.print("[{t} + {t} + {d}]\n", .{
-                                source.address_calculation.base.?,
-                                source.address_calculation.index.?,
-                                if (source.address_calculation.displacement == DisplacementFormat.d16) word_value else byte_value,
-                            }) catch |err| {
-                                log.err(
-                                    "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
-                                    .{ @errorName(err), source.address_calculation },
-                                );
+                            const disp_u16: u16 = @intCast(source.address_calculation.displacement_value.?);
+                            const disp_signed: i16 = if (source.address_calculation.displacement == DisplacementFormat.d8) blk: {
+                                const u8val: u8 = @intCast(disp_u16 & 0xFF);
+                                const s8: i8 = @bitCast(u8val);
+                                break :blk @as(i16, s8);
+                            } else blk: {
+                                const s16: i16 = @bitCast(disp_u16);
+                                break :blk s16;
                             };
+                            if (disp_signed < 0) {
+                                log.info("[{t} + {t} - {d}]", .{
+                                    source.address_calculation.base.?,
+                                    source.address_calculation.index.?,
+                                    -disp_signed,
+                                });
+                                OutputWriter.print("[{t} + {t} - {d}]\n", .{
+                                    source.address_calculation.base.?,
+                                    source.address_calculation.index.?,
+                                    -disp_signed,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), source.address_calculation },
+                                    );
+                                };
+                            } else {
+                                log.info("[{t} + {t} + {d}]", .{
+                                    source.address_calculation.base.?,
+                                    source.address_calculation.index.?,
+                                    disp_signed,
+                                });
+                                OutputWriter.print("[{t} + {t} + {d}]\n", .{
+                                    source.address_calculation.base.?,
+                                    source.address_calculation.index.?,
+                                    disp_signed,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), source.address_calculation },
+                                    );
+                                };
+                            }
                         }
                     }
                 },
@@ -4123,9 +4226,6 @@ fn makeAssembly(
                         );
                     };
                 },
-                // else => {
-                //     return MakeAssemblyError.InstructionError;
-                // },
             }
         },
         .mov_without_mod_instruction => {
@@ -4135,7 +4235,6 @@ fn makeAssembly(
             };
 
             const instruction: BinaryInstructions = @enumFromInt(InstructionBytes[0]);
-            // const w = payload.mov_without_mod_instruction.w;
             var instruction_info: InstructionInfo = undefined;
             switch (instruction) {
                 .mov_immediate_reg_al,
@@ -4158,6 +4257,8 @@ fn makeAssembly(
                     instruction_info = getImmediateToRegMovDest(
                         payload.mov_without_mod_instruction.w,
                         payload.mov_without_mod_instruction.reg.?,
+                        payload.mov_without_mod_instruction.data.?,
+                        if (payload.mov_without_mod_instruction.w == WValue.word) payload.mov_without_mod_instruction.w_data.? else null,
                     );
                 },
                 .mov_mem8_acc8,
@@ -4237,12 +4338,13 @@ fn makeAssembly(
                     };
                 },
                 .immediate => {
-                    const immediate_value: u16 = (@as(u16, payload.mov_without_mod_instruction.addr_hi.?) << 8) + payload.mov_without_mod_instruction.addr_lo.?;
-                    log.info("{d}", .{immediate_value});
-                    OutputWriter.print("{d}\n", .{immediate_value}) catch |err| {
+                    const immediate_value: u16 = source.immediate;
+                    const signed_immediate: i16 = @bitCast(immediate_value);
+                    log.info("{d}", .{signed_immediate});
+                    OutputWriter.print("{d}\n", .{signed_immediate}) catch |err| {
                         log.err(
                             "{s}: Something went wrong trying to write immediate value {any} to the output file.",
-                            .{ @errorName(err), immediate_value },
+                            .{ @errorName(err), signed_immediate },
                         );
                     };
                 },
