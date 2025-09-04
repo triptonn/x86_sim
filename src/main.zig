@@ -14,8 +14,6 @@ const std = @import("std");
 const LogLevel: std.log.Level = .debug;
 // const LogLevel: std.log.Level = .info;
 
-// const DecodeError = error{ InvalidInstruction, InvalidRegister, NotYetImplemented };
-
 // zig fmt: off
 const BinaryInstructions = enum(u8) {
 
@@ -36,12 +34,25 @@ const BinaryInstructions = enum(u8) {
     add_immediate_8_bit_to_acc  = 0x04,
     add_immediate_16_bit_to_acc = 0x05,
 
-    // ASM-86 ADD INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
+    // ASM-86 Immediate INSTRUCTIONS          | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
     // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
     // ADD: Immediate to register/memory      | 1 0 0 0 0 0|S|W | MOD|0 0 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
+    // OR: Immediate with register/memory     | 1 0 0 0 0 0 0|W | MOD|0 0 1| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
+    // ADC: Immediate to register/memory      | 1 0 0 0 0 0|S|W | MOD|0 1 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
+    // SBB: Immediate from register/memory    | 1 0 0 0 0 0|S|W | MOD|0 1 1| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
+    // AND: Immediate with register/memory    | 1 0 0 0 0 0 0|W | MOD|1 0 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
+    // SUB: Immediate from register/memory    | 1 0 0 0 0 0|S|W | MOD|1 0 1| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
+    // XOR: Immediate with register/memory    | 1 0 0 0 0 0 0|W | MOD|1 1 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
+    // CMP: Immediate with register/memory    | 1 0 0 0 0 0|S|W | MOD|1 1 1| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
 
-    immediate_byte              = 0x80,
-    immediate_word              = 0x81,
+    /// Immediate 8 bit value to/with/from 8 bit register/memory operation.
+    regmem8_immediate8          = 0x80,
+    /// Immediate 16 bit value to/with/from 16 bit register/memory operation.
+    regmem16_immediate16        = 0x81,
+    /// Signed immediate value to/with/from 16 bit register/memory operation.
+    regmem16_signed_immediate16 = 0x82,
+    /// Immediate 8 bit value to/with/from 16 bit register/memory operation.
+    regmem16_immediate8         = 0x83,
 
     // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
     // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
