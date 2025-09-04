@@ -45,13 +45,13 @@ const BinaryInstructions = enum(u8) {
     // XOR: Immediate with register/memory    | 1 0 0 0 0 0 0|W | MOD|1 1 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
     // CMP: Immediate with register/memory    | 1 0 0 0 0 0|S|W | MOD|1 1 1| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
 
-    /// Immediate 8 bit value to/with/from 8 bit register/memory operation.
+    /// Immediate 8 bit value to/with/from 8 bit register/memory operation (DATA-8).
     regmem8_immediate8          = 0x80,
-    /// Immediate 16 bit value to/with/from 16 bit register/memory operation.
+    /// Immediate 16 bit value to/with/from 16 bit register/memory operation (DATA-LO, DATA-HI).
     regmem16_immediate16        = 0x81,
-    /// Signed immediate value to/with/from 16 bit register/memory operation.
+    /// Signed immediate value to/with/from 16 bit register/memory operation (DATA-8).
     regmem16_signed_immediate16 = 0x82,
-    /// Immediate 8 bit value to/with/from 16 bit register/memory operation.
+    /// Immediate 8 bit value to/with/from 16 bit register/memory operation (DATA-SX).
     regmem16_immediate8         = 0x83,
 
     // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
@@ -180,6 +180,24 @@ const DiassembleError = error{
     WriteFailed,
 };
 
+/// Immediate operation instructions
+/// - Immediate byte value to register/memory 0x80
+/// - Immediate word value to register/memory 0x81
+/// - Sign-extended byte value to register/memory (data-8) 0x82
+/// - Immediate byte value to 16 bit register (data-sx) 0x83
+const ImmediateOpInstruction = struct{
+    opcode: BinaryInstructions,
+    mnemonic: []const u8,
+    s: SValue,
+    w: WValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+    data: ?u8,
+    w_data: ?u8,
+    data_8: ?u8,
+    data_sx: ?u16,
+};
+
 /// MovInstruction with mod field
 /// - register/memory to/from register: 0x88, 0x89, 0x8A, 0x8B
 /// - segment register to/from register/memory: 0x8C, 0x8E
@@ -225,6 +243,7 @@ const DecodedPayloadIdentifier = enum{
 /// decoding its value is returned in this Payload.
 const DecodePayload = union(DecodedPayloadIdentifier) {
     err: InstructionDecodeError,
+    immediate_op_instruction: ImmediateOpInstruction,
     mov_with_mod_instruction: MovWithModInstruction,
     mov_without_mod_instruction: MovWithoutModInstruction,
 };
@@ -2323,11 +2342,47 @@ const ZValue = enum(u1) {
     clear               = 0b0,
     set                 = 0b1
 };
+
+/// Given the InstructionBinaries value, SValue and WValue of a immediate value operation
+/// this function returns the number of bytes it consists of as a u3 value
+fn immediateOpGetInstructionLength(
+    instruction_name: BinaryInstructions,
+    s: SValue,
+    w: WValue,
+) u3 {
+    const immediateOpGetInstructionLength_log = std.log.scoped(.immediateOpGetInstructionLength);
+    switch (instruction_name) {
+        .regmem8_immediate8,
+        .regmem16_immediate16,
+        .regmem16_signed_immediate16,
+        .regmem16_immediate8,
+        => {
+            if (w == WValue.word) {
+                if (s == SValue.sign_extend) {
+                    return 6;
+                } else {
+                    return 5;
+                }
+            } else {
+                if (s == SValue.sign_extend) {
+                    return 4;
+                } else {
+                    return 3;
+                }
+            }
+        },
+        else => {
+            immediateOpGetInstructionLength_log.debug("Instruction not yet implemented. Skipping...", .{});
+            return 1;
+        },
+    }
+}
+
 // zig fmt: on
 
 /// Given the Mod and R/M value of a Mov register/memory to/from register
 /// instruction, this function returns the number of bytes this instruction
-/// consists of.
+/// consists of as a u3 value.
 fn movGetInstructionLength(
     instruction_name: BinaryInstructions,
     w: WValue,
@@ -2436,6 +2491,60 @@ fn movGetInstructionLength(
             movGetInstructionLength_log.debug("Instruction not yet implemented. Skipping...", .{});
             return 1;
         },
+    }
+}
+
+fn decodeImmediateOp(
+    s: SValue,
+    w: WValue,
+    input: [6]u8,
+) DecodePayload {
+    const decodeImmediateOp_log = std.log.scoped(.decodeImmediateOp);
+    const instruction: BinaryInstructions = @enumFromInt(input[0]);
+    if (w == WValue.byte) {
+        if (s == SValue.no_sign) {
+            switch (instruction) {
+                .regmem8_immediate8 => {},
+                .regmem16_immediate16 => {},
+                .regmem16_signed_immediate16 => {},
+                .regmem16_immediate8 => {},
+                else => {
+                    decodeImmediateOp_log.debug("Instruction not yet implemented.", .{});
+                },
+            }
+        } else {
+            switch (instruction) {
+                .regmem8_immediate8 => {},
+                .regmem16_immediate16 => {},
+                .regmem16_signed_immediate16 => {},
+                .regmem16_immediate8 => {},
+                else => {
+                    decodeImmediateOp_log.debug("Instruction not yet implemented.", .{});
+                },
+            }
+        }
+    } else {
+        if (s == SValue.no_sign) {
+            switch (instruction) {
+                .regmem8_immediate8 => {},
+                .regmem16_immediate16 => {},
+                .regmem16_signed_immediate16 => {},
+                .regmem16_immediate8 => {},
+                else => {
+                    decodeImmediateOp_log.debug("Instruction not yet implemented.", .{});
+                },
+            }
+        } else {
+            switch (instruction) {
+                .regmem8_immediate8 => {},
+                .regmem16_immediate16 => {},
+                .regmem16_signed_immediate16 => {},
+                .regmem16_immediate8 => {},
+                else => {
+                    decodeImmediateOp_log.debug("Instruction not yet implemented.", .{});
+                },
+            }
+        }
     }
 }
 
@@ -3690,10 +3799,22 @@ pub fn main() !void {
         x86sim_scope_log.debug("Read instruction: 0x{x:0>2}, {t}", .{ instruction_binary, instruction_name });
         const instruction: BinaryInstructions = @enumFromInt(instruction_binary);
 
+        var s: SValue = undefined;
+        var w: WValue = undefined;
         var mod: ModValue = undefined;
         var rm: RmValue = undefined;
-        var w: WValue = undefined;
         switch (instruction) {
+            BinaryInstructions.regmem8_immediate8,
+            BinaryInstructions.regmem16_immediate16,
+            BinaryInstructions.regmem16_signed_immediate16,
+            BinaryInstructions.regmem16_immediate8,
+            => {
+                // 0x80, 0x81, 0x82, 0x83
+                s = @enumFromInt(((biu.getIndex(0) >> 1) << 7) >> 7);
+                w = @enumFromInt((biu.getIndex(0) << 7) >> 7);
+
+                stepSize = immediateOpGetInstructionLength(instruction_name, s, w);
+            },
             BinaryInstructions.mov_source_regmem8_reg8,
             BinaryInstructions.mov_source_regmem16_reg16,
             BinaryInstructions.mov_dest_reg8_regmem8,
@@ -3835,6 +3956,13 @@ pub fn main() !void {
 
         var payload: DecodePayload = undefined;
         switch (instruction) {
+            .regmem8_immediate8,
+            .regmem16_immediate16,
+            .regmem16_signed_immediate16,
+            .regmem16_immediate8,
+            => {
+                payload = decodeImmediateOp(s, w, InstructionBytes);
+            },
             .mov_source_regmem8_reg8,
             .mov_source_regmem16_reg16,
             .mov_dest_reg8_regmem8,
