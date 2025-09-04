@@ -12,11 +12,36 @@ const std = @import("std");
 
 /// global log level
 const LogLevel: std.log.Level = .debug;
+// const LogLevel: std.log.Level = .info;
 
 // const DecodeError = error{ InvalidInstruction, InvalidRegister, NotYetImplemented };
 
 // zig fmt: off
 const BinaryInstructions = enum(u8) {
+
+
+    // ASM-86 ADD INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
+    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
+    // ADD: Reg/memory with register to either| 0 0 0 0 0 0|D|W | MOD| REG | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|
+
+    add_source_regmem8_reg8     = 0x00,
+    add_source_regmem16_reg16   = 0x01,
+    add_dest_reg8_regmem8       = 0x02,
+    add_dest_reg16_regmem16     = 0x03,
+
+    // ASM-86 ADD INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
+    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
+    // ADD: Immediate to accumulator          | 0 0 0 0 0 1 0|W |       data      |   data if W=1   |<------------------------XXX------------------------>|
+
+    add_immediate_8_bit_to_acc  = 0x04,
+    add_immediate_16_bit_to_acc = 0x05,
+
+    // ASM-86 ADD INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
+    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
+    // ADD: Immediate to register/memory      | 1 0 0 0 0 0|S|W | MOD|0 0 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
+
+    immediate_byte              = 0x80,
+    immediate_word              = 0x81,
 
     // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
     // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
@@ -111,6 +136,9 @@ const BinaryInstructions = enum(u8) {
     mov_immediate_to_regmem8    = 0xC6,
     /// Immediate to register/memory
     mov_immediate_to_regmem16   = 0xC7,
+
+
+
 };
 
 // Error:
@@ -119,18 +147,23 @@ const SimulatorError = error{
     DecodeError,
     InstructionError,
     InstructionSizeError,
+    InvalidInstruction,
     NotYetImplemented,
     WriteFailed,
 };
 
-const DecodeInstructionError = error{
+const InstructionDecodeError = error{
     DecodeError,
     InstructionError,
     NotYetImplemented,
     WriteFailed,
 };
 
-const MakeAssemblyError = error{
+const InstructionExecutionError = error{
+    InvalidInstruction,
+};
+
+const DiassembleError = error{
     InstructionError,
     NotYetImplemented,
     WriteFailed,
@@ -140,6 +173,7 @@ const MakeAssemblyError = error{
 /// - register/memory to/from register: 0x88, 0x89, 0x8A, 0x8B
 /// - segment register to/from register/memory: 0x8C, 0x8E
 const MovWithModInstruction = struct{
+    opcode: BinaryInstructions,
     mnemonic: []const u8,
     d: ?DValue,
     w: ?WValue,
@@ -157,6 +191,7 @@ const MovWithModInstruction = struct{
 /// - Immediate to register: 0xB0 - 0xBF
 /// - memory to/from accumulator: 0xA0, 0xA1, 0xA2, 0xA3
 const MovWithoutModInstruction = struct{
+    opcode: BinaryInstructions,
     mnemonic: []const u8,
     w: WValue,
     reg: ?RegValue,
@@ -178,7 +213,7 @@ const DecodedPayloadIdentifier = enum{
 /// byte data)inside a struct. If an error occured during instruction
 /// decoding its value is returned in this Payload.
 const DecodePayload = union(DecodedPayloadIdentifier) {
-    err: DecodeInstructionError,
+    err: InstructionDecodeError,
     mov_with_mod_instruction: MovWithModInstruction,
     mov_without_mod_instruction: MovWithoutModInstruction,
 };
@@ -2288,6 +2323,7 @@ fn movGetInstructionLength(
     mod: ?ModValue,
     rm: ?RmValue,
 ) u3 {
+    const movGetInstructionLength_log = std.log.scoped(.movGetInstructionLength);
     switch (instruction_name) {
         .mov_source_regmem8_reg8,
         .mov_source_regmem16_reg16,
@@ -2385,11 +2421,15 @@ fn movGetInstructionLength(
                 },
             }
         },
+        else => {
+            movGetInstructionLength_log.debug("Instruction not yet implemented. Skipping...", .{});
+            return 1;
+        },
     }
 }
 
-/// Matching binary values against instruction- and register enum's. Returns names of the
-/// instructions and registers as strings in an []u8.
+/// Matching binary values against instruction- and register enum's. Returns a DecodePayload union
+/// with instruction specific decoded conten.
 fn decodeMovWithMod(
     mod: ModValue,
     rm: RmValue,
@@ -2417,6 +2457,7 @@ fn decodeMovWithMod(
 
                     const result = DecodePayload{
                         .mov_with_mod_instruction = MovWithModInstruction{
+                            .opcode = instruction,
                             .mnemonic = mnemonic,
                             .d = null,
                             .w = @enumFromInt(w),
@@ -2442,6 +2483,7 @@ fn decodeMovWithMod(
 
                     const result = DecodePayload{
                         .mov_with_mod_instruction = MovWithModInstruction{
+                            .opcode = instruction,
                             .mnemonic = mnemonic,
                             .d = null,
                             .w = @enumFromInt(w),
@@ -2467,6 +2509,7 @@ fn decodeMovWithMod(
 
                     const result = DecodePayload{
                         .mov_with_mod_instruction = MovWithModInstruction{
+                            .opcode = instruction,
                             .mnemonic = mnemonic,
                             .d = null,
                             .w = @enumFromInt(w),
@@ -2492,6 +2535,7 @@ fn decodeMovWithMod(
 
                     const result = DecodePayload{
                         .mov_with_mod_instruction = MovWithModInstruction{
+                            .opcode = instruction,
                             .mnemonic = mnemonic,
                             .d = null,
                             .w = @enumFromInt(w),
@@ -2534,6 +2578,7 @@ fn decodeMovWithMod(
 
                         const result = DecodePayload{
                             .mov_with_mod_instruction = MovWithModInstruction{
+                                .opcode = instruction,
                                 .mnemonic = mnemonic,
                                 .d = @enumFromInt(d),
                                 .w = @enumFromInt(w),
@@ -2564,6 +2609,7 @@ fn decodeMovWithMod(
 
                         const result = DecodePayload{
                             .mov_with_mod_instruction = MovWithModInstruction{
+                                .opcode = instruction,
                                 .mnemonic = mnemonic,
                                 .d = @enumFromInt(d),
                                 .w = @enumFromInt(w),
@@ -2596,6 +2642,7 @@ fn decodeMovWithMod(
 
                     const result = DecodePayload{
                         .mov_with_mod_instruction = MovWithModInstruction{
+                            .opcode = instruction,
                             .mnemonic = mnemonic,
                             .d = @enumFromInt(d),
                             .w = @enumFromInt(w),
@@ -2627,6 +2674,7 @@ fn decodeMovWithMod(
 
                     const result = DecodePayload{
                         .mov_with_mod_instruction = MovWithModInstruction{
+                            .opcode = instruction,
                             .mnemonic = mnemonic,
                             .d = @enumFromInt(d),
                             .w = @enumFromInt(w),
@@ -2658,6 +2706,7 @@ fn decodeMovWithMod(
 
                     const result = DecodePayload{
                         .mov_with_mod_instruction = MovWithModInstruction{
+                            .opcode = instruction,
                             .mnemonic = mnemonic,
                             .d = @enumFromInt(d),
                             .w = @enumFromInt(w),
@@ -2683,6 +2732,7 @@ fn decodeMovWithMod(
                 .memoryModeNoDisplacement => {
                     const result = DecodePayload{
                         .mov_with_mod_instruction = MovWithModInstruction{
+                            .opcode = instruction,
                             .mnemonic = "mov",
                             .d = null,
                             .w = w,
@@ -2701,6 +2751,7 @@ fn decodeMovWithMod(
                 .memoryMode8BitDisplacement => {
                     const result = DecodePayload{
                         .mov_with_mod_instruction = MovWithModInstruction{
+                            .opcode = instruction,
                             .mnemonic = "mov",
                             .d = null,
                             .w = w,
@@ -2719,6 +2770,7 @@ fn decodeMovWithMod(
                 .memoryMode16BitDisplacement => {
                     const result = DecodePayload{
                         .mov_with_mod_instruction = MovWithModInstruction{
+                            .opcode = instruction,
                             .mnemonic = "mov",
                             .d = null,
                             .w = w,
@@ -2737,6 +2789,7 @@ fn decodeMovWithMod(
                 .registerModeNoDisplacement => {
                     const result = DecodePayload{
                         .mov_with_mod_instruction = MovWithModInstruction{
+                            .opcode = instruction,
                             .mnemonic = "mov",
                             .d = null,
                             .w = w,
@@ -2756,7 +2809,7 @@ fn decodeMovWithMod(
         },
         else => {
             const result = DecodePayload{
-                .err = DecodeInstructionError.NotYetImplemented,
+                .err = InstructionDecodeError.NotYetImplemented,
             };
             log.err("Error: Decode mov with mod field not possible. Instruction not yet implemented.", .{});
             return result;
@@ -2764,6 +2817,8 @@ fn decodeMovWithMod(
     }
 }
 
+/// Matchin binary values against instruction- and register enum's. Returns a DecodePayload union
+/// with instruction specific decoded content.
 fn decodeMovWithoutMod(
     w: WValue,
     input: [6]u8,
@@ -2797,6 +2852,7 @@ fn decodeMovWithoutMod(
                 .byte => {
                     const result = DecodePayload{
                         .mov_without_mod_instruction = MovWithoutModInstruction{
+                            .opcode = instruction,
                             .mnemonic = "mov",
                             .w = w,
                             .reg = reg,
@@ -2811,6 +2867,7 @@ fn decodeMovWithoutMod(
                 .word => {
                     const result = DecodePayload{
                         .mov_without_mod_instruction = MovWithoutModInstruction{
+                            .opcode = instruction,
                             .mnemonic = "mov",
                             .w = w,
                             .reg = reg,
@@ -2831,6 +2888,7 @@ fn decodeMovWithoutMod(
         => {
             const result = DecodePayload{
                 .mov_without_mod_instruction = MovWithoutModInstruction{
+                    .opcode = instruction,
                     .mnemonic = "mov",
                     .w = w,
                     .reg = null,
@@ -2844,7 +2902,7 @@ fn decodeMovWithoutMod(
         },
         else => {
             const result = DecodePayload{
-                .err = DecodeInstructionError.NotYetImplemented,
+                .err = InstructionDecodeError.NotYetImplemented,
             };
             log.err("Error: Decode mov without mod field not possible. Instruction not yet implemented.", .{});
             return result;
@@ -3296,9 +3354,6 @@ const Memory = struct {
     pub fn init(self: *Memory) void {
         self._memory = [1]u8{0} ** 0xFFFFF;
     }
-    pub fn defineSegment() void {}
-    pub fn moveSegment() void {}
-    pub fn removeSegment() void {}
     pub fn setDirectAddress(
         self: *Memory,
         addr: u16!u8,
@@ -3322,6 +3377,9 @@ const Memory = struct {
             return MemoryError.ValueError;
         }
     }
+
+    /// Read 8 or 16 bit of memory starting at the 16 bit memory address
+    /// passed as a parameter.
     pub fn getDirectAddress(self: *Memory, addr: u16, w: WValue) MemoryPayload {
         if (0 <= addr and addr < 0xFFF) {
             if (w == WValue.byte) {
@@ -3343,6 +3401,48 @@ const Memory = struct {
         }
     }
 };
+
+// TODO: Insert Doc string
+/// Placeholder
+fn executeInstruction(
+    instruction_payload: DecodePayload,
+    // register_ptr: *Register,
+    // memory_ptr: *Memory,
+) InstructionExecutionError!void {
+    const executeInstruction_log = std.log.scoped(.executeInstruction);
+    switch (instruction_payload) {
+        .err => {},
+        .mov_with_mod_instruction => {
+            switch (instruction_payload.mov_with_mod_instruction.opcode) {
+                .mov_source_regmem8_reg8 => {
+                    // const instruction = instruction_payload.mov_with_mod_instruction;
+                    // switch (instruction.mod) {
+                    //     .memoryModeNoDisplacement => {
+                    //         if (instruction.rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {} else {}
+                    //     },
+                    // }
+                },
+                .mov_source_regmem16_reg16 => {},
+                .mov_dest_reg8_regmem8 => {},
+                .mov_dest_reg16_regmem16 => {},
+                else => {
+                    executeInstruction_log.debug("Instruction not yet implemented", .{});
+                },
+            }
+        },
+        .mov_without_mod_instruction => {
+            switch (instruction_payload.mov_without_mod_instruction.opcode) {
+                .mov_immediate_reg_al => {},
+                .mov_immediate_reg_cl => {},
+                .mov_immediate_reg_dl => {},
+                .mov_immediate_reg_bl => {},
+                else => {
+                    executeInstruction_log.debug("Instruction not yet implemented", .{});
+                },
+            }
+        },
+    }
+}
 
 pub const std_options: std.Options = .{
     .log_level = LogLevel,
@@ -3527,9 +3627,11 @@ pub fn main() !void {
         .InstructionQueue = [1]u8{0} ** 6,
     };
 
-    //////////////////////////////////////////
-    // Start of the Simulation Part         //
-    //////////////////////////////////////////
+    // TODO: Initialize cpu clock
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Simulation //
+    ////////////////////////////////////////////////////////////////////////////
 
     x86sim_scope_log.info("\n+++x86+Simulator++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{});
     x86sim_scope_log.info("Simulating target: {s}", .{input_file_path});
@@ -3539,6 +3641,15 @@ pub fn main() !void {
     var stepSize: u3 = 2;
     var InstructionBytes: [6]u8 = undefined;
     const file_contents = try input_binary_file.readToEndAlloc(heap_allocator, maxFileSizeBytes);
+
+    // TODO: Define Segments in memory
+
+    // TODO: Copy instruction file to memory
+
+    // TODO: set segment registers
+
+    // TODO: set flags
+
     x86sim_scope_log.debug("Instruction byte count: {d}", .{file_contents.len});
     x86sim_scope_log.info("+++Start+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte});
 
@@ -3548,6 +3659,11 @@ pub fn main() !void {
     var depleted: bool = false;
 
     while (!depleted and activeByte < file_contents.len) : (activeByte += stepSize) {
+
+        ////////////////////////////////////////////////////////////////////////
+        // Instruction decoding //
+        ////////////////////////////////////////////////////////////////////////
+
         const queue_size = 6;
         var queue_index: u3 = 0;
         x86sim_scope_log.debug("---BIU-Instruction-Queue-----------------------------------------------------", .{});
@@ -3627,6 +3743,9 @@ pub fn main() !void {
                 mod = @enumFromInt(second_byte >> 6);
                 rm = @enumFromInt((second_byte << 5) >> 5);
                 stepSize = movGetInstructionLength(instruction_name, w, mod, rm);
+            },
+            else => {
+                x86sim_scope_log.debug("This instruction is not yet implemented. Skipping...", .{});
             },
         }
 
@@ -3739,36 +3858,62 @@ pub fn main() !void {
             => {
                 payload = decodeMovWithoutMod(w, InstructionBytes);
             },
+            else => {
+                x86sim_scope_log.debug("Instruction not yet implemented. Skipping...", .{});
+            },
         }
 
-        makeAssembly(
+        ////////////////////////////////////////////////////////////////////////
+        // Instruction execution //
+        ////////////////////////////////////////////////////////////////////////
+
+        executeInstruction(
+            payload,
+            // &registers,
+            // &memory,
+        ) catch |err| {
+            switch (err) {
+                InstructionExecutionError.InvalidInstruction => {
+                    x86sim_scope_log.err("{s}: Instruction 0x{x:0>2} could not be executed.\ncontinue...", .{
+                        @errorName(payload.err),
+                        InstructionBytes[0],
+                    });
+                },
+            }
+        };
+
+        ////////////////////////////////////////////////////////////////////////
+        // Testing //
+        ////////////////////////////////////////////////////////////////////////
+
+        disassemble(
             &registers,
             OutputWriter,
             InstructionBytes,
             payload,
         ) catch |err| {
             switch (err) {
-                DecodeInstructionError.DecodeError => {
-                    x86sim_scope_log.err("{s}: Instruction 0x{x} could not be decoded.\ncontinue...", .{
+                InstructionDecodeError.DecodeError => {
+                    x86sim_scope_log.err("{s}: Instruction 0x{x:0>2} could not be decoded.\ncontinue...", .{
                         @errorName(payload.err),
                         InstructionBytes[0],
                     });
                 },
-                DecodeInstructionError.InstructionError => {
-                    x86sim_scope_log.err("{s}: Instruction 0x{x} could not be decoded.\ncontinue...", .{
+                InstructionDecodeError.InstructionError => {
+                    x86sim_scope_log.err("{s}: Instruction 0x{x:0>2} could not be decoded.\ncontinue...", .{
                         @errorName(payload.err),
                         InstructionBytes[0],
                     });
                 },
-                DecodeInstructionError.NotYetImplemented => {
-                    x86sim_scope_log.err("{s}: 0x{x} ({s}) not implemented yet.\ncontinue...", .{
+                InstructionDecodeError.NotYetImplemented => {
+                    x86sim_scope_log.err("{s}: 0x{x:0>2} ({s}) not implemented yet.\ncontinue...", .{
                         @errorName(payload.err),
                         InstructionBytes[0],
                         @tagName(instruction),
                     });
                 },
-                DecodeInstructionError.WriteFailed => {
-                    x86sim_scope_log.err("{s}: Failed to write instruction 0x{x} ({s}) to .asm file.\ncontinue...", .{
+                InstructionDecodeError.WriteFailed => {
+                    x86sim_scope_log.err("{s}: Failed to write instruction 0x{x:0>2} ({s}) to .asm file.\ncontinue...", .{
                         @errorName(payload.err),
                         InstructionBytes[0],
                         @tagName(instruction),
@@ -3798,12 +3943,12 @@ pub fn main() !void {
     try runAssemblyTest(args_allocator, input_file_path, output_asm_file_path);
 }
 
-fn makeAssembly(
+fn disassemble(
     registers: *Register,
     OutputWriter: *std.io.Writer,
     InstructionBytes: [6]u8,
     payload: DecodePayload,
-) DecodeInstructionError!void {
+) InstructionDecodeError!void {
     const log = std.log.scoped(.makeAssembly);
 
     switch (payload) {
