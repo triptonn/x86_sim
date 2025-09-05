@@ -202,6 +202,8 @@ const ImmediateOpInstruction = struct{
     mnemonic: []const u8,
     s: SValue,
     w: WValue,
+    mod: ModValue,
+    rm: RmValue,
     disp_lo: ?u8,
     disp_hi: ?u8,
     data_lo: ?u8,
@@ -246,6 +248,7 @@ const MovWithoutModInstruction = struct{
 /// Enum holding the identifier's for the different DecodePayload fields.
 const DecodedPayloadIdentifier = enum{
     err,
+    immediate_op_instruction,
     mov_with_mod_instruction,
     mov_without_mod_instruction,
 };
@@ -336,8 +339,217 @@ const RegValue = enum(u3) {
 // 110 | DH |  SI  | 110 | DIRECT ADDRESS | (BP) + D8        | (BP) + D16
 // 111 | BH |  DI  | 111 | (BX)           | (BX) + D8        | (BX) + D16
 
-
 // zig fmt: on
+
+// TODO: DocString
+
+fn calculateEffectiveAddress(
+    registers: *Register,
+    mod: ModValue,
+    rm: RmValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+) EffectiveAddressCalculation {
+    const Address = AddressDirectory.Address;
+    var disp_format: DisplacementFormat = undefined;
+    var disp_value: u16 = undefined;
+    if (mod == ModValue.memoryMode16BitDisplacement) {
+        disp_format = DisplacementFormat.d16;
+        disp_value = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
+    } else if (mod == ModValue.memoryMode8BitDisplacement) {
+        disp_format = DisplacementFormat.d8;
+        disp_value = @as(u16, disp_lo.?);
+    } else {
+        disp_format = DisplacementFormat.none;
+        disp_value = 0;
+    }
+
+    var base_value: u20 = undefined;
+    var index_value: u20 = undefined;
+    switch (rm) {
+        .ALAX_BXSI_BXSID8_BXSID16 => {
+            base_value = @as(u20, registers.getBX(WValue.word, null).value16);
+            index_value = @as(u20, registers.getSI());
+        },
+        .DLDX_BPSI_BPSID8_BPSID16 => {
+            base_value = @as(u20, registers.getBP());
+            index_value = @as(u20, registers.getSI());
+        },
+        .CLCX_BXDI_BXDID8_BXDID16 => {
+            base_value = @as(u20, registers.getBX(WValue.word, null).value16);
+            index_value = @as(u20, registers.getDI());
+        },
+        .BLBX_BPDI_BPDID8_BPDID16 => {
+            base_value = @as(u20, registers.getBP());
+            index_value = @as(u20, registers.getDI());
+        },
+        .AHSP_SI_SID8_SID16 => {
+            base_value = @as(u20, registers.getSI());
+            index_value = 0;
+        },
+        .CHBP_DI_DID8_DID16 => {
+            base_value = @as(u20, registers.getDI());
+            index_value = 0;
+        },
+        .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+            base_value = @as(u20, registers.getBP());
+            index_value = 0;
+        },
+        .BHDI_BX_BXD8_BXD16 => {
+            base_value = @as(u20, registers.getBX(WValue.word, null).value16);
+            index_value = 0;
+        },
+    }
+
+    return EffectiveAddressCalculation{
+        .base = switch (rm) {
+            .ALAX_BXSI_BXSID8_BXSID16,
+            .CLCX_BXDI_BXDID8_BXDID16,
+            => Address.bx,
+            .DLDX_BPSI_BPSID8_BPSID16,
+            .BLBX_BPDI_BPDID8_BPDID16,
+            => Address.bp,
+            .AHSP_SI_SID8_SID16 => Address.si,
+            .CHBP_DI_DID8_DID16 => Address.di,
+            .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.bp,
+            .BHDI_BX_BXD8_BXD16 => Address.bx,
+        },
+        .index = switch (rm) {
+            .ALAX_BXSI_BXSID8_BXSID16,
+            .DLDX_BPSI_BPSID8_BPSID16,
+            => Address.si,
+            .CLCX_BXDI_BXDID8_BXDID16,
+            .BLBX_BPDI_BPDID8_BPDID16,
+            => Address.di,
+            .AHSP_SI_SID8_SID16,
+            .CHBP_DI_DID8_DID16,
+            .DHSI_DIRECTACCESS_BPD8_BPD16,
+            .BHDI_BX_BXD8_BXD16,
+            => Address.none,
+        },
+        .displacement = disp_format,
+        .displacement_value = disp_value,
+        .effective_address = base_value + index_value + disp_value,
+    };
+}
+
+// TODO: DocString
+
+fn getImmediateOpSourceAndDest(
+    registers: *Register,
+    payload: DecodePayload,
+) InstructionInfo {
+    const log = std.log.scoped(.getImmediateOpSourceAndDest);
+    const Address = AddressDirectory.Address;
+    var dest_info: DestinationInfo = undefined;
+    // var dest: Address = undefined;
+    // var dest_address_calculation: EffectiveAddressCalculation = undefined;
+    // var destination_mem_addr: u20 = undefined;
+    var immediate_8: u8 = undefined;
+    var immediate_16: u16 = undefined;
+    var source_info: SourceInfo = undefined;
+    var sign_extended_immediate: i16 = undefined;
+    var signed_immediate: i16 = undefined;
+    const instruction: BinaryInstructions = payload.immediate_op_instruction.opcode;
+    // const s: SValue = payload.immediate_op_instruction.s;
+    // const w: WValue = payload.immediate_op_instruction.w;
+    const mod: ModValue = payload.immediate_op_instruction.mod;
+    const rm: RmValue = payload.immediate_op_instruction.rm;
+    const w: WValue = payload.immediate_op_instruction.w;
+    switch (mod) {
+        .memoryModeNoDisplacement => {
+            if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
+                dest_info = DestinationInfo{
+                    .address_calculation = calculateEffectiveAddress(
+                        registers,
+                        mod,
+                        rm,
+                        null,
+                        null,
+                    ),
+                };
+            } else {
+                const disp_lo = @as(u16, payload.immediate_op_instruction.disp_lo.?);
+                const disp_hi = (@as(u16, payload.immediate_op_instruction.disp_hi.?) << 8);
+                dest_info = DestinationInfo{
+                    .mem_addr = @as(u20, disp_hi + disp_lo),
+                };
+            }
+        },
+        .memoryMode8BitDisplacement => {
+            dest_info = DestinationInfo{
+                .address_calculation = calculateEffectiveAddress(
+                    registers,
+                    mod,
+                    rm,
+                    payload.immediate_op_instruction.data_lo.?,
+                    null,
+                ),
+            };
+        },
+        .memoryMode16BitDisplacement => {
+            dest_info = DestinationInfo{
+                .address_calculation = calculateEffectiveAddress(
+                    registers,
+                    mod,
+                    rm,
+                    payload.immediate_op_instruction.data_lo.?,
+                    payload.immediate_op_instruction.disp_hi.?,
+                ),
+            };
+        },
+        .registerModeNoDisplacement => {
+            dest_info = DestinationInfo{
+                .address = switch (rm) {
+                    .ALAX_BXSI_BXSID8_BXSID16 => if (w == WValue.word) Address.ax else Address.al,
+                    .CLCX_BXDI_BXDID8_BXDID16 => if (w == WValue.word) Address.cx else Address.cl,
+                    .DLDX_BPSI_BPSID8_BPSID16 => if (w == WValue.word) Address.dx else Address.dl,
+                    .BLBX_BPDI_BPDID8_BPDID16 => if (w == WValue.word) Address.bx else Address.bl,
+                    .AHSP_SI_SID8_SID16 => if (w == WValue.word) Address.sp else Address.ah,
+                    .CHBP_DI_DID8_DID16 => if (w == WValue.word) Address.bp else Address.ch,
+                    .DHSI_DIRECTACCESS_BPD8_BPD16 => if (w == WValue.word) Address.si else Address.dh,
+                    .BHDI_BX_BXD8_BXD16 => if (w == WValue.word) Address.di else Address.bh,
+                },
+            };
+        },
+    }
+
+    switch (instruction) {
+        .immediate8_to_regmem8 => {
+            immediate_8 = payload.immediate_op_instruction.data_8.?;
+            source_info = SourceInfo{
+                .immediate = @intCast(immediate_8),
+            };
+        },
+        .immediate16_to_regmem16 => {
+            immediate_16 = (@as(u16, payload.immediate_op_instruction.data_hi.?) << 8) + payload.immediate_op_instruction.data_lo.?;
+            source_info = SourceInfo{
+                .immediate = immediate_16,
+            };
+        },
+        .s_immediate8_to_regmem8 => {
+            sign_extended_immediate = @intCast(payload.immediate_op_instruction.signed_data_8.?);
+            source_info = SourceInfo{
+                .immediate = @bitCast(sign_extended_immediate),
+            };
+        },
+        .immediate8_to_regmem16 => {
+            signed_immediate = payload.immediate_op_instruction.data_sx.?;
+            source_info = SourceInfo{
+                .immediate = @bitCast(signed_immediate),
+            };
+        },
+        else => {
+            log.err("Not a valid opcode for this function: {t}", .{instruction});
+        },
+    }
+
+    return InstructionInfo{
+        .destination_info = dest_info,
+        .source_info = source_info,
+    };
+}
+
 fn getImmediateToRegMovDest(w: WValue, reg: RegValue, data: u8, w_data: ?u8) InstructionInfo {
     const Address = AddressDirectory.Address;
     var dest: Address = undefined;
@@ -2511,7 +2723,7 @@ fn decodeImmediateOp(
     s: SValue,
     w: WValue,
     input: [6]u8,
-) DecodePayload {
+) InstructionDecodeError!DecodePayload {
     const decodeImmediateOp_log = std.log.scoped(.decodeImmediateOp);
     const instruction: BinaryInstructions = @enumFromInt(input[0]);
     const mod: ModValue = @enumFromInt(input[1] >> 6);
@@ -2613,6 +2825,7 @@ fn decodeImmediateOp(
                     .data_lo = data_lo,
                     .data_hi = data_hi,
                     .data_8 = null,
+                    .signed_data_8 = null,
                     .data_sx = null,
                 },
             };
@@ -2650,12 +2863,14 @@ fn decodeImmediateOp(
                     .data_lo = null,
                     .data_hi = null,
                     .data_8 = null,
+                    .signed_data_8 = null,
                     .data_sx = data_sx,
                 },
             };
         },
         else => {
             decodeImmediateOp_log.debug("Instruction not yet implemented.", .{});
+            return InstructionDecodeError.NotYetImplemented;
         },
     }
 }
@@ -3641,9 +3856,12 @@ fn executeInstruction(
     // register_ptr: *Register,
     // memory_ptr: *Memory,
 ) InstructionExecutionError!void {
-    const executeInstruction_log = std.log.scoped(.executeInstruction);
+    const log = std.log.scoped(.executeInstruction);
     switch (instruction_payload) {
         .err => {},
+        .immediate_op_instruction => {
+            log.info("Not doing anything here for a while.", .{});
+        },
         .mov_with_mod_instruction => {
             switch (instruction_payload.mov_with_mod_instruction.opcode) {
                 .mov_source_regmem8_reg8 => {
@@ -3658,7 +3876,7 @@ fn executeInstruction(
                 .mov_dest_reg8_regmem8 => {},
                 .mov_dest_reg16_regmem16 => {},
                 else => {
-                    executeInstruction_log.debug("Instruction not yet implemented", .{});
+                    log.debug("Instruction not yet implemented", .{});
                 },
             }
         },
@@ -3669,7 +3887,7 @@ fn executeInstruction(
                 .mov_immediate_reg_dl => {},
                 .mov_immediate_reg_bl => {},
                 else => {
-                    executeInstruction_log.debug("Instruction not yet implemented", .{});
+                    log.debug("Instruction not yet implemented", .{});
                 },
             }
         },
@@ -3713,7 +3931,7 @@ pub fn main() !void {
 
     print.debug("Printer test...", .{});
 
-    const x86sim_scope_log = std.log.scoped(.x86sim);
+    const log = std.log.scoped(.x86sim);
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -3750,15 +3968,15 @@ pub fn main() !void {
     const input_binary_file = std.fs.cwd().openFile(input_file_path, open_mode_input_file) catch |err| {
         switch (err) {
             error.FileNotFound => {
-                x86sim_scope_log.err("{s}: '{s}':{any}", .{ @errorName(err), input_file_path, @errorReturnTrace() });
+                log.err("{s}: '{s}':{any}", .{ @errorName(err), input_file_path, @errorReturnTrace() });
                 std.process.exit(1);
             },
             error.AccessDenied => {
-                x86sim_scope_log.err("{s}: '{s}':{any}", .{ @errorName(err), input_file_path, @errorReturnTrace() });
+                log.err("{s}: '{s}':{any}", .{ @errorName(err), input_file_path, @errorReturnTrace() });
                 std.process.exit(1);
             },
             else => {
-                x86sim_scope_log.err("{s}: Unable to open file '{s}': {any}\n", .{ @errorName(err), input_file_path, @errorReturnTrace() });
+                log.err("{s}: Unable to open file '{s}': {any}\n", .{ @errorName(err), input_file_path, @errorReturnTrace() });
                 std.process.exit(1);
             },
         }
@@ -3766,7 +3984,7 @@ pub fn main() !void {
     defer input_binary_file.close();
 
     if (@TypeOf(input_binary_file) != std.fs.File) {
-        x86sim_scope_log.err("{s}: File object is not of the correct type.", .{@errorName(SimulatorError.FileError)});
+        log.err("{s}: File object is not of the correct type.", .{@errorName(SimulatorError.FileError)});
     }
 
     try std.fs.Dir.makePath(std.fs.cwd(), "./zig-out/test");
@@ -3775,7 +3993,7 @@ pub fn main() !void {
     const output_asm_file = std.fs.cwd().createFile(output_asm_file_path, open_mode_output_file) catch |err| {
         switch (err) {
             error.FileNotFound => {
-                x86sim_scope_log.err("{s}: '{s}':{any}", .{
+                log.err("{s}: '{s}':{any}", .{
                     @errorName(err),
                     output_asm_file_path,
                     @errorReturnTrace(),
@@ -3783,7 +4001,7 @@ pub fn main() !void {
                 std.process.exit(1);
             },
             error.AccessDenied => {
-                x86sim_scope_log.err("{s}: '{s}':{any}", .{
+                log.err("{s}: '{s}':{any}", .{
                     @errorName(err),
                     output_asm_file_path,
                     @errorReturnTrace(),
@@ -3791,7 +4009,7 @@ pub fn main() !void {
                 std.process.exit(1);
             },
             else => {
-                x86sim_scope_log.err("{s}: Unable to open file '{s}': {any}\n", .{
+                log.err("{s}: Unable to open file '{s}': {any}\n", .{
                     @errorName(err),
                     output_asm_file_path,
                     @errorReturnTrace(),
@@ -3850,7 +4068,7 @@ pub fn main() !void {
 
     var memory = Memory{};
     memory.init();
-    x86sim_scope_log.debug("Test _memory initialization: _memory size = 0x{x}", .{memory._memory.len});
+    log.debug("Test _memory initialization: _memory size = 0x{x}", .{memory._memory.len});
 
     // TODO: Put loaded binary input file in simulated memory, update CS to point at the base of the segment
     // TODO: Define the stack and data segments and update DS, ES and SS
@@ -3865,8 +4083,8 @@ pub fn main() !void {
     // Simulation //
     ////////////////////////////////////////////////////////////////////////////
 
-    x86sim_scope_log.info("\n+++x86+Simulator++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{});
-    x86sim_scope_log.info("Simulating target: {s}", .{input_file_path});
+    log.info("\n+++x86+Simulator++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{});
+    log.info("Simulating target: {s}", .{input_file_path});
 
     var activeByte: u16 = 0;
 
@@ -3882,10 +4100,10 @@ pub fn main() !void {
 
     // TODO: set flags
 
-    x86sim_scope_log.debug("Instruction byte count: {d}", .{file_contents.len});
-    x86sim_scope_log.info("+++Start+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte});
+    log.debug("Instruction byte count: {d}", .{file_contents.len});
+    log.info("+++Start+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte});
 
-    x86sim_scope_log.info("bits 16\n", .{});
+    log.info("bits 16\n", .{});
     try OutputWriter.writeAll("bits 16\n\n");
 
     var depleted: bool = false;
@@ -3898,17 +4116,17 @@ pub fn main() !void {
 
         const queue_size = 6;
         var queue_index: u3 = 0;
-        x86sim_scope_log.debug("---BIU-Instruction-Queue-----------------------------------------------------", .{});
+        log.debug("---BIU-Instruction-Queue-----------------------------------------------------", .{});
         while (queue_index < queue_size) : (queue_index += 1) {
             biu.setIndex(queue_index, if (activeByte + queue_index < file_contents.len) file_contents[activeByte + queue_index] else u8_init_value);
             if (activeByte + queue_index > file_contents.len - 1) break;
-            x86sim_scope_log.debug("{d}: {b:0>8}, {d}", .{ queue_index, file_contents[activeByte + queue_index], activeByte + queue_index });
+            log.debug("{d}: {b:0>8}, {d}", .{ queue_index, file_contents[activeByte + queue_index], activeByte + queue_index });
             if (queue_index + 1 == 6) break;
         }
 
         const instruction_binary: u8 = biu.getIndex(0);
         const instruction_name: BinaryInstructions = @enumFromInt(instruction_binary);
-        x86sim_scope_log.debug("Read instruction: 0x{x:0>2}, {t}", .{ instruction_binary, instruction_name });
+        log.debug("Read instruction: 0x{x:0>2}, {t}", .{ instruction_binary, instruction_name });
         const instruction: BinaryInstructions = @enumFromInt(instruction_binary);
 
         var s: SValue = undefined;
@@ -3989,7 +4207,7 @@ pub fn main() !void {
                 stepSize = movGetInstructionLength(instruction_name, w, mod, rm);
             },
             else => {
-                x86sim_scope_log.debug("This instruction is not yet implemented. Skipping...", .{});
+                log.debug("This instruction is not yet implemented. Skipping...", .{});
             },
         }
 
@@ -4055,14 +4273,14 @@ pub fn main() !void {
                 };
             },
             else => {
-                x86sim_scope_log.err("{s}: Instruction size of {d} bytes not valid.", .{ @errorName(SimulatorError.InstructionSizeError), stepSize });
+                log.err("{s}: Instruction size of {d} bytes not valid.", .{ @errorName(SimulatorError.InstructionSizeError), stepSize });
             },
         }
 
-        x86sim_scope_log.debug("InstructionBytes:", .{});
+        log.debug("InstructionBytes:", .{});
         var count = activeByte;
         for (InstructionBytes) |inst| {
-            x86sim_scope_log.debug("{b:0>8}, 0x{x:0>2}, active byte {d}", .{ inst, inst, count });
+            log.debug("{b:0>8}, 0x{x:0>2}, active byte {d}", .{ inst, inst, count });
             count += 1;
         }
 
@@ -4073,7 +4291,10 @@ pub fn main() !void {
             .s_immediate8_to_regmem8,
             .immediate8_to_regmem16,
             => {
-                payload = decodeImmediateOp(s, w, InstructionBytes);
+                payload = decodeImmediateOp(s, w, InstructionBytes) catch |err| {
+                    log.err("{s}: DecodePayload could not be received. Continuing...", .{@errorName(err)});
+                    continue;
+                };
             },
             .mov_source_regmem8_reg8,
             .mov_source_regmem16_reg16,
@@ -4110,7 +4331,7 @@ pub fn main() !void {
                 payload = decodeMovWithoutMod(w, InstructionBytes);
             },
             else => {
-                x86sim_scope_log.debug("Instruction not yet implemented. Skipping...", .{});
+                log.debug("Instruction not yet implemented. Skipping...", .{});
             },
         }
 
@@ -4125,7 +4346,7 @@ pub fn main() !void {
         ) catch |err| {
             switch (err) {
                 InstructionExecutionError.InvalidInstruction => {
-                    x86sim_scope_log.err("{s}: Instruction 0x{x:0>2} could not be executed.\ncontinue...", .{
+                    log.err("{s}: Instruction 0x{x:0>2} could not be executed.\ncontinue...", .{
                         @errorName(payload.err),
                         InstructionBytes[0],
                     });
@@ -4145,26 +4366,26 @@ pub fn main() !void {
         ) catch |err| {
             switch (err) {
                 InstructionDecodeError.DecodeError => {
-                    x86sim_scope_log.err("{s}: Instruction 0x{x:0>2} could not be decoded.\ncontinue...", .{
+                    log.err("{s}: Instruction 0x{x:0>2} could not be decoded.\ncontinue...", .{
                         @errorName(payload.err),
                         InstructionBytes[0],
                     });
                 },
                 InstructionDecodeError.InstructionError => {
-                    x86sim_scope_log.err("{s}: Instruction 0x{x:0>2} could not be decoded.\ncontinue...", .{
+                    log.err("{s}: Instruction 0x{x:0>2} could not be decoded.\ncontinue...", .{
                         @errorName(payload.err),
                         InstructionBytes[0],
                     });
                 },
                 InstructionDecodeError.NotYetImplemented => {
-                    x86sim_scope_log.err("{s}: 0x{x:0>2} ({s}) not implemented yet.\ncontinue...", .{
+                    log.err("{s}: 0x{x:0>2} ({s}) not implemented yet.\ncontinue...", .{
                         @errorName(payload.err),
                         InstructionBytes[0],
                         @tagName(instruction),
                     });
                 },
                 InstructionDecodeError.WriteFailed => {
-                    x86sim_scope_log.err("{s}: Failed to write instruction 0x{x:0>2} ({s}) to .asm file.\ncontinue...", .{
+                    log.err("{s}: Failed to write instruction 0x{x:0>2} ({s}) to .asm file.\ncontinue...", .{
                         @errorName(payload.err),
                         InstructionBytes[0],
                         @tagName(instruction),
@@ -4177,21 +4398,287 @@ pub fn main() !void {
 
         if (activeByte + stepSize >= maxFileSizeBytes or activeByte + stepSize >= file_contents.len) {
             depleted = true;
-            x86sim_scope_log.info("+++Simulation+finished++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{});
+            log.info("+++Simulation+finished++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{});
         } else {
             if (activeByte + stepSize > 999) {
-                x86sim_scope_log.debug("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
+                log.debug("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
             } else if (activeByte + stepSize > 99) {
-                x86sim_scope_log.debug("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
+                log.debug("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
             } else if (activeByte + stepSize > 9) {
-                x86sim_scope_log.debug("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
+                log.debug("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
             } else {
-                x86sim_scope_log.debug("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
+                log.debug("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
             }
         }
     }
 
     try runAssemblyTest(args_allocator, input_file_path, output_asm_file_path);
+}
+
+fn printEffectiveAddressCalculationDest(
+    OutputWriter: *std.io.Writer,
+    address_calculation: EffectiveAddressCalculation,
+) void {
+    const log = std.log.scoped(.printEffectiveAddressCalculationDest);
+    const Address = AddressDirectory.Address;
+    if (address_calculation.index == Address.none) {
+        if (address_calculation.displacement == DisplacementFormat.none) {
+            log.info("[{t}], ", .{
+                address_calculation.base.?,
+            });
+            OutputWriter.print("[{t}], ", .{
+                address_calculation.base.?,
+            }) catch |err| {
+                log.err(
+                    "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                    .{ @errorName(err), address_calculation },
+                );
+            };
+        } else if (address_calculation.displacement != DisplacementFormat.none and address_calculation.displacement_value.? == 0) {
+            log.info("[{t}], ", .{
+                address_calculation.base.?,
+            });
+            OutputWriter.print("[{t}], ", .{
+                address_calculation.base.?,
+            }) catch |err| {
+                log.err(
+                    "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                    .{ @errorName(err), .address_calculation },
+                );
+            };
+        } else if (address_calculation.displacement != DisplacementFormat.none) {
+            const disp_u16: u16 = @intCast(address_calculation.displacement_value.?);
+            const disp_signed: i16 = if (address_calculation.displacement == DisplacementFormat.d8) blk: {
+                const u8val: u8 = @intCast(disp_u16 & 0xFF);
+                const s8: i8 = @bitCast(u8val);
+                break :blk @as(i16, s8);
+            } else blk: {
+                const s16: i16 = @bitCast(disp_u16);
+                break :blk s16;
+            };
+            if (disp_signed < 0) {
+                log.info("[{t} - {d}], ", .{
+                    address_calculation.base.?,
+                    -disp_signed,
+                });
+                OutputWriter.print("[{t} - {d}], ", .{
+                    address_calculation.base.?,
+                    -disp_signed,
+                }) catch |err| {
+                    log.err(
+                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                        .{ @errorName(err), address_calculation },
+                    );
+                };
+            } else {
+                log.info("[{t} + {d}], ", .{
+                    address_calculation.base.?,
+                    disp_signed,
+                });
+                OutputWriter.print("[{t} + {d}], ", .{
+                    address_calculation.base.?,
+                    disp_signed,
+                }) catch |err| {
+                    log.err(
+                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                        .{ @errorName(err), address_calculation },
+                    );
+                };
+            }
+        }
+    } else if (address_calculation.index != Address.none) {
+        if (address_calculation.displacement == DisplacementFormat.none) {
+            log.info("[{t} + {t}], ", .{
+                address_calculation.base.?,
+                address_calculation.index.?,
+            });
+            OutputWriter.print("[{t} + {t}], ", .{
+                address_calculation.base.?,
+                address_calculation.index.?,
+            }) catch |err| {
+                log.err(
+                    "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                    .{ @errorName(err), address_calculation },
+                );
+            };
+        } else if (address_calculation.displacement != DisplacementFormat.none) {
+            const disp_u16: u16 = @intCast(address_calculation.displacement_value.?);
+            const disp_signed: i16 = if (address_calculation.displacement == DisplacementFormat.d8) blk: {
+                const u8val: u8 = @intCast(disp_u16 & 0xFF);
+                const s8: i8 = @bitCast(u8val);
+                break :blk @as(i16, s8);
+            } else blk: {
+                const s16: i16 = @bitCast(disp_u16);
+                break :blk s16;
+            };
+            if (disp_signed < 0) {
+                log.info("[{t} + {t} - {d}], ", .{
+                    address_calculation.base.?,
+                    address_calculation.index.?,
+                    -disp_signed,
+                });
+                OutputWriter.print("[{t} + {t} - {d}], ", .{
+                    address_calculation.base.?,
+                    address_calculation.index.?,
+                    -disp_signed,
+                }) catch |err| {
+                    log.err(
+                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                        .{ @errorName(err), address_calculation },
+                    );
+                };
+            } else {
+                log.info("[{t} + {t} + {d}], ", .{
+                    address_calculation.base.?,
+                    address_calculation.index.?,
+                    disp_signed,
+                });
+                OutputWriter.print("[{t} + {t} + {d}], ", .{
+                    address_calculation.base.?,
+                    address_calculation.index.?,
+                    disp_signed,
+                }) catch |err| {
+                    log.err(
+                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                        .{ @errorName(err), address_calculation },
+                    );
+                };
+            }
+        }
+    }
+}
+
+fn printEffectiveAddressCalculationSource(
+    OutputWriter: *std.io.Writer,
+    address_calculation: EffectiveAddressCalculation,
+) void {
+    const log = std.log.scoped(.printEffectiveAddressCalculationSource);
+    const Address = AddressDirectory.Address;
+    if (address_calculation.index == Address.none) {
+        if (address_calculation.displacement == DisplacementFormat.none) {
+            log.info("[{t}]", .{
+                address_calculation.base.?,
+            });
+            OutputWriter.print("[{t}]\n", .{
+                address_calculation.base.?,
+            }) catch |err| {
+                log.err(
+                    "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                    .{ @errorName(err), address_calculation },
+                );
+            };
+        } else if (address_calculation.displacement != DisplacementFormat.none and address_calculation.displacement_value.? == 0) {
+            log.info("[{t}]", .{
+                address_calculation.base.?,
+            });
+            OutputWriter.print("[{t}]\n", .{
+                address_calculation.base.?,
+            }) catch |err| {
+                log.err(
+                    "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                    .{ @errorName(err), address_calculation },
+                );
+            };
+        } else if (address_calculation.displacement != DisplacementFormat.none) {
+            const disp_u16: u16 = @intCast(address_calculation.displacement_value.?);
+            const disp_signed: i16 = if (address_calculation.displacement == DisplacementFormat.d8) blk: {
+                const u8val: u8 = @intCast(disp_u16 & 0xFF);
+                const s8: i8 = @bitCast(u8val);
+                break :blk @as(i16, s8);
+            } else blk: {
+                const s16: i16 = @bitCast(disp_u16);
+                break :blk s16;
+            };
+            if (disp_signed < 0) {
+                log.info("[{t} - {d}]", .{
+                    address_calculation.base.?,
+                    -disp_signed,
+                });
+                OutputWriter.print("[{t} - {d}]\n", .{
+                    address_calculation.base.?,
+                    -disp_signed,
+                }) catch |err| {
+                    log.err(
+                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                        .{ @errorName(err), address_calculation },
+                    );
+                };
+            } else {
+                log.info("[{t} + {d}]", .{
+                    address_calculation.base.?,
+                    disp_signed,
+                });
+                OutputWriter.print("[{t} + {d}]\n", .{
+                    address_calculation.base.?,
+                    disp_signed,
+                }) catch |err| {
+                    log.err(
+                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                        .{ @errorName(err), address_calculation },
+                    );
+                };
+            }
+        }
+    } else if (address_calculation.index != Address.none) {
+        if (address_calculation.displacement == DisplacementFormat.none) {
+            log.info("[{t} + {t}]", .{
+                address_calculation.base.?,
+                address_calculation.index.?,
+            });
+            OutputWriter.print("[{t} + {t}]\n", .{
+                address_calculation.base.?,
+                address_calculation.index.?,
+            }) catch |err| {
+                log.err(
+                    "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                    .{ @errorName(err), address_calculation },
+                );
+            };
+        } else if (address_calculation.displacement != DisplacementFormat.none) {
+            const disp_u16: u16 = @intCast(address_calculation.displacement_value.?);
+            const disp_signed: i16 = if (address_calculation.displacement == DisplacementFormat.d8) blk: {
+                const u8val: u8 = @intCast(disp_u16 & 0xFF);
+                const s8: i8 = @bitCast(u8val);
+                break :blk @as(i16, s8);
+            } else blk: {
+                const s16: i16 = @bitCast(disp_u16);
+                break :blk s16;
+            };
+            if (disp_signed < 0) {
+                log.info("[{t} + {t} - {d}]", .{
+                    address_calculation.base.?,
+                    address_calculation.index.?,
+                    -disp_signed,
+                });
+                OutputWriter.print("[{t} + {t} - {d}]\n", .{
+                    address_calculation.base.?,
+                    address_calculation.index.?,
+                    -disp_signed,
+                }) catch |err| {
+                    log.err(
+                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                        .{ @errorName(err), address_calculation },
+                    );
+                };
+            } else {
+                log.info("[{t} + {t} + {d}]", .{
+                    address_calculation.base.?,
+                    address_calculation.index.?,
+                    disp_signed,
+                });
+                OutputWriter.print("[{t} + {t} + {d}]\n", .{
+                    address_calculation.base.?,
+                    address_calculation.index.?,
+                    disp_signed,
+                }) catch |err| {
+                    log.err(
+                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                        .{ @errorName(err), address_calculation },
+                    );
+                };
+            }
+        }
+    }
 }
 
 fn disassemble(
@@ -4200,11 +4687,62 @@ fn disassemble(
     InstructionBytes: [6]u8,
     payload: DecodePayload,
 ) InstructionDecodeError!void {
-    const log = std.log.scoped(.makeAssembly);
+    const log = std.log.scoped(.disassemble);
 
     switch (payload) {
         .err => {
             return payload.err;
+        },
+        .immediate_op_instruction => {
+            log.info("{s} ", .{payload.immediate_op_instruction.mnemonic});
+            OutputWriter.print("{s} ", .{payload.immediate_op_instruction.mnemonic}) catch |err| {
+                return err;
+            };
+
+            const instruction_info: InstructionInfo = getImmediateOpSourceAndDest(registers, payload);
+            const destination: DestinationInfo = instruction_info.destination_info;
+            switch (destination) {
+                .address => {
+                    log.info("{t},", .{destination.address});
+                    OutputWriter.print("{t}, ", .{destination.address}) catch |err| {
+                        return err;
+                    };
+                },
+                .address_calculation => {
+                    printEffectiveAddressCalculationDest(OutputWriter, destination.address_calculation);
+                },
+                .mem_addr => {
+                    log.info("[{d}],", .{destination.mem_addr});
+                    OutputWriter.print("[{d}], ", .{destination.mem_addr}) catch |err| {
+                        return err;
+                    };
+                },
+            }
+            const source: SourceInfo = instruction_info.source_info;
+            // const instruction: BinaryInstructions = @enumFromInt(InstructionBytes[0]);
+            switch (source) {
+                .address => {
+                    log.info("{t}", .{destination.address});
+                    OutputWriter.print("{t}\n", .{destination.address}) catch |err| {
+                        return err;
+                    };
+                },
+                .address_calculation => {
+                    printEffectiveAddressCalculationSource(OutputWriter, source.address_calculation);
+                },
+                .immediate => {
+                    log.info("{d}", .{source.immediate});
+                    OutputWriter.print("{d}\n", .{source.immediate}) catch |err| {
+                        return err;
+                    };
+                },
+                .mem_addr => {
+                    log.info("[{d}]", .{source.mem_addr});
+                    OutputWriter.print("[{d}]\n", .{source.mem_addr}) catch |err| {
+                        return err;
+                    };
+                },
+            }
         },
         .mov_with_mod_instruction => {
             log.info("{s} ", .{payload.mov_with_mod_instruction.mnemonic});
@@ -5327,3 +5865,5 @@ test "TEST_listing_0040_challenge_movs" {
         output_payload_0xA2_memory_to_accumulator,
     );
 }
+
+test "TEST_listing_0041_add_sub_cmp_jnz" {}
