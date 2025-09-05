@@ -45,14 +45,14 @@ const BinaryInstructions = enum(u8) {
     // XOR: Immediate with register/memory    | 1 0 0 0 0 0 0|W | MOD|1 1 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
     // CMP: Immediate with register/memory    | 1 0 0 0 0 0|S|W | MOD|1 1 1| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
 
-    /// Immediate 8 bit value to/with/from 8 bit register/memory operation (DATA-8).
-    regmem8_immediate8          = 0x80,
-    /// Immediate 16 bit value to/with/from 16 bit register/memory operation (DATA-LO, DATA-HI).
-    regmem16_immediate16        = 0x81,
-    /// Signed immediate value to/with/from 16 bit register/memory operation (DATA-8).
-    regmem16_signed_immediate16 = 0x82,
-    /// Immediate 8 bit value to/with/from 16 bit register/memory operation (DATA-SX).
-    regmem16_immediate8         = 0x83,
+    /// Immediate 8 bit value <action> to/with/from 8 bit register/memory operation (DATA-8).
+    immediate8_to_regmem8       = 0x80,
+    /// Immediate 16 bit value <action> to/with/from 16 bit register/memory operation (DATA-LO, DATA-HI).
+    immediate16_to_regmem16     = 0x81,
+    /// Signed immediate value <action> to/with/from 16 bit register/memory operation (DATA-8).
+    s_immediate8_to_regmem8     = 0x82,
+    /// Auto-sign-extend immediate 8 bit value <action> to/with/from 16 bit register/memory operation (DATA-SX).
+    immediate8_to_regmem16      = 0x83,
 
     // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
     // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
@@ -180,6 +180,18 @@ const DiassembleError = error{
     WriteFailed,
 };
 
+/// Immediate operation action codes
+const ImmediateAction = enum(u3){
+    ADD = 0b000,
+    OR  = 0b001,
+    ADC = 0b010,
+    SBB = 0b011,
+    AND = 0b100,
+    SUB = 0b101,
+    XOR = 0b110,
+    CMP = 0b111,
+};
+
 /// Immediate operation instructions
 /// - Immediate byte value to register/memory 0x80
 /// - Immediate word value to register/memory 0x81
@@ -192,10 +204,11 @@ const ImmediateOpInstruction = struct{
     w: WValue,
     disp_lo: ?u8,
     disp_hi: ?u8,
-    data: ?u8,
-    w_data: ?u8,
+    data_lo: ?u8,
+    data_hi: ?u8,
     data_8: ?u8,
-    data_sx: ?u16,
+    signed_data_8: ?i8,
+    data_sx: ?i16,
 };
 
 /// MovInstruction with mod field
@@ -2352,10 +2365,10 @@ fn immediateOpGetInstructionLength(
 ) u3 {
     const immediateOpGetInstructionLength_log = std.log.scoped(.immediateOpGetInstructionLength);
     switch (instruction_name) {
-        .regmem8_immediate8,
-        .regmem16_immediate16,
-        .regmem16_signed_immediate16,
-        .regmem16_immediate8,
+        .immediate8_to_regmem8,
+        .immediate16_to_regmem16,
+        .s_immediate8_to_regmem8,
+        .immediate8_to_regmem16,
         => {
             if (w == WValue.word) {
                 if (s == SValue.sign_extend) {
@@ -2501,50 +2514,149 @@ fn decodeImmediateOp(
 ) DecodePayload {
     const decodeImmediateOp_log = std.log.scoped(.decodeImmediateOp);
     const instruction: BinaryInstructions = @enumFromInt(input[0]);
-    if (w == WValue.byte) {
-        if (s == SValue.no_sign) {
-            switch (instruction) {
-                .regmem8_immediate8 => {},
-                .regmem16_immediate16 => {},
-                .regmem16_signed_immediate16 => {},
-                .regmem16_immediate8 => {},
-                else => {
-                    decodeImmediateOp_log.debug("Instruction not yet implemented.", .{});
-                },
-            }
-        } else {
-            switch (instruction) {
-                .regmem8_immediate8 => {},
-                .regmem16_immediate16 => {},
-                .regmem16_signed_immediate16 => {},
-                .regmem16_immediate8 => {},
-                else => {
-                    decodeImmediateOp_log.debug("Instruction not yet implemented.", .{});
-                },
-            }
-        }
+    const mod: ModValue = @enumFromInt(input[1] >> 6);
+    const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
+    const action_code: ImmediateAction = @enumFromInt((input[1] << 2) >> 5);
+    const mnemonic: []const u8 = switch (action_code) {
+        .ADD => "add",
+        .OR => "or",
+        .ADC => "adc",
+        .SBB => "sbb",
+        .AND => "and",
+        .SUB => "sub",
+        .XOR => "xor",
+        .CMP => "cmp",
+    };
+    const disp_lo: ?u8 = switch (mod) {
+        .memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
+        .memoryMode8BitDisplacement => input[2],
+        .memoryMode16BitDisplacement => input[2],
+        .registerModeNoDisplacement => null,
+    };
+    const disp_hi: ?u8 = switch (mod) {
+        .memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[3] else null,
+        .memoryMode8BitDisplacement => null,
+        .memoryMode16BitDisplacement => input[3],
+        .registerModeNoDisplacement => null,
+    };
+    var data_lo: ?u8 = undefined;
+    if ((mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) or mod == ModValue.memoryMode16BitDisplacement) {
+        data_lo = input[4];
+    } else if (mod == ModValue.memoryMode8BitDisplacement) {
+        data_lo = input[3];
     } else {
-        if (s == SValue.no_sign) {
-            switch (instruction) {
-                .regmem8_immediate8 => {},
-                .regmem16_immediate16 => {},
-                .regmem16_signed_immediate16 => {},
-                .regmem16_immediate8 => {},
-                else => {
-                    decodeImmediateOp_log.debug("Instruction not yet implemented.", .{});
+        data_lo = input[2];
+    }
+    var data_hi: ?u8 = undefined;
+    if ((mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) or mod == ModValue.memoryMode16BitDisplacement) {
+        data_hi = input[5];
+    } else if (mod == ModValue.memoryMode8BitDisplacement) {
+        data_hi = input[4];
+    } else {
+        data_hi = input[3];
+    }
+    var data_8: ?u8 = undefined;
+    if ((mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) or mod == ModValue.memoryMode16BitDisplacement) {
+        data_8 = input[4];
+    } else if (mod == ModValue.memoryMode8BitDisplacement) {
+        data_8 = input[3];
+    } else {
+        data_8 = input[2];
+    }
+    var signed_data_8: ?i8 = undefined;
+    if ((mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) or mod == ModValue.memoryMode16BitDisplacement) {
+        signed_data_8 = @bitCast(input[4]);
+    } else if (mod == ModValue.memoryMode8BitDisplacement) {
+        signed_data_8 = @bitCast(input[3]);
+    } else {
+        signed_data_8 = @bitCast(input[2]);
+    }
+    var data_sx: ?i16 = undefined;
+    if ((mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) or mod == ModValue.memoryMode16BitDisplacement) {
+        data_sx = @intCast(input[4]);
+    } else if (mod == ModValue.memoryMode8BitDisplacement) {
+        data_sx = @intCast(input[3]);
+    } else {
+        data_sx = @intCast(input[2]);
+    }
+    switch (instruction) {
+        .immediate8_to_regmem8 => {
+            return DecodePayload{
+                .immediate_op_instruction = ImmediateOpInstruction{
+                    .opcode = BinaryInstructions.immediate8_to_regmem8,
+                    .mnemonic = mnemonic,
+                    .s = s,
+                    .w = w,
+                    .mod = mod,
+                    .rm = rm,
+                    .disp_lo = disp_lo,
+                    .disp_hi = disp_hi,
+                    .data_lo = null,
+                    .data_hi = null,
+                    .data_8 = data_8,
+                    .signed_data_8 = null,
+                    .data_sx = null,
                 },
-            }
-        } else {
-            switch (instruction) {
-                .regmem8_immediate8 => {},
-                .regmem16_immediate16 => {},
-                .regmem16_signed_immediate16 => {},
-                .regmem16_immediate8 => {},
-                else => {
-                    decodeImmediateOp_log.debug("Instruction not yet implemented.", .{});
+            };
+        },
+        .immediate16_to_regmem16 => {
+            return DecodePayload{
+                .immediate_op_instruction = ImmediateOpInstruction{
+                    .opcode = BinaryInstructions.immediate16_to_regmem16,
+                    .mnemonic = mnemonic,
+                    .s = s,
+                    .w = w,
+                    .mod = mod,
+                    .rm = rm,
+                    .disp_lo = disp_lo,
+                    .disp_hi = disp_hi,
+                    .data_lo = data_lo,
+                    .data_hi = data_hi,
+                    .data_8 = null,
+                    .data_sx = null,
                 },
-            }
-        }
+            };
+        },
+        .s_immediate8_to_regmem8 => {
+            return DecodePayload{
+                .immediate_op_instruction = ImmediateOpInstruction{
+                    .opcode = BinaryInstructions.s_immediate8_to_regmem8,
+                    .mnemonic = mnemonic,
+                    .s = s,
+                    .w = w,
+                    .mod = mod,
+                    .rm = rm,
+                    .disp_lo = disp_lo,
+                    .disp_hi = disp_hi,
+                    .data_lo = null,
+                    .data_hi = null,
+                    .data_8 = null,
+                    .signed_data_8 = signed_data_8,
+                    .data_sx = null,
+                },
+            };
+        },
+        .immediate8_to_regmem16 => {
+            return DecodePayload{
+                .immediate_op_instruction = ImmediateOpInstruction{
+                    .opcode = BinaryInstructions.immediate8_to_regmem16,
+                    .mnemonic = mnemonic,
+                    .s = s,
+                    .w = w,
+                    .mod = mod,
+                    .rm = rm,
+                    .disp_lo = disp_lo,
+                    .disp_hi = disp_hi,
+                    .data_lo = null,
+                    .data_hi = null,
+                    .data_8 = null,
+                    .data_sx = data_sx,
+                },
+            };
+        },
+        else => {
+            decodeImmediateOp_log.debug("Instruction not yet implemented.", .{});
+        },
     }
 }
 
@@ -3804,10 +3916,10 @@ pub fn main() !void {
         var mod: ModValue = undefined;
         var rm: RmValue = undefined;
         switch (instruction) {
-            BinaryInstructions.regmem8_immediate8,
-            BinaryInstructions.regmem16_immediate16,
-            BinaryInstructions.regmem16_signed_immediate16,
-            BinaryInstructions.regmem16_immediate8,
+            BinaryInstructions.immediate8_to_regmem8,
+            BinaryInstructions.immediate16_to_regmem16,
+            BinaryInstructions.s_immediate8_to_regmem8,
+            BinaryInstructions.immediate8_to_regmem16,
             => {
                 // 0x80, 0x81, 0x82, 0x83
                 s = @enumFromInt(((biu.getIndex(0) >> 1) << 7) >> 7);
@@ -3956,10 +4068,10 @@ pub fn main() !void {
 
         var payload: DecodePayload = undefined;
         switch (instruction) {
-            .regmem8_immediate8,
-            .regmem16_immediate16,
-            .regmem16_signed_immediate16,
-            .regmem16_immediate8,
+            .immediate8_to_regmem8,
+            .immediate16_to_regmem16,
+            .s_immediate8_to_regmem8,
+            .immediate8_to_regmem16,
             => {
                 payload = decodeImmediateOp(s, w, InstructionBytes);
             },
