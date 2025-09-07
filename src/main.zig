@@ -154,9 +154,6 @@ const BinaryInstructions = enum(u8) {
     mov_immediate_to_regmem8    = 0xC6,
     /// Immediate to register/memory
     mov_immediate_to_regmem16   = 0xC7,
-
-
-
 };
 
 // Error:
@@ -2800,6 +2797,8 @@ fn decodeAdd(
         .registerModeNoDisplacement => null,
     };
 
+    const d: DValue = @enumFromInt((input[0] << 6) >> 7);
+    const w: WValue = @enumFromInt((input[0] << 7) >> 7);
     switch (instruction) {
         .add_reg8_source_regmem8_dest,
         .add_reg16_source_regmem16_dest,
@@ -2811,8 +2810,8 @@ fn decodeAdd(
                 .add_instruction = AddInstruction{
                     .opcode = instruction,
                     .mnemonic = mnemonic,
-                    .d = DValue.source,
-                    .w = WValue.byte,
+                    .d = d,
+                    .w = w,
                     .mod = mod,
                     .reg = reg,
                     .rm = rm,
@@ -4522,7 +4521,7 @@ pub fn main() !void {
         disassemble(
             &registers,
             OutputWriter,
-            InstructionBytes,
+            // InstructionBytes,
             payload,
         ) catch |err| {
             switch (err) {
@@ -4562,13 +4561,13 @@ pub fn main() !void {
             log.info("+++Simulation+finished++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{});
         } else {
             if (activeByte + stepSize > 999) {
-                log.debug("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
+                log.debug("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
             } else if (activeByte + stepSize > 99) {
-                log.debug("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
+                log.debug("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
             } else if (activeByte + stepSize > 9) {
-                log.debug("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
+                log.debug("+++Next+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
             } else {
-                log.debug("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte + stepSize});
+                log.debug("+++Next+active+byte+{d}+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", .{activeByte + stepSize});
             }
         }
     }
@@ -4764,6 +4763,18 @@ fn printEffectiveAddressCalculationSource(
                         .{ @errorName(err), address_calculation },
                     );
                 };
+            } else if (disp_signed == 0) {
+                log.info("[{t}]", .{
+                    address_calculation.base.?,
+                });
+                OutputWriter.print("[{t}]\n", .{
+                    address_calculation.base.?,
+                }) catch |err| {
+                    log.err(
+                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                        .{ @errorName(err), address_calculation },
+                    );
+                };
             } else {
                 log.info("[{t} + {d}]", .{
                     address_calculation.base.?,
@@ -4842,10 +4853,11 @@ fn printEffectiveAddressCalculationSource(
     }
 }
 
+/// Writes decoded asm-86 instructions to a test file.
 fn disassemble(
     registers: *Register,
     OutputWriter: *std.io.Writer,
-    InstructionBytes: [6]u8,
+    // InstructionBytes: [6]u8,
     payload: DecodePayload,
 ) InstructionDecodeError!void {
     const log = std.log.scoped(.disassemble);
@@ -4872,8 +4884,10 @@ fn disassemble(
             );
 
             const destination: DestinationInfo = instruction_info.destination_info;
+            var destinationIsEffectiveAddressCalculation: bool = undefined;
             switch (destination) {
                 .address => {
+                    destinationIsEffectiveAddressCalculation = false;
                     log.info("{t}, ", .{destination.address});
                     OutputWriter.print(
                         "{t}, ",
@@ -4886,9 +4900,11 @@ fn disassemble(
                     };
                 },
                 .address_calculation => {
+                    destinationIsEffectiveAddressCalculation = true;
                     printEffectiveAddressCalculationDest(OutputWriter, destination.address_calculation);
                 },
                 .mem_addr => {
+                    destinationIsEffectiveAddressCalculation = false;
                     log.info("[{d}],", .{destination.mem_addr});
                     OutputWriter.print("[{d}], ", .{
                         destination.mem_addr,
@@ -5028,7 +5044,7 @@ fn disassemble(
 
             const mod = payload.mov_with_mod_instruction.mod;
             const rm = payload.mov_with_mod_instruction.rm;
-            const instruction: BinaryInstructions = @enumFromInt(InstructionBytes[0]);
+            const instruction: BinaryInstructions = payload.mov_with_mod_instruction.opcode;
             var instruction_info: InstructionInfo = undefined;
             switch (instruction) {
                 .mov_source_regmem8_reg8,
@@ -5045,8 +5061,10 @@ fn disassemble(
                         reg,
                         mod,
                         rm,
-                        if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[2] else null,
-                        if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
+                        // if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[2] else null,
+                        if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) payload.mov_with_mod_instruction.disp_lo.? else null,
+                        // if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
+                        if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) payload.mov_with_mod_instruction.disp_hi.? else null,
                     );
                 },
                 .mov_seg_regmem => {
@@ -5056,8 +5074,8 @@ fn disassemble(
                         mod,
                         sr,
                         rm,
-                        if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[2] else null,
-                        if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
+                        if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) payload.mov_with_mod_instruction.disp_lo.? else null,
+                        if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) payload.mov_with_mod_instruction.disp_hi.? else null,
                     );
                 },
                 .mov_regmem_seg => {
@@ -5067,8 +5085,8 @@ fn disassemble(
                         mod,
                         sr,
                         rm,
-                        if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[2] else null,
-                        if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) InstructionBytes[3] else null,
+                        if (mod == ModValue.memoryMode8BitDisplacement or mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) payload.mov_with_mod_instruction.disp_lo.? else null,
+                        if (mod == ModValue.memoryMode16BitDisplacement or (mod == ModValue.memoryModeNoDisplacement and rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16)) payload.mov_with_mod_instruction.disp_hi.? else null,
                     );
                 },
                 .mov_immediate_to_regmem8,
@@ -5444,7 +5462,7 @@ fn disassemble(
                 return err;
             };
 
-            const instruction: BinaryInstructions = @enumFromInt(InstructionBytes[0]);
+            const instruction: BinaryInstructions = payload.mov_without_mod_instruction.opcode;
             var instruction_info: InstructionInfo = undefined;
             switch (instruction) {
                 .mov_immediate_reg_al,
@@ -5678,7 +5696,85 @@ fn compareFiles(
 
 // TODO: Add test cases for different instruction sizes
 
-test "TEST listing_0037_single_register_mov" {
+test decodeAdd {
+    const expectEqual = std.testing.expectEqual;
+
+    // 0x03 - Register/Memory 16 bit with Register to Register/Memory 16 bit
+    // mod: 0b11, reg: 0b001, rm: 0b010
+    const input_0x03_register_mode: [6]u8 = [_]u8{
+        0b0000_0011,
+        0b1100_1010,
+        0b0000_0000,
+        0b0000_0000,
+        0b0000_0000,
+        0b0000_0000,
+    };
+    const output_payload_0x03_register_mode = DecodePayload{
+        .add_instruction = AddInstruction{
+            .opcode = BinaryInstructions.add_regmem16_source_reg16_dest,
+            .mnemonic = "add",
+            .d = DValue.destination,
+            .w = WValue.word,
+            .mod = ModValue.registerModeNoDisplacement,
+            .reg = RegValue.CLCX,
+            .rm = RmValue.DLDX_BPSI_BPSID8_BPSID16,
+            .disp_hi = null,
+            .disp_lo = null,
+            .data = null,
+            .w_data = null,
+        },
+    };
+    try expectEqual(
+        decodeAdd(
+            ModValue.registerModeNoDisplacement,
+            RmValue.DLDX_BPSI_BPSID8_BPSID16,
+            input_0x03_register_mode,
+        ),
+        output_payload_0x03_register_mode,
+    );
+}
+
+test decodeImmediateOp {
+    const expectEqual = std.testing.expectEqual;
+
+    const input_0x80_immediate8_to_regmem8: [6]u8 = [_]u8{
+        0b1000_0000,
+        0b1100_0000,
+        0b1010_1010,
+        0b0000_0000,
+        0b0000_0000,
+        0b0000_0000,
+    };
+    const output_payload_0x80_immediate8_to_regmem8 = DecodePayload{
+        .immediate_op_instruction = ImmediateOpInstruction{
+            .opcode = BinaryInstructions.immediate8_to_regmem8,
+            .mnemonic = "add",
+            .s = SValue.no_sign,
+            .w = WValue.byte,
+            .mod = ModValue.registerModeNoDisplacement,
+            .rm = RmValue.ALAX_BXSI_BXSID8_BXSID16,
+            .disp_lo = null,
+            .disp_hi = null,
+            .data_lo = null,
+            .data_hi = null,
+            .data_8 = input_0x80_immediate8_to_regmem8[2],
+            .signed_data_8 = null,
+            .data_sx = null,
+        },
+    };
+    try expectEqual(
+        decodeImmediateOp(
+            SValue.no_sign,
+            WValue.byte,
+            input_0x80_immediate8_to_regmem8,
+        ),
+        output_payload_0x80_immediate8_to_regmem8,
+    );
+}
+
+test decodeMovWithMod {
+    const expectEqual = std.testing.expectEqual;
+
     // MOV
     // listing_0037_single_register_mov
     // 0x89
@@ -5707,7 +5803,7 @@ test "TEST listing_0037_single_register_mov" {
             .w_data = null,
         },
     };
-    try std.testing.expectEqual(
+    try expectEqual(
         decodeMovWithMod(
             ModValue.registerModeNoDisplacement,
             RmValue.CLCX_BXDI_BXDID8_BXDID16,
@@ -5715,9 +5811,7 @@ test "TEST listing_0037_single_register_mov" {
         ).mov_with_mod_instruction,
         test_output_payload_0x89_mod_register_mode_no_displacement.mov_with_mod_instruction,
     );
-}
 
-test "TEST listing_0038_many_register_mov" {
     // listing_0038_many_register_mov
     // 0x88, 0x89
 
@@ -5746,7 +5840,7 @@ test "TEST listing_0038_many_register_mov" {
             .w_data = null,
         },
     };
-    try std.testing.expectEqual(
+    try expectEqual(
         decodeMovWithMod(
             ModValue.registerModeNoDisplacement,
             RmValue.DLDX_BPSI_BPSID8_BPSID16,
@@ -5780,7 +5874,7 @@ test "TEST listing_0038_many_register_mov" {
             .w_data = null,
         },
     };
-    try std.testing.expectEqual(
+    try expectEqual(
         decodeMovWithMod(
             ModValue.memoryModeNoDisplacement,
             RmValue.DHSI_DIRECTACCESS_BPD8_BPD16,
@@ -5814,7 +5908,7 @@ test "TEST listing_0038_many_register_mov" {
             .w_data = null,
         },
     };
-    try std.testing.expectEqual(
+    try expectEqual(
         decodeMovWithMod(
             ModValue.memoryModeNoDisplacement,
             RmValue.AHSP_SI_SID8_SID16,
@@ -5848,7 +5942,7 @@ test "TEST listing_0038_many_register_mov" {
             .w_data = null,
         },
     };
-    try std.testing.expectEqual(
+    try expectEqual(
         decodeMovWithMod(
             ModValue.memoryMode8BitDisplacement,
             RmValue.DLDX_BPSI_BPSID8_BPSID16,
@@ -5882,7 +5976,7 @@ test "TEST listing_0038_many_register_mov" {
             .w_data = null,
         },
     };
-    try std.testing.expectEqual(
+    try expectEqual(
         decodeMovWithMod(
             ModValue.memoryMode16BitDisplacement,
             RmValue.CLCX_BXDI_BXDID8_BXDID16,
@@ -5890,9 +5984,7 @@ test "TEST listing_0038_many_register_mov" {
         ),
         test_output_payload_0x89_mod_memory_mode_16_bit_displacement,
     );
-}
 
-test "TEST listing_0039_more_movs" {
     // 0x88 - 0x8B, 0xB0 - 0xBF
 
     // 0x8A, mod: 0b10, rm: 0b000
@@ -5920,7 +6012,7 @@ test "TEST listing_0039_more_movs" {
             .w_data = null,
         },
     };
-    try std.testing.expectEqual(
+    try expectEqual(
         decodeMovWithMod(
             ModValue.memoryMode16BitDisplacement,
             RmValue.ALAX_BXSI_BXSID8_BXSID16,
@@ -5954,7 +6046,7 @@ test "TEST listing_0039_more_movs" {
             .w_data = null,
         },
     };
-    try std.testing.expectEqual(
+    try expectEqual(
         decodeMovWithMod(
             ModValue.memoryMode8BitDisplacement,
             RmValue.CLCX_BXDI_BXDID8_BXDID16,
@@ -5988,7 +6080,7 @@ test "TEST listing_0039_more_movs" {
             .w_data = null,
         },
     };
-    try std.testing.expectEqual(
+    try expectEqual(
         decodeMovWithMod(
             ModValue.memoryMode16BitDisplacement,
             RmValue.DHSI_DIRECTACCESS_BPD8_BPD16,
@@ -5996,67 +6088,6 @@ test "TEST listing_0039_more_movs" {
         ),
         output_payload_0x8B_memory_mode_16_bit_displacement,
     );
-
-    // 0xB1, w: byte
-    const input_0xB1_byte: [6]u8 = [_]u8{
-        0b1011_0001,
-        0b1000_1000,
-        0b0000_0000,
-        0b0000_0000,
-        0b0000_0000,
-        0b0000_0000,
-    };
-    const output_payload_0xB1_byte = DecodePayload{
-        .mov_without_mod_instruction = MovWithoutModInstruction{
-            .opcode = BinaryInstructions.mov_immediate_reg_cl,
-            .mnemonic = "mov",
-            .w = WValue.byte,
-            .reg = RegValue.CLCX,
-            .data = input_0xB1_byte[1],
-            .w_data = null,
-            .addr_lo = null,
-            .addr_hi = null,
-        },
-    };
-    try std.testing.expectEqual(
-        decodeMovWithoutMod(
-            WValue.byte,
-            input_0xB1_byte,
-        ),
-        output_payload_0xB1_byte,
-    );
-
-    // 0xBB, w: word
-    const input_0xBB_word: [6]u8 = [_]u8{
-        0b1011_1011,
-        0b0000_0000,
-        0b0010_0100,
-        0b0100_1000,
-        0b0000_0000,
-        0b0000_0000,
-    };
-    const output_payload_0xBB_word = DecodePayload{
-        .mov_without_mod_instruction = MovWithoutModInstruction{
-            .opcode = BinaryInstructions.mov_immediate_reg_bx,
-            .mnemonic = "mov",
-            .w = WValue.word,
-            .reg = RegValue.BLBX,
-            .data = input_0xBB_word[1],
-            .w_data = input_0xBB_word[2],
-            .addr_lo = null,
-            .addr_hi = null,
-        },
-    };
-    try std.testing.expectEqual(
-        decodeMovWithoutMod(
-            WValue.word,
-            input_0xBB_word,
-        ),
-        output_payload_0xBB_word,
-    );
-}
-
-test "TEST_listing_0040_challenge_movs" {
 
     // 0xC6, mod: 0b00, sr: 0b00,
     const input_0xC6_memory_mode_no_displacement: [6]u8 = [_]u8{
@@ -6083,7 +6114,7 @@ test "TEST_listing_0040_challenge_movs" {
             .w_data = null,
         },
     };
-    try std.testing.expectEqual(
+    try expectEqual(
         decodeMovWithMod(
             ModValue.memoryModeNoDisplacement,
             RmValue.BLBX_BPDI_BPDID8_BPDID16,
@@ -6117,13 +6148,75 @@ test "TEST_listing_0040_challenge_movs" {
             .w_data = input_0xC7_memory_mode_16_bit_displacement[5],
         },
     };
-    try std.testing.expectEqual(
+    try expectEqual(
         decodeMovWithMod(
             ModValue.memoryMode16BitDisplacement,
             RmValue.AHSP_SI_SID8_SID16,
             input_0xC7_memory_mode_16_bit_displacement,
         ),
         output_payload_0xC7_memory_mode_16_bit_displacement,
+    );
+}
+
+test decodeMovWithoutMod {
+    const expectEqual = std.testing.expectEqual;
+
+    // 0xB1, w: byte
+    const input_0xB1_byte: [6]u8 = [_]u8{
+        0b1011_0001,
+        0b1000_1000,
+        0b0000_0000,
+        0b0000_0000,
+        0b0000_0000,
+        0b0000_0000,
+    };
+    const output_payload_0xB1_byte = DecodePayload{
+        .mov_without_mod_instruction = MovWithoutModInstruction{
+            .opcode = BinaryInstructions.mov_immediate_reg_cl,
+            .mnemonic = "mov",
+            .w = WValue.byte,
+            .reg = RegValue.CLCX,
+            .data = input_0xB1_byte[1],
+            .w_data = null,
+            .addr_lo = null,
+            .addr_hi = null,
+        },
+    };
+    try expectEqual(
+        decodeMovWithoutMod(
+            WValue.byte,
+            input_0xB1_byte,
+        ),
+        output_payload_0xB1_byte,
+    );
+
+    // 0xBB, w: word
+    const input_0xBB_word: [6]u8 = [_]u8{
+        0b1011_1011,
+        0b0000_0000,
+        0b0010_0100,
+        0b0100_1000,
+        0b0000_0000,
+        0b0000_0000,
+    };
+    const output_payload_0xBB_word = DecodePayload{
+        .mov_without_mod_instruction = MovWithoutModInstruction{
+            .opcode = BinaryInstructions.mov_immediate_reg_bx,
+            .mnemonic = "mov",
+            .w = WValue.word,
+            .reg = RegValue.BLBX,
+            .data = input_0xBB_word[1],
+            .w_data = input_0xBB_word[2],
+            .addr_lo = null,
+            .addr_hi = null,
+        },
+    };
+    try expectEqual(
+        decodeMovWithoutMod(
+            WValue.word,
+            input_0xBB_word,
+        ),
+        output_payload_0xBB_word,
     );
 
     // 0xA1, 0xA2, 0xA3, 0xA4
@@ -6147,47 +6240,11 @@ test "TEST_listing_0040_challenge_movs" {
             .addr_hi = input_0xA1_memory_to_accumulator[2],
         },
     };
-    try std.testing.expectEqual(
+    try expectEqual(
         decodeMovWithoutMod(
             WValue.word,
             input_0xA1_memory_to_accumulator,
         ),
         output_payload_0xA1_memory_to_accumulator,
-    );
-}
-
-test "TEST_listing_0041_add_sub_cmp_jnz" {
-    const input_0x80_immediate8_to_regmem8: [6]u8 = [_]u8{
-        0b1000_0000,
-        0b1100_0000,
-        0b1010_1010,
-        0b0000_0000,
-        0b0000_0000,
-        0b0000_0000,
-    };
-    const output_payload_0x80_immediate8_to_regmem8 = DecodePayload{
-        .immediate_op_instruction = ImmediateOpInstruction{
-            .opcode = BinaryInstructions.immediate8_to_regmem8,
-            .mnemonic = "add",
-            .s = SValue.no_sign,
-            .w = WValue.byte,
-            .mod = ModValue.registerModeNoDisplacement,
-            .rm = RmValue.ALAX_BXSI_BXSID8_BXSID16,
-            .disp_lo = null,
-            .disp_hi = null,
-            .data_lo = null,
-            .data_hi = null,
-            .data_8 = input_0x80_immediate8_to_regmem8[2],
-            .signed_data_8 = null,
-            .data_sx = null,
-        },
-    };
-    try std.testing.expectEqual(
-        decodeImmediateOp(
-            SValue.no_sign,
-            WValue.byte,
-            input_0x80_immediate8_to_regmem8,
-        ),
-        output_payload_0x80_immediate8_to_regmem8,
     );
 }
