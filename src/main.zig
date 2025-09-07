@@ -22,17 +22,24 @@ const BinaryInstructions = enum(u8) {
     // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
     // ADD: Reg/memory with register to either| 0 0 0 0 0 0|D|W | MOD| REG | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|
 
-    add_source_regmem8_reg8     = 0x00,
-    add_source_regmem16_reg16   = 0x01,
-    add_dest_reg8_regmem8       = 0x02,
-    add_dest_reg16_regmem16     = 0x03,
+    /// Register 8 bit with register/memory to register/memory 8 bit
+    add_reg8_source_regmem8_dest        = 0x00,
+    /// Register 16 bit with register/memory to register/memory 16 bit
+    add_reg16_source_regmem16_dest      = 0x01,
+    /// Register/Memory 8 bit with register to register 8 bit
+    add_regmem8_source_reg8_dest        = 0x02,
+    /// Register/Memory 16 bit with register to register 16 bit
+    add_regmem16_source_reg16_dest      = 0x03,
 
     // ASM-86 ADD INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
     // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
     // ADD: Immediate to accumulator          | 0 0 0 0 0 1 0|W |       data      |   data if W=1   |<------------------------XXX------------------------>|
 
-    add_immediate_8_bit_to_acc  = 0x04,
-    add_immediate_16_bit_to_acc = 0x05,
+    // TODO: Implement
+    // /// DocString
+    // add_immediate_8_bit_to_acc  = 0x04,
+    // /// DocString
+    // add_immediate_16_bit_to_acc = 0x05,
 
     // ASM-86 Immediate INSTRUCTIONS          | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
     // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
@@ -192,6 +199,23 @@ const ImmediateAction = enum(u3){
     CMP = 0b111,
 };
 
+/// Add instructions
+/// - Register/memory with register to either: 0x00 - 0x03
+/// - Immediate to accumulator: 0x04, 0x05
+const AddInstruction = struct{
+    opcode: BinaryInstructions,
+    mnemonic: []const u8,
+    d: DValue,
+    w: WValue,
+    mod: ModValue,
+    reg: ?RegValue,
+    rm: RmValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+    data: ?u8,
+    w_data: ?u8,
+};
+
 /// Immediate operation instructions
 /// - Immediate byte value to register/memory 0x80
 /// - Immediate word value to register/memory 0x81
@@ -248,6 +272,7 @@ const MovWithoutModInstruction = struct{
 /// Enum holding the identifier's for the different DecodePayload fields.
 const DecodedPayloadIdentifier = enum{
     err,
+    add_instruction,
     immediate_op_instruction,
     mov_with_mod_instruction,
     mov_without_mod_instruction,
@@ -259,12 +284,14 @@ const DecodedPayloadIdentifier = enum{
 /// decoding its value is returned in this Payload.
 const DecodePayload = union(DecodedPayloadIdentifier) {
     err: InstructionDecodeError,
+    add_instruction: AddInstruction,
     immediate_op_instruction: ImmediateOpInstruction,
     mov_with_mod_instruction: MovWithModInstruction,
     mov_without_mod_instruction: MovWithoutModInstruction,
 };
 
-
+/// Contains the destination as DestinationInfo and source as SourceInfo
+/// objects to rebuild the ASM-86 instruction from.
 const InstructionInfo = struct {
     destination_info: DestinationInfo,
     source_info: SourceInfo,
@@ -442,17 +469,12 @@ fn getImmediateOpSourceAndDest(
     const log = std.log.scoped(.getImmediateOpSourceAndDest);
     const Address = AddressDirectory.Address;
     var dest_info: DestinationInfo = undefined;
-    // var dest: Address = undefined;
-    // var dest_address_calculation: EffectiveAddressCalculation = undefined;
-    // var destination_mem_addr: u20 = undefined;
     var immediate_8: u8 = undefined;
     var immediate_16: u16 = undefined;
     var source_info: SourceInfo = undefined;
     var sign_extended_immediate: i16 = undefined;
     var signed_immediate: i16 = undefined;
     const instruction: BinaryInstructions = payload.immediate_op_instruction.opcode;
-    // const s: SValue = payload.immediate_op_instruction.s;
-    // const w: WValue = payload.immediate_op_instruction.w;
     const mod: ModValue = payload.immediate_op_instruction.mod;
     const rm: RmValue = payload.immediate_op_instruction.rm;
     const w: WValue = payload.immediate_op_instruction.w;
@@ -493,7 +515,7 @@ fn getImmediateOpSourceAndDest(
                     registers,
                     mod,
                     rm,
-                    payload.immediate_op_instruction.data_lo.?,
+                    payload.immediate_op_instruction.disp_lo.?,
                     payload.immediate_op_instruction.disp_hi.?,
                 ),
             };
@@ -641,7 +663,7 @@ fn shouldUse8BitDisplacement(displacement: i16) bool {
 /// Given the fields decoded from the instruction bytes this function returns
 /// the addresses of source and destination. These can be registers or memory
 /// addresses. The values are returned as InstructionInfo.
-fn getRegMemToFromRegMovSourceAndDest(
+fn getRegMemToFromRegSourceAndDest(
     registers: *Register,
     d: DValue,
     w: WValue,
@@ -651,6 +673,7 @@ fn getRegMemToFromRegMovSourceAndDest(
     disp_lo: ?u8,
     disp_hi: ?u8,
     ) InstructionInfo {
+
     const Address = AddressDirectory.Address;
     var dest: Address = undefined;
     var source: Address = undefined;
@@ -2568,14 +2591,41 @@ const ZValue = enum(u1) {
     set                 = 0b1
 };
 
+/// Given the Mod and R/M value of an add register/memory with register to either
+/// instruction, this function returns the number of bytes this instruction consists
+/// of as a u3 value. Returns 1 if the instruction_name is not known to skip this instruction.
+fn addGetInstructionLength(
+    instruction_name: BinaryInstructions,
+    mod: ?ModValue,
+    rm: ?RmValue,
+) u3 {
+    const log = std.log.scoped(.addGetInstructionLength);
+    switch (instruction_name) {
+        .add_reg8_source_regmem8_dest,
+        .add_reg16_source_regmem16_dest,
+        .add_regmem8_source_reg8_dest,
+        .add_regmem16_source_reg16_dest => switch (mod.?) {
+            .memoryModeNoDisplacement => if (rm.? != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) return 2 else return 4,
+            .memoryMode8BitDisplacement => return 3,
+            .memoryMode16BitDisplacement => return 4,
+            .registerModeNoDisplacement => return 2,
+        },
+        else => {
+            log.debug("Instruction not yet implemented. Skipping...", .{});
+            return 1;
+        },
+    }
+}
+
 /// Given the InstructionBinaries value, SValue and WValue of a immediate value operation
-/// this function returns the number of bytes it consists of as a u3 value
+/// this function returns the number of bytes it consists of as a u3 value. Returns 1 if
+/// the instruction_name is not known to skip this instruction.
 fn immediateOpGetInstructionLength(
     instruction_name: BinaryInstructions,
     mod: ModValue,
     rm: RmValue,
 ) u3 {
-    const immediateOpGetInstructionLength_log = std.log.scoped(.immediateOpGetInstructionLength);
+    const log = std.log.scoped(.immediateOpGetInstructionLength);
     switch (instruction_name) {
         .immediate8_to_regmem8 => switch (mod) {
             .memoryModeNoDisplacement => if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) return 3 else return 5,
@@ -2596,13 +2646,13 @@ fn immediateOpGetInstructionLength(
             .registerModeNoDisplacement => return 3,
         },
         .immediate8_to_regmem16 => switch (mod) {
-            .memoryModeNoDisplacement => if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) return 4 else return 6,
-            .memoryMode8BitDisplacement => return 5,
-            .memoryMode16BitDisplacement => return 6,
-            .registerModeNoDisplacement => return 4,
+            .memoryModeNoDisplacement => if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) return 3 else return 5,
+            .memoryMode8BitDisplacement => return 4,
+            .memoryMode16BitDisplacement => return 5,
+            .registerModeNoDisplacement => return 3,
         },
         else => {
-            immediateOpGetInstructionLength_log.debug("Instruction not yet implemented. Skipping...", .{});
+            log.debug("Instruction not yet implemented. Skipping...", .{});
             return 1;
         },
     }
@@ -2610,16 +2660,17 @@ fn immediateOpGetInstructionLength(
 
 // zig fmt: on
 
-/// Given the Mod and R/M value of a Mov register/memory to/from register
+/// Given the Mod and R/M value of a mov register/memory to/from register
 /// instruction, this function returns the number of bytes this instruction
-/// consists of as a u3 value.
+/// consists of as a u3 value. Returns 1 if the instruction_name is not known
+/// to skip this instruction.
 fn movGetInstructionLength(
     instruction_name: BinaryInstructions,
     w: WValue,
     mod: ?ModValue,
     rm: ?RmValue,
 ) u3 {
-    const movGetInstructionLength_log = std.log.scoped(.movGetInstructionLength);
+    const log = std.log.scoped(.movGetInstructionLength);
     switch (instruction_name) {
         .mov_source_regmem8_reg8,
         .mov_source_regmem16_reg16,
@@ -2718,18 +2769,75 @@ fn movGetInstructionLength(
             }
         },
         else => {
-            movGetInstructionLength_log.debug("Instruction not yet implemented. Skipping...", .{});
+            log.debug("Instruction not yet implemented. Skipping...", .{});
             return 1;
         },
     }
 }
 
+/// Decode add instruction providing the values of the Mod and R/M fields
+/// of the instruction. Returns a DecodePayload union object containing either
+/// a DecodePayload.addInstruction value or an error.
+fn decodeAdd(
+    mod: ModValue,
+    rm: RmValue,
+    input: [6]u8,
+) InstructionDecodeError!DecodePayload {
+    const log = std.log.scoped(.decodeAdd);
+
+    const instruction: BinaryInstructions = @enumFromInt((input[0]));
+    const mnemonic = "add";
+    const disp_lo: ?u8 = switch (mod) {
+        .memoryModeNoDisplacement => if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
+        .memoryMode8BitDisplacement => input[2],
+        .memoryMode16BitDisplacement => input[2],
+        .registerModeNoDisplacement => null,
+    };
+    const disp_hi: ?u8 = switch (mod) {
+        .memoryModeNoDisplacement => if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
+        .memoryMode8BitDisplacement => null,
+        .memoryMode16BitDisplacement => input[2],
+        .registerModeNoDisplacement => null,
+    };
+
+    switch (instruction) {
+        .add_reg8_source_regmem8_dest,
+        .add_reg16_source_regmem16_dest,
+        .add_regmem8_source_reg8_dest,
+        .add_regmem16_source_reg16_dest,
+        => {
+            const reg: RegValue = @enumFromInt((input[1] << 2) >> 5);
+            return DecodePayload{
+                .add_instruction = AddInstruction{
+                    .opcode = instruction,
+                    .mnemonic = mnemonic,
+                    .d = DValue.source,
+                    .w = WValue.byte,
+                    .mod = mod,
+                    .reg = reg,
+                    .rm = rm,
+                    .disp_lo = disp_lo,
+                    .disp_hi = disp_hi,
+                    .data = null,
+                    .w_data = null,
+                },
+            };
+        },
+        else => {
+            log.err("Instruction '{t}' not yet implemented.", .{instruction});
+            return InstructionDecodeError.NotYetImplemented;
+        },
+    }
+}
+
+// TODO: Create DocString for this function
+/// DocString
 fn decodeImmediateOp(
     s: SValue,
     w: WValue,
     input: [6]u8,
 ) InstructionDecodeError!DecodePayload {
-    const decodeImmediateOp_log = std.log.scoped(.decodeImmediateOp);
+    const log = std.log.scoped(.decodeImmediateOp);
     const instruction: BinaryInstructions = @enumFromInt(input[0]);
     const mod: ModValue = @enumFromInt(input[1] >> 6);
     const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
@@ -2874,7 +2982,7 @@ fn decodeImmediateOp(
             };
         },
         else => {
-            decodeImmediateOp_log.debug("Instruction not yet implemented.", .{});
+            log.debug("Instruction not yet implemented.", .{});
             return InstructionDecodeError.NotYetImplemented;
         },
     }
@@ -3864,6 +3972,9 @@ fn executeInstruction(
     const log = std.log.scoped(.executeInstruction);
     switch (instruction_payload) {
         .err => {},
+        .add_instruction => {
+            log.info("Not doing anything here for a while.", .{});
+        },
         .immediate_op_instruction => {
             log.info("Not doing anything here for a while.", .{});
         },
@@ -4125,7 +4236,12 @@ pub fn main() !void {
         while (queue_index < queue_size) : (queue_index += 1) {
             biu.setIndex(queue_index, if (activeByte + queue_index < file_contents.len) file_contents[activeByte + queue_index] else u8_init_value);
             if (activeByte + queue_index > file_contents.len - 1) break;
-            log.debug("{d}: {b:0>8}, {d}", .{ queue_index, file_contents[activeByte + queue_index], activeByte + queue_index });
+            log.debug("{d}: {b:0>8}, active byte {d}, instruction 0x{x:0>2}", .{
+                queue_index,
+                file_contents[activeByte + queue_index],
+                activeByte + queue_index,
+                file_contents[activeByte + queue_index],
+            });
             if (queue_index + 1 == 6) break;
         }
 
@@ -4139,6 +4255,17 @@ pub fn main() !void {
         var mod: ModValue = undefined;
         var rm: RmValue = undefined;
         switch (instruction) {
+            BinaryInstructions.add_reg8_source_regmem8_dest,
+            BinaryInstructions.add_reg16_source_regmem16_dest,
+            BinaryInstructions.add_regmem8_source_reg8_dest,
+            BinaryInstructions.add_regmem16_source_reg16_dest,
+            => {
+                // 0x00, 0x01, 0x02, 0x03
+                mod = @enumFromInt(biu.getIndex(1) >> 6);
+                rm = @enumFromInt((biu.getIndex(1) << 5) >> 5);
+
+                stepSize = addGetInstructionLength(instruction_name, mod, rm);
+            },
             BinaryInstructions.immediate8_to_regmem8,
             BinaryInstructions.immediate16_to_regmem16,
             BinaryInstructions.s_immediate8_to_regmem8,
@@ -4211,9 +4338,9 @@ pub fn main() !void {
                 rm = @enumFromInt((second_byte << 5) >> 5);
                 stepSize = movGetInstructionLength(instruction_name, w, mod, rm);
             },
-            else => {
-                log.debug("This instruction is not yet implemented. Skipping...", .{});
-            },
+            // else => {
+            //     log.debug("This instruction is not yet implemented. Skipping...", .{});
+            // },
         }
 
         switch (stepSize) {
@@ -4282,15 +4409,41 @@ pub fn main() !void {
             },
         }
 
-        log.debug("InstructionBytes:", .{});
-        var count = activeByte;
-        for (InstructionBytes) |inst| {
-            log.debug("{b:0>8}, 0x{x:0>2}, active byte {d}", .{ inst, inst, count });
-            count += 1;
+        log.debug("InstructionBytes(length: {d}):", .{stepSize});
+        var steps: u3 = 1;
+        var instruction_step_number = activeByte;
+        for (InstructionBytes) |instruction_byte| {
+            if (steps == 1) {
+                log.debug("{b:0>8}, active byte {d}, instruction 0x{x:0>2}", .{
+                    instruction_byte,
+                    activeByte,
+                    instruction_byte,
+                });
+            } else if (steps <= stepSize) {
+                log.debug("{b:0>8}, active byte {d}, instruction 0x{x:0>2}", .{
+                    instruction_byte,
+                    instruction_step_number,
+                    instruction_byte,
+                });
+            } else {
+                log.debug("{b:0>8}, empty byte", .{instruction_byte});
+            }
+            instruction_step_number += 1;
+            steps += 1;
         }
 
         var payload: DecodePayload = undefined;
         switch (instruction) {
+            .add_reg8_source_regmem8_dest,
+            .add_reg16_source_regmem16_dest,
+            .add_regmem8_source_reg8_dest,
+            .add_regmem16_source_reg16_dest,
+            => {
+                payload = decodeAdd(mod, rm, InstructionBytes) catch |err| {
+                    log.err("{s}: DecodePayload could not be receivied. Continueing...", .{@errorName(err)});
+                    continue;
+                };
+            },
             .immediate8_to_regmem8,
             .immediate16_to_regmem16,
             .s_immediate8_to_regmem8,
@@ -4338,9 +4491,9 @@ pub fn main() !void {
             => {
                 payload = decodeMovWithoutMod(w, InstructionBytes);
             },
-            else => {
-                log.debug("Instruction not yet implemented. Skipping...", .{});
-            },
+            // else => {
+            //     log.debug("Instruction not yet implemented. Skipping...", .{});
+            // },
         }
 
         ////////////////////////////////////////////////////////////////////////
@@ -4701,6 +4854,121 @@ fn disassemble(
         .err => {
             return payload.err;
         },
+        .add_instruction => {
+            log.info("{s} ", .{payload.add_instruction.mnemonic});
+            OutputWriter.print("{s} ", .{payload.add_instruction.mnemonic}) catch |err| {
+                return err;
+            };
+
+            const instruction_info: InstructionInfo = getRegMemToFromRegSourceAndDest(
+                registers,
+                payload.add_instruction.d,
+                payload.add_instruction.w,
+                payload.add_instruction.reg.?,
+                payload.add_instruction.mod,
+                payload.add_instruction.rm,
+                payload.add_instruction.disp_lo,
+                payload.add_instruction.disp_hi,
+            );
+
+            const destination: DestinationInfo = instruction_info.destination_info;
+            switch (destination) {
+                .address => {
+                    log.info("{t}, ", .{destination.address});
+                    OutputWriter.print(
+                        "{t}, ",
+                        .{destination.address},
+                    ) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write destination {t} the output file.",
+                            .{ @errorName(err), destination.address },
+                        );
+                    };
+                },
+                .address_calculation => {
+                    printEffectiveAddressCalculationDest(OutputWriter, destination.address_calculation);
+                },
+                .mem_addr => {
+                    log.info("[{d}],", .{destination.mem_addr});
+                    OutputWriter.print("[{d}], ", .{
+                        destination.mem_addr,
+                    }) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write to memory address [{d}] to the output file.",
+                            .{ @errorName(err), destination.mem_addr },
+                        );
+                    };
+                },
+            }
+
+            const source: SourceInfo = instruction_info.source_info;
+            switch (source) {
+                .address => {
+                    log.info("{t}", .{source.address});
+                    OutputWriter.print(
+                        "{t}\n",
+                        .{source.address},
+                    ) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write source {any} to the output file.",
+                            .{ @errorName(err), source.address },
+                        );
+                    };
+                },
+                .address_calculation => {
+                    printEffectiveAddressCalculationSource(OutputWriter, source.address_calculation);
+                },
+                .immediate => {
+                    // if (instruction == BinaryInstructions.mov_immediate_to_regmem8) {
+                    //     log.info("byte {d}", .{source.immediate});
+                    //     OutputWriter.print(
+                    //         "byte {d}\n",
+                    //         .{source.immediate},
+                    //     ) catch |err| {
+                    //         log.err(
+                    //             "{s}: Something went wrong trying to write source index {any} to the output file.",
+                    //             .{ @errorName(err), source.immediate },
+                    //         );
+                    //     };
+                    // } else if (instruction == BinaryInstructions.mov_immediate_to_regmem16) {
+                    //     log.info("word {d}", .{source.immediate});
+                    //     OutputWriter.print(
+                    //         "word {d}\n",
+                    //         .{source.immediate},
+                    //     ) catch |err| {
+                    //         log.err(
+                    //             "{s}: Something went wrong trying to write source index {any} to the output file.",
+                    //             .{ @errorName(err), source.immediate },
+                    //         );
+                    //     };
+                    // } else {
+                    //     log.info("{d}", .{source.immediate});
+                    //     OutputWriter.print(
+                    //         "{d}\n",
+                    //         .{source.immediate},
+                    //     ) catch |err| {
+                    //         log.err(
+                    //             "{s}: Something went wrong trying to write source index {any} to the output file.",
+                    //             .{ @errorName(err), source.immediate },
+                    //         );
+                    //     };
+                    // }
+                    log.err("ERROR: Immediate value source for add not yet implemented", .{});
+                },
+                .mem_addr => {
+                    log.info("[{d}]", .{source.mem_addr});
+                    OutputWriter.print(
+                        "[{d}]\n",
+                        .{source.mem_addr},
+                    ) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write source index {any} to the output file.",
+                            .{ @errorName(err), source.mem_addr },
+                        );
+                    };
+                },
+            }
+        },
         .immediate_op_instruction => {
             log.info("{s} ", .{payload.immediate_op_instruction.mnemonic});
             OutputWriter.print("{s} ", .{payload.immediate_op_instruction.mnemonic}) catch |err| {
@@ -4770,7 +5038,7 @@ fn disassemble(
                 => {
                     const d: DValue = payload.mov_with_mod_instruction.d.?;
                     const reg: RegValue = payload.mov_with_mod_instruction.reg.?;
-                    instruction_info = getRegMemToFromRegMovSourceAndDest(
+                    instruction_info = getRegMemToFromRegSourceAndDest(
                         registers,
                         d,
                         payload.mov_with_mod_instruction.w.?,
