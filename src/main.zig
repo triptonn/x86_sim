@@ -37,9 +37,9 @@ const BinaryInstructions = enum(u8) {
 
     // TODO: Implement
     // /// DocString
-    // add_immediate_8_bit_to_acc  = 0x04,
+    add_immediate_8_bit_to_acc  = 0x04,
     // /// DocString
-    // add_immediate_16_bit_to_acc = 0x05,
+    add_immediate_16_bit_to_acc = 0x05,
 
     // ASM-86 Immediate INSTRUCTIONS          | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
     // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
@@ -202,11 +202,11 @@ const ImmediateAction = enum(u3){
 const AddInstruction = struct{
     opcode: BinaryInstructions,
     mnemonic: []const u8,
-    d: DValue,
+    d: ?DValue,
     w: WValue,
-    mod: ModValue,
+    mod: ?ModValue,
     reg: ?RegValue,
-    rm: RmValue,
+    rm: ?RmValue,
     disp_lo: ?u8,
     disp_hi: ?u8,
     data: ?u8,
@@ -656,6 +656,41 @@ fn shouldUse8BitDisplacement(displacement: i16) bool {
 }
 
 // zig fmt: off
+
+fn getAddImmediateToAccumulatorDest(
+    // registers: *Register,
+    w: WValue,
+    data: u8,
+    w_data: ?u8,
+) InstructionInfo {
+    const Address = AddressDirectory.Address;
+    var dest: Address = undefined;
+    var immediate_8: u8 = undefined;
+    var immediate_16: u16 = undefined;
+    if (w == WValue.byte) {
+        dest = Address.al;
+        immediate_8 = data;
+        return InstructionInfo{
+            .destination_info = DestinationInfo{
+                .address = dest,
+            },
+            .source_info = SourceInfo{
+                .immediate = @intCast(immediate_8),
+            },
+        };
+    } else {
+        dest = Address.ax;
+        immediate_16 = (@as(u16, w_data.?) << 8) + @as(u16, data);
+        return InstructionInfo{
+            .destination_info = DestinationInfo{
+                .address = dest,
+            },
+            .source_info = SourceInfo{
+                .immediate = immediate_16,
+            },
+        };
+    }
+}
 
 /// Given the fields decoded from the instruction bytes this function returns
 /// the addresses of source and destination. These can be registers or memory
@@ -2799,6 +2834,7 @@ fn decodeAdd(
 
     const d: DValue = @enumFromInt((input[0] << 6) >> 7);
     const w: WValue = @enumFromInt((input[0] << 7) >> 7);
+
     switch (instruction) {
         .add_reg8_source_regmem8_dest,
         .add_reg16_source_regmem16_dest,
@@ -2819,6 +2855,45 @@ fn decodeAdd(
                     .disp_hi = disp_hi,
                     .data = null,
                     .w_data = null,
+                },
+            };
+        },
+        .add_immediate_8_bit_to_acc => {
+            const data: u8 = input[1];
+
+            return DecodePayload{
+                .add_instruction = AddInstruction{
+                    .opcode = instruction,
+                    .mnemonic = "add",
+                    .d = null,
+                    .w = w,
+                    .mod = null,
+                    .reg = null,
+                    .rm = null,
+                    .disp_lo = null,
+                    .disp_hi = null,
+                    .data = data,
+                    .w_data = null,
+                },
+            };
+        },
+        .add_immediate_16_bit_to_acc => {
+            const data: u8 = input[1];
+            const w_data: u8 = input[2];
+
+            return DecodePayload{
+                .add_instruction = AddInstruction{
+                    .opcode = instruction,
+                    .mnemonic = "add",
+                    .d = null,
+                    .w = w,
+                    .mod = null,
+                    .reg = null,
+                    .rm = null,
+                    .disp_lo = null,
+                    .disp_hi = null,
+                    .data = data,
+                    .w_data = w_data,
                 },
             };
         },
@@ -2935,7 +3010,7 @@ fn decodeImmediateOp(
                     .disp_lo = disp_lo,
                     .disp_hi = disp_hi,
                     .data_lo = data_lo,
-                    .data_hi = data_hi,
+                    .data_hi = if (s == SValue.no_sign and w == WValue.word) data_hi else null,
                     .data_8 = null,
                     .signed_data_8 = null,
                     .data_sx = null,
@@ -4265,6 +4340,11 @@ pub fn main() !void {
 
                 stepSize = addGetInstructionLength(instruction_name, mod, rm);
             },
+            BinaryInstructions.add_immediate_8_bit_to_acc,
+            BinaryInstructions.add_immediate_16_bit_to_acc,
+            => {
+                log.err("Instruction '{t}' not yet implemented.", .{instruction});
+            },
             BinaryInstructions.immediate8_to_regmem8,
             BinaryInstructions.immediate16_to_regmem16,
             BinaryInstructions.s_immediate8_to_regmem8,
@@ -4437,6 +4517,8 @@ pub fn main() !void {
             .add_reg16_source_regmem16_dest,
             .add_regmem8_source_reg8_dest,
             .add_regmem16_source_reg16_dest,
+            .add_immediate_8_bit_to_acc,
+            .add_immediate_16_bit_to_acc,
             => {
                 payload = decodeAdd(mod, rm, InstructionBytes) catch |err| {
                     log.err("{s}: DecodePayload could not be receivied. Continueing...", .{@errorName(err)});
@@ -4872,16 +4954,40 @@ fn disassemble(
                 return err;
             };
 
-            const instruction_info: InstructionInfo = getRegMemToFromRegSourceAndDest(
-                registers,
-                payload.add_instruction.d,
-                payload.add_instruction.w,
-                payload.add_instruction.reg.?,
-                payload.add_instruction.mod,
-                payload.add_instruction.rm,
-                payload.add_instruction.disp_lo,
-                payload.add_instruction.disp_hi,
-            );
+            var instruction_info: InstructionInfo = undefined;
+
+            // TODO: in case of add_immediate_8/16_to_acc there is no d, reg, mod, rm or displacement
+            switch (payload.add_instruction.opcode) {
+                .add_reg8_source_regmem8_dest,
+                .add_reg16_source_regmem16_dest,
+                .add_regmem8_source_reg8_dest,
+                .add_regmem16_source_reg16_dest,
+                => {
+                    instruction_info = getRegMemToFromRegSourceAndDest(
+                        registers,
+                        payload.add_instruction.d.?,
+                        payload.add_instruction.w,
+                        payload.add_instruction.reg.?,
+                        payload.add_instruction.mod.?,
+                        payload.add_instruction.rm.?,
+                        payload.add_instruction.disp_lo,
+                        payload.add_instruction.disp_hi,
+                    );
+                },
+                .add_immediate_8_bit_to_acc,
+                .add_immediate_16_bit_to_acc,
+                => {
+                    instruction_info = getAddImmediateToAccumulatorDest(
+                        // registers,
+                        payload.add_instruction.w,
+                        payload.add_instruction.data.?,
+                        payload.add_instruction.w_data,
+                    );
+                },
+                else => {
+                    log.err("Opening add_instruction payload, but no valid add opcode inside.", .{});
+                },
+            }
 
             const destination: DestinationInfo = instruction_info.destination_info;
             var destinationIsEffectiveAddressCalculation: bool = undefined;
@@ -4935,40 +5041,6 @@ fn disassemble(
                     printEffectiveAddressCalculationSource(OutputWriter, source.address_calculation);
                 },
                 .immediate => {
-                    // if (instruction == BinaryInstructions.mov_immediate_to_regmem8) {
-                    //     log.info("byte {d}", .{source.immediate});
-                    //     OutputWriter.print(
-                    //         "byte {d}\n",
-                    //         .{source.immediate},
-                    //     ) catch |err| {
-                    //         log.err(
-                    //             "{s}: Something went wrong trying to write source index {any} to the output file.",
-                    //             .{ @errorName(err), source.immediate },
-                    //         );
-                    //     };
-                    // } else if (instruction == BinaryInstructions.mov_immediate_to_regmem16) {
-                    //     log.info("word {d}", .{source.immediate});
-                    //     OutputWriter.print(
-                    //         "word {d}\n",
-                    //         .{source.immediate},
-                    //     ) catch |err| {
-                    //         log.err(
-                    //             "{s}: Something went wrong trying to write source index {any} to the output file.",
-                    //             .{ @errorName(err), source.immediate },
-                    //         );
-                    //     };
-                    // } else {
-                    //     log.info("{d}", .{source.immediate});
-                    //     OutputWriter.print(
-                    //         "{d}\n",
-                    //         .{source.immediate},
-                    //     ) catch |err| {
-                    //         log.err(
-                    //             "{s}: Something went wrong trying to write source index {any} to the output file.",
-                    //             .{ @errorName(err), source.immediate },
-                    //         );
-                    //     };
-                    // }
                     log.err("ERROR: Immediate value source for add not yet implemented", .{});
                 },
                 .mem_addr => {
@@ -5807,6 +5879,74 @@ test decodeImmediateOp {
             input_0x80_immediate8_to_regmem8,
         ),
         output_payload_0x80_immediate8_to_regmem8,
+    );
+
+    const input_0x81_immediate16_to_regmem16_memory_mode_no_displacement: [6]u8 = [_]u8{
+        0b1000_0001, // S = 0, W = 1
+        0b0000_0011, // mod = 00, ADD, rm = 011
+        0b1010_1000,
+        0b1111_1101,
+        0b0000_0000,
+        0b0000_0000,
+    };
+    const output_payload_0x81_immediate16_to_regmem16_memory_mode_no_displacement = DecodePayload{
+        .immediate_op_instruction = ImmediateOpInstruction{
+            .opcode = BinaryInstructions.immediate16_to_regmem16,
+            .mnemonic = "add",
+            .s = SValue.no_sign,
+            .w = WValue.word,
+            .mod = ModValue.memoryModeNoDisplacement,
+            .rm = RmValue.BLBX_BPDI_BPDID8_BPDID16,
+            .disp_lo = null,
+            .disp_hi = null,
+            .data_lo = input_0x81_immediate16_to_regmem16_memory_mode_no_displacement[2],
+            .data_hi = input_0x81_immediate16_to_regmem16_memory_mode_no_displacement[3],
+            .data_8 = null,
+            .signed_data_8 = null,
+            .data_sx = null,
+        },
+    };
+    try expectEqual(
+        decodeImmediateOp(
+            SValue.no_sign,
+            WValue.word,
+            input_0x81_immediate16_to_regmem16_memory_mode_no_displacement,
+        ),
+        output_payload_0x81_immediate16_to_regmem16_memory_mode_no_displacement,
+    );
+
+    const input_0x81_immediate16_to_regmem16: [6]u8 = [_]u8{
+        0b1000_0001, // S = 0, W = 1
+        0b1000_0010, // mod = 10, ADD, rm = 010
+        0b0000_0100,
+        0b0010_1011,
+        0b0000_0001,
+        0b0000_0000,
+    };
+    const output_payload_0x81_immediate16_to_regmem16 = DecodePayload{
+        .immediate_op_instruction = ImmediateOpInstruction{
+            .opcode = BinaryInstructions.immediate16_to_regmem16,
+            .mnemonic = "add",
+            .s = SValue.no_sign,
+            .w = WValue.word,
+            .mod = ModValue.memoryMode16BitDisplacement,
+            .rm = RmValue.DLDX_BPSI_BPSID8_BPSID16,
+            .disp_lo = input_0x81_immediate16_to_regmem16[2],
+            .disp_hi = input_0x81_immediate16_to_regmem16[3],
+            .data_lo = input_0x81_immediate16_to_regmem16[4],
+            .data_hi = null,
+            .data_8 = null,
+            .signed_data_8 = null,
+            .data_sx = null,
+        },
+    };
+    try expectEqual(
+        decodeImmediateOp(
+            SValue.no_sign,
+            WValue.word,
+            input_0x81_immediate16_to_regmem16,
+        ),
+        output_payload_0x81_immediate16_to_regmem16,
     );
 }
 
