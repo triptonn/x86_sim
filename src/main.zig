@@ -5737,12 +5737,50 @@ test decodeAdd {
 test decodeImmediateOp {
     const expectEqual = std.testing.expectEqual;
 
+    // 0x83 - immediate8_to_regmem16, mod: 0b10, ADD: 000, rm: 0b010
+    // add word [bp + si + 4], 29
+    const input_0x83_immediate8_to_regmem16: [6]u8 = [_]u8{
+        0b1000_0011,
+        0b1000_0010,
+        0b0000_0100,
+        0b0011_1101,
+        0b0000_1100,
+        0b0000_0000,
+    };
+    const output_payload_0x83_immediate8_to_regmem16 = DecodePayload{
+        .immediate_op_instruction = ImmediateOpInstruction{
+            .opcode = BinaryInstructions.immediate8_to_regmem16,
+            .mnemonic = "add",
+            .s = SValue.sign_extend,
+            .w = WValue.word,
+            .mod = ModValue.memoryMode16BitDisplacement,
+            .rm = RmValue.DLDX_BPSI_BPSID8_BPSID16,
+            .disp_lo = input_0x83_immediate8_to_regmem16[2],
+            .disp_hi = input_0x83_immediate8_to_regmem16[3],
+            .data_lo = null,
+            .data_hi = null,
+            .data_8 = null,
+            .signed_data_8 = null,
+            .data_sx = @intCast(input_0x83_immediate8_to_regmem16[4]),
+        },
+    };
+    try expectEqual(
+        decodeImmediateOp(
+            SValue.sign_extend,
+            WValue.word,
+            input_0x83_immediate8_to_regmem16,
+        ),
+        output_payload_0x83_immediate8_to_regmem16,
+    );
+
+    // 0x80 - immediate8_to_regmem8, mod: 0b10, reg: 0b000, rm: 0b010
+    // add byte [bp + si + 4], 29
     const input_0x80_immediate8_to_regmem8: [6]u8 = [_]u8{
         0b1000_0000,
-        0b1100_0000,
-        0b1010_1010,
-        0b0000_0000,
-        0b0000_0000,
+        0b1000_0010,
+        0b0000_0100,
+        0b0011_1101,
+        0b1100_1000,
         0b0000_0000,
     };
     const output_payload_0x80_immediate8_to_regmem8 = DecodePayload{
@@ -5751,13 +5789,13 @@ test decodeImmediateOp {
             .mnemonic = "add",
             .s = SValue.no_sign,
             .w = WValue.byte,
-            .mod = ModValue.registerModeNoDisplacement,
-            .rm = RmValue.ALAX_BXSI_BXSID8_BXSID16,
-            .disp_lo = null,
-            .disp_hi = null,
+            .mod = ModValue.memoryMode16BitDisplacement,
+            .rm = RmValue.DLDX_BPSI_BPSID8_BPSID16,
+            .disp_lo = input_0x80_immediate8_to_regmem8[2],
+            .disp_hi = input_0x80_immediate8_to_regmem8[3],
             .data_lo = null,
             .data_hi = null,
-            .data_8 = input_0x80_immediate8_to_regmem8[2],
+            .data_8 = input_0x80_immediate8_to_regmem8[4],
             .signed_data_8 = null,
             .data_sx = null,
         },
