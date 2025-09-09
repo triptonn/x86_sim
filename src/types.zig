@@ -1,3 +1,13 @@
+// ========================================================================
+//
+// (C) Copyright 2025, Nicolas Selig, All Rights Reserved.
+//
+// This software is provided 'as-is', without any express or implied
+// warranty. In no event will the authors be held liable for any damages
+// arising from the use of this software.
+//
+// ========================================================================
+
 pub const instruction_field_names = struct {
     /// 0 for no sign extension, 1 for extending 8-bit immediate data to 16 bits if W = 1
     pub const SValue = enum(u1) { no_sign = 0b0, sign_extend = 0b1 };

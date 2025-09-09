@@ -1,3 +1,13 @@
+// ========================================================================
+//
+// (C) Copyright 2025, Nicolas Selig, All Rights Reserved.
+//
+// This software is provided 'as-is', without any express or implied
+// warranty. In no event will the authors be held liable for any damages
+// arising from the use of this software.
+//
+// ========================================================================
+
 pub const SimulatorError = error{
     FileError,
     DecodeError,
@@ -23,4 +33,9 @@ pub const DiassembleError = error{
     InstructionError,
     NotYetImplemented,
     WriteFailed,
+};
+
+/// Errors for the bus interface unit of the 8086 Processor
+pub const BiuError = error{
+    InvalidIndex,
 };
