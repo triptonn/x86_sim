@@ -17,8 +17,15 @@ const ImmediateOpInstruction = decoder.ImmediateOp;
 const MovWithModInstruction = decoder.MovWithMod;
 const MovWithoutModInstruction = decoder.MovWithoutMod;
 
-const types = @import("types.zig");
+const locator = @import("modules/locator.zig");
+const DisplacementFormat = locator.DisplacementFormat;
+const EffectiveAddressCalculation = locator.EffectiveAddressCalculation;
+const Locations = locator.Locations;
+const InstructionInfo = locator.InstructionInfo;
+const DestinationInfo = locator.DestinationInfo;
+const SourceInfo = locator.SourceInfo;
 
+const types = @import("types.zig");
 const ModValue = types.instruction_field_names.ModValue;
 const RegValue = types.instruction_field_names.RegValue;
 const RmValue = types.instruction_field_names.RmValue;
@@ -48,47 +55,6 @@ const ImmediateAction = enum(u3) {
     CMP = 0b111,
 };
 
-/// Contains the destination as DestinationInfo and source as SourceInfo
-/// objects to rebuild the ASM-86 instruction from.
-const InstructionInfo = struct {
-    destination_info: DestinationInfo,
-    source_info: SourceInfo,
-};
-
-const EffectiveAddressCalculation = struct {
-    base: ?RegisterDirectory.RegisterName,
-    index: ?RegisterDirectory.RegisterName,
-    displacement: ?DisplacementFormat,
-    displacement_value: ?u16,
-    effective_address: ?u20,
-};
-
-const DestinationInfoIdentifiers = enum {
-    address,
-    address_calculation,
-    mem_addr,
-};
-
-const DestinationInfo = union(DestinationInfoIdentifiers) {
-    address: RegisterDirectory.RegisterName,
-    address_calculation: EffectiveAddressCalculation,
-    mem_addr: u20,
-};
-
-const SourceInfoIdentifiers = enum {
-    address,
-    address_calculation,
-    immediate,
-    mem_addr,
-};
-
-const SourceInfo = union(SourceInfoIdentifiers) {
-    address: RegisterDirectory.RegisterName,
-    address_calculation: EffectiveAddressCalculation,
-    immediate: u16,
-    mem_addr: u20,
-};
-
 //         Mod = 11      |           EFFECTIVE ADDRESS CALCULATION
 // -------------------------------------------------------------------------------
 // R/M | W=0|  W=1 | R/M |   MOD = 00     |      MOD = 01    |      MOD = 10
@@ -102,8 +68,6 @@ const SourceInfo = union(SourceInfoIdentifiers) {
 // 110 | DH |  SI  | 110 | DIRECT ADDRESS | (BP) + D8        | (BP) + D16
 // 111 | BH |  DI  | 111 | (BX)           | (BX) + D8        | (BX) + D16
 
-// zig fmt: on
-
 // TODO: DocString
 
 fn calculateEffectiveAddress(
@@ -113,7 +77,7 @@ fn calculateEffectiveAddress(
     disp_lo: ?u8,
     disp_hi: ?u8,
 ) EffectiveAddressCalculation {
-    const Address = RegisterDirectory.RegisterName;
+    const Address = Locations.Register;
     var disp_format: DisplacementFormat = undefined;
     var disp_value: u16 = undefined;
     if (mod == ModValue.memoryMode16BitDisplacement) {
@@ -203,7 +167,7 @@ fn getImmediateOpSourceAndDest(
     payload: DecodePayload,
 ) InstructionInfo {
     const log = std.log.scoped(.getImmediateOpSourceAndDest);
-    const Address = RegisterDirectory.RegisterName;
+    const Address = Locations.Register;
     var dest_info: DestinationInfo = undefined;
     var immediate_8: u8 = undefined;
     var immediate_16: u16 = undefined;
@@ -309,7 +273,7 @@ fn getImmediateOpSourceAndDest(
 }
 
 fn getImmediateToRegMovDest(w: WValue, reg: RegValue, data: u8, w_data: ?u8) InstructionInfo {
-    const Address = RegisterDirectory.RegisterName;
+    const Address = Locations.Register;
     var dest: Address = undefined;
     var immediate: u16 = undefined;
     if (w_data != null) {
@@ -402,7 +366,7 @@ fn getAddImmediateToAccumulatorDest(
     data: u8,
     w_data: ?u8,
 ) InstructionInfo {
-    const Address = RegisterDirectory.RegisterName;
+    const Address = Locations.Register;
     var dest: Address = undefined;
     var immediate_8: u8 = undefined;
     var immediate_16: u16 = undefined;
@@ -445,7 +409,7 @@ fn getRegMemToFromRegSourceAndDest(
     disp_hi: ?u8,
     ) InstructionInfo {
 
-    const Address = RegisterDirectory.RegisterName;
+    const Address = Locations.Register;
     var dest: Address = undefined;
     var source: Address = undefined;
     var source_mem_addr: u20 = undefined;
@@ -1128,7 +1092,7 @@ fn getRegMemToSegMovSourceAndDest(
     disp_lo: ?u8,
     disp_hi: ?u8,
 ) InstructionInfo {
-    const Address = RegisterDirectory.RegisterName;
+    const Address = Locations.Register;
     var dest: Address = undefined;
     var source: Address = undefined;
     var source_address_calculation: EffectiveAddressCalculation = undefined; 
@@ -1491,7 +1455,7 @@ fn getSegToRegMemMovSourceAndDest(
     disp_lo: ?u8,
     disp_hi: ?u8,
 ) InstructionInfo {
-    const Address = RegisterDirectory.RegisterName;
+    const Address = Locations.Register;
     var dest: Address = undefined;
     var source: Address = undefined;
     var dest_address_calculation: EffectiveAddressCalculation = undefined; 
@@ -1846,7 +1810,7 @@ fn getSegToRegMemMovSourceAndDest(
 }
 
 fn getMemToAccMovSourceAndDest(w: WValue, addr_lo: ?u8, addr_hi: ?u8) InstructionInfo {
-    const Address = RegisterDirectory.RegisterName;
+    const Address = Locations.Register;
     var destination_payload: DestinationInfo = undefined;
     var source_payload: SourceInfo = undefined;
     switch (w) {
@@ -1876,7 +1840,7 @@ fn getMemToAccMovSourceAndDest(w: WValue, addr_lo: ?u8, addr_hi: ?u8) Instructio
 }
 
 fn getAccToMemMovSourceAndDest(w: WValue, addr_lo: ?u8, addr_hi: ?u8,) InstructionInfo {
-    const Address = RegisterDirectory.RegisterName;
+    const Address = Locations.Register;
     var destination_payload: DestinationInfo = undefined;
     var source_payload: SourceInfo = undefined;
     switch (w) {
@@ -1919,7 +1883,7 @@ fn getImmediateToRegMemMovDest(
     data: u8,
     w_data: ?u8,
 ) InstructionInfo {
-    const Address = RegisterDirectory.RegisterName;
+    const Address = Locations.Register;
     const source_payload: SourceInfo = SourceInfo{
         .immediate = @intCast(if (w == WValue.word) (@as(u16, w_data.?) << 8) + (@as(u16, data)) else @as(u16, data)),
     };
@@ -2648,525 +2612,6 @@ fn decodeImmediateOp(
         },
     }
 }
-
-/// Matching binary values against instruction- and register enum's. Returns a DecodePayload union
-/// with instruction specific decoded conten.
-fn decodeMovWithMod(
-    mod: ModValue,
-    rm: RmValue,
-    input: [6]u8,
-) DecodePayload {
-    const log = std.log.scoped(.decodeMovWithMod);
-    const mnemonic = "mov";
-    const _rm = rm;
-    const _mod = mod;
-
-    const instruction: BinaryInstructions = @enumFromInt(input[0]);
-
-    switch (instruction) {
-        .mov_seg_regmem,
-        .mov_regmem_seg,
-        => {
-            switch (_mod) {
-                ModValue.memoryModeNoDisplacement => {
-                    const temp_w = input[0] << 7;
-                    const w: u1 = @intCast(temp_w >> 7);
-
-                    var temp_sr = input[1] << 3;
-                    temp_sr = temp_sr >> 6;
-                    const sr: u2 = @intCast(temp_sr);
-
-                    const result = DecodePayload{
-                        .mov_with_mod_instruction = MovWithModInstruction{
-                            .opcode = instruction,
-                            .mnemonic = mnemonic,
-                            .d = null,
-                            .w = @enumFromInt(w),
-                            .mod = _mod,
-                            .reg = null,
-                            .sr = @enumFromInt(sr),
-                            .rm = _rm,
-                            .disp_lo = if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
-                            .disp_hi = if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[3] else null,
-                            .data = if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[4] else input[2],
-                            .w_data = if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16 and w == @intFromEnum(WValue.word)) input[5] else if (w == @intFromEnum(WValue.word)) input[3] else null,
-                        },
-                    };
-                    return result;
-                },
-                ModValue.memoryMode8BitDisplacement => {
-                    const temp_w = input[0] << 7;
-                    const w: u1 = @intCast(temp_w >> 7);
-
-                    var temp_sr = input[1] << 3;
-                    temp_sr = temp_sr >> 6;
-                    const sr: u2 = @intCast(temp_sr);
-
-                    const result = DecodePayload{
-                        .mov_with_mod_instruction = MovWithModInstruction{
-                            .opcode = instruction,
-                            .mnemonic = mnemonic,
-                            .d = null,
-                            .w = @enumFromInt(w),
-                            .mod = _mod,
-                            .reg = null,
-                            .sr = @enumFromInt(sr),
-                            .rm = _rm,
-                            .disp_lo = input[2],
-                            .disp_hi = null,
-                            .data = input[3],
-                            .w_data = if (w == @intFromEnum(WValue.word)) input[4] else null,
-                        },
-                    };
-                    return result;
-                },
-                ModValue.memoryMode16BitDisplacement => {
-                    const temp_w = input[0] << 7;
-                    const w: u1 = @intCast(temp_w >> 7);
-
-                    var temp_sr = input[1] << 3;
-                    temp_sr = temp_sr >> 6;
-                    const sr: u2 = @intCast(temp_sr);
-
-                    const result = DecodePayload{
-                        .mov_with_mod_instruction = MovWithModInstruction{
-                            .opcode = instruction,
-                            .mnemonic = mnemonic,
-                            .d = null,
-                            .w = @enumFromInt(w),
-                            .mod = _mod,
-                            .reg = null,
-                            .sr = @enumFromInt(sr),
-                            .rm = _rm,
-                            .disp_lo = input[2],
-                            .disp_hi = input[3],
-                            .data = input[4],
-                            .w_data = if (w == @intFromEnum(WValue.word)) input[5] else null,
-                        },
-                    };
-                    return result;
-                },
-                ModValue.registerModeNoDisplacement => {
-                    const temp_w = input[0] << 7;
-                    const w: u1 = @intCast(temp_w >> 7);
-
-                    var temp_sr = input[1] << 3;
-                    temp_sr = temp_sr >> 6;
-                    const sr: u2 = @intCast(temp_sr);
-
-                    const result = DecodePayload{
-                        .mov_with_mod_instruction = MovWithModInstruction{
-                            .opcode = instruction,
-                            .mnemonic = mnemonic,
-                            .d = null,
-                            .w = @enumFromInt(w),
-                            .mod = _mod,
-                            .reg = null,
-                            .sr = @enumFromInt(sr),
-                            .rm = _rm,
-                            .disp_lo = null,
-                            .disp_hi = null,
-                            .data = null,
-                            .w_data = null,
-                        },
-                    };
-                    return result;
-                },
-            }
-        },
-        .mov_source_regmem8_reg8,
-        .mov_source_regmem16_reg16,
-        .mov_dest_reg8_regmem8,
-        .mov_dest_reg16_regmem16,
-        => {
-            switch (_mod) {
-                ModValue.memoryModeNoDisplacement => {
-                    if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
-                        // 2 byte displacement, second byte is most significant
-
-                        var temp_d = input[0] >> 1;
-                        temp_d = temp_d << 7;
-                        temp_d = temp_d >> 7;
-                        var temp_w = input[0] << 7;
-                        temp_w = temp_w >> 7;
-                        var temp_reg = input[1] >> 3;
-                        temp_reg = temp_reg << 5;
-                        temp_reg = temp_reg >> 5;
-
-                        const d: u1 = @intCast(temp_d);
-                        const w: u1 = @intCast(temp_w);
-                        const reg: u3 = @intCast(temp_reg);
-
-                        const result = DecodePayload{
-                            .mov_with_mod_instruction = MovWithModInstruction{
-                                .opcode = instruction,
-                                .mnemonic = mnemonic,
-                                .d = @enumFromInt(d),
-                                .w = @enumFromInt(w),
-                                .mod = _mod,
-                                .reg = @enumFromInt(reg),
-                                .sr = null,
-                                .rm = _rm,
-                                .disp_lo = input[2],
-                                .disp_hi = input[3],
-                                .data = null,
-                                .w_data = null,
-                            },
-                        };
-                        return result;
-                    } else {
-                        var temp_d = input[0] >> 1;
-                        temp_d = temp_d << 7;
-                        temp_d = temp_d >> 7;
-                        var temp_w = input[0] << 7;
-                        temp_w = temp_w >> 7;
-                        var temp_reg = input[1] >> 3;
-                        temp_reg = temp_reg << 5;
-                        temp_reg = temp_reg >> 5;
-
-                        const d: u1 = @intCast(temp_d);
-                        const w: u1 = @intCast(temp_w);
-                        const reg: u3 = @intCast(temp_reg);
-
-                        const result = DecodePayload{
-                            .mov_with_mod_instruction = MovWithModInstruction{
-                                .opcode = instruction,
-                                .mnemonic = mnemonic,
-                                .d = @enumFromInt(d),
-                                .w = @enumFromInt(w),
-                                .mod = _mod,
-                                .reg = @enumFromInt(reg),
-                                .sr = null,
-                                .rm = _rm,
-                                .disp_lo = null,
-                                .disp_hi = null,
-                                .data = null,
-                                .w_data = null,
-                            },
-                        };
-                        return result;
-                    }
-                },
-                ModValue.memoryMode8BitDisplacement => {
-                    var temp_d = input[0] >> 1;
-                    temp_d = temp_d << 7;
-                    temp_d = temp_d >> 7;
-                    var temp_w = input[0] << 7;
-                    temp_w = temp_w >> 7;
-                    var temp_reg = input[1] >> 3;
-                    temp_reg = temp_reg << 5;
-                    temp_reg = temp_reg >> 5;
-
-                    const d: u1 = @intCast(temp_d);
-                    const w: u1 = @intCast(temp_w);
-                    const reg: u3 = @intCast(temp_reg);
-
-                    const result = DecodePayload{
-                        .mov_with_mod_instruction = MovWithModInstruction{
-                            .opcode = instruction,
-                            .mnemonic = mnemonic,
-                            .d = @enumFromInt(d),
-                            .w = @enumFromInt(w),
-                            .mod = _mod,
-                            .reg = @enumFromInt(reg),
-                            .sr = null,
-                            .rm = _rm,
-                            .disp_lo = input[2],
-                            .disp_hi = null,
-                            .data = null,
-                            .w_data = null,
-                        },
-                    };
-                    return result;
-                },
-                ModValue.memoryMode16BitDisplacement => {
-                    var temp_d = input[0] >> 1;
-                    temp_d = temp_d << 7;
-                    temp_d = temp_d >> 7;
-                    var temp_w = input[0] << 7;
-                    temp_w = temp_w >> 7;
-                    var temp_reg = input[1] >> 3;
-                    temp_reg = temp_reg << 5;
-                    temp_reg = temp_reg >> 5;
-
-                    const d: u1 = @intCast(temp_d);
-                    const w: u1 = @intCast(temp_w);
-                    const reg: u3 = @intCast(temp_reg);
-
-                    const result = DecodePayload{
-                        .mov_with_mod_instruction = MovWithModInstruction{
-                            .opcode = instruction,
-                            .mnemonic = mnemonic,
-                            .d = @enumFromInt(d),
-                            .w = @enumFromInt(w),
-                            .mod = _mod,
-                            .reg = @enumFromInt(reg),
-                            .sr = null,
-                            .rm = _rm,
-                            .disp_lo = input[2],
-                            .disp_hi = input[3],
-                            .data = null,
-                            .w_data = null,
-                        },
-                    };
-                    return result;
-                },
-                ModValue.registerModeNoDisplacement => {
-                    var temp_d = input[0] >> 1;
-                    temp_d = temp_d << 7;
-                    temp_d = temp_d >> 7;
-                    var temp_w = input[0] << 7;
-                    temp_w = temp_w >> 7;
-                    var temp_reg = input[1] >> 3;
-                    temp_reg = temp_reg << 5;
-                    temp_reg = temp_reg >> 5;
-
-                    const d: u1 = @intCast(temp_d);
-                    const w: u1 = @intCast(temp_w);
-                    const reg: u3 = @intCast(temp_reg);
-
-                    const result = DecodePayload{
-                        .mov_with_mod_instruction = MovWithModInstruction{
-                            .opcode = instruction,
-                            .mnemonic = mnemonic,
-                            .d = @enumFromInt(d),
-                            .w = @enumFromInt(w),
-                            .mod = _mod,
-                            .reg = @enumFromInt(reg),
-                            .sr = null,
-                            .rm = _rm,
-                            .disp_lo = null,
-                            .disp_hi = null,
-                            .data = null,
-                            .w_data = null,
-                        },
-                    };
-                    return result;
-                },
-            }
-        },
-        .mov_immediate_to_regmem8,
-        .mov_immediate_to_regmem16,
-        => {
-            const w: WValue = @enumFromInt((input[0] << 7) >> 7);
-            switch (mod) {
-                .memoryModeNoDisplacement => {
-                    const result = DecodePayload{
-                        .mov_with_mod_instruction = MovWithModInstruction{
-                            .opcode = instruction,
-                            .mnemonic = "mov",
-                            .d = null,
-                            .w = w,
-                            .mod = mod,
-                            .reg = null,
-                            .sr = null,
-                            .rm = rm,
-                            .disp_lo = if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
-                            .disp_hi = if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[3] else null,
-                            .data = if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[4] else input[2],
-                            .w_data = if (w == WValue.word) input[5] else null,
-                        },
-                    };
-                    return result;
-                },
-                .memoryMode8BitDisplacement => {
-                    const result = DecodePayload{
-                        .mov_with_mod_instruction = MovWithModInstruction{
-                            .opcode = instruction,
-                            .mnemonic = "mov",
-                            .d = null,
-                            .w = w,
-                            .mod = mod,
-                            .reg = null,
-                            .sr = null,
-                            .rm = rm,
-                            .disp_lo = input[2],
-                            .disp_hi = null,
-                            .data = input[3],
-                            .w_data = if (w == WValue.word) input[4] else null,
-                        },
-                    };
-                    return result;
-                },
-                .memoryMode16BitDisplacement => {
-                    const result = DecodePayload{
-                        .mov_with_mod_instruction = MovWithModInstruction{
-                            .opcode = instruction,
-                            .mnemonic = "mov",
-                            .d = null,
-                            .w = w,
-                            .mod = mod,
-                            .reg = null,
-                            .sr = null,
-                            .rm = rm,
-                            .disp_lo = input[2],
-                            .disp_hi = input[3],
-                            .data = input[4],
-                            .w_data = if (w == WValue.word) input[5] else null,
-                        },
-                    };
-                    return result;
-                },
-                .registerModeNoDisplacement => {
-                    const result = DecodePayload{
-                        .mov_with_mod_instruction = MovWithModInstruction{
-                            .opcode = instruction,
-                            .mnemonic = "mov",
-                            .d = null,
-                            .w = w,
-                            .mod = mod,
-                            .reg = null,
-                            .sr = null,
-                            .rm = rm,
-                            .disp_lo = null,
-                            .disp_hi = null,
-                            .data = input[2],
-                            .w_data = if (w == WValue.word) input[3] else null,
-                        },
-                    };
-                    return result;
-                },
-            }
-        },
-        else => {
-            const result = DecodePayload{
-                .err = InstructionDecodeError.NotYetImplemented,
-            };
-            log.err("Error: Decode mov with mod field not possible. Instruction not yet implemented.", .{});
-            return result;
-        },
-    }
-}
-
-/// Matchin binary values against instruction- and register enum's. Returns a DecodePayload union
-/// with instruction specific decoded content.
-fn decodeMovWithoutMod(
-    w: WValue,
-    input: [6]u8,
-) DecodePayload {
-    const log = std.log.scoped(.decodeMovWithoutMod);
-
-    const temp_reg: u8 = input[0] << 5;
-    const reg: RegValue = @enumFromInt(temp_reg >> 5);
-
-    const instruction: BinaryInstructions = @enumFromInt(input[0]);
-
-    switch (instruction) {
-        .mov_immediate_reg_al,
-        .mov_immediate_reg_cl,
-        .mov_immediate_reg_dl,
-        .mov_immediate_reg_bl,
-        .mov_immediate_reg_ah,
-        .mov_immediate_reg_ch,
-        .mov_immediate_reg_dh,
-        .mov_immediate_reg_bh,
-        .mov_immediate_reg_ax,
-        .mov_immediate_reg_cx,
-        .mov_immediate_reg_dx,
-        .mov_immediate_reg_bx,
-        .mov_immediate_reg_sp,
-        .mov_immediate_reg_bp,
-        .mov_immediate_reg_si,
-        .mov_immediate_reg_di,
-        => {
-            switch (w) {
-                .byte => {
-                    const result = DecodePayload{
-                        .mov_without_mod_instruction = MovWithoutModInstruction{
-                            .opcode = instruction,
-                            .mnemonic = "mov",
-                            .w = w,
-                            .reg = reg,
-                            .data = input[1],
-                            .w_data = null,
-                            .addr_lo = null,
-                            .addr_hi = null,
-                        },
-                    };
-                    return result;
-                },
-                .word => {
-                    const result = DecodePayload{
-                        .mov_without_mod_instruction = MovWithoutModInstruction{
-                            .opcode = instruction,
-                            .mnemonic = "mov",
-                            .w = w,
-                            .reg = reg,
-                            .data = input[1],
-                            .w_data = input[2],
-                            .addr_lo = null,
-                            .addr_hi = null,
-                        },
-                    };
-                    return result;
-                },
-            }
-        },
-        .mov_mem8_acc8,
-        .mov_mem16_acc16,
-        .mov_acc8_mem8,
-        .mov_acc16_mem16,
-        => {
-            const result = DecodePayload{
-                .mov_without_mod_instruction = MovWithoutModInstruction{
-                    .opcode = instruction,
-                    .mnemonic = "mov",
-                    .w = w,
-                    .reg = null,
-                    .data = null,
-                    .w_data = null,
-                    .addr_lo = input[1],
-                    .addr_hi = input[2],
-                },
-            };
-            return result;
-        },
-        else => {
-            const result = DecodePayload{
-                .err = InstructionDecodeError.NotYetImplemented,
-            };
-            log.err("Error: Decode mov without mod field not possible. Instruction not yet implemented.", .{});
-            return result;
-        },
-    }
-}
-
-/// Identifiers of the Internal Communication Registers as well as
-/// the General Registers of the Intel 8086 CPU plus an identifier for
-/// a direct address following the instruction as a 16 bit displacement.
-const RegisterDirectory = struct {
-    const RegisterName = enum { cs, ds, es, ss, ip, ah, al, ax, bh, bl, bx, ch, cl, cx, dh, dl, dx, sp, bp, di, si, directaccess, none };
-    pub fn addressFrom(reg: RegValue, w: ?WValue) RegisterName {
-        const w_value = w orelse WValue.byte;
-        switch (reg) {
-            .ALAX => {
-                if (w_value == WValue.word) return RegisterName.ax else return RegisterName.al;
-            },
-            .BLBX => {
-                if (w_value == WValue.word) return RegisterName.bx else return RegisterName.bl;
-            },
-            .CLCX => {
-                if (w_value == WValue.word) return RegisterName.cx else return RegisterName.cl;
-            },
-            .DLDX => {
-                if (w_value == WValue.word) return RegisterName.dx else return RegisterName.dl;
-            },
-            .AHSP => {
-                if (w_value == WValue.word) return RegisterName.sp else return RegisterName.ah;
-            },
-            .BHDI => {
-                if (w_value == WValue.word) return RegisterName.di else return RegisterName.bh;
-            },
-            .CHBP => {
-                if (w_value == WValue.word) return RegisterName.bp else return RegisterName.ch;
-            },
-            .DHSI => {
-                if (w_value == WValue.word) return RegisterName.si else return RegisterName.dh;
-            },
-        }
-    }
-};
-const DisplacementFormat = enum { d8, d16, none };
 
 /// Errors for the bus interface unit of the 8086 Processor
 const BiuError = error{
@@ -4134,7 +3579,7 @@ pub fn main() !void {
             .mov_seg_regmem,
             .mov_regmem_seg,
             => {
-                payload = decodeMovWithMod(mod, rm, InstructionBytes);
+                payload = decoder.decodeMovWithMod(mod, rm, InstructionBytes);
             },
             .mov_immediate_reg_al,
             .mov_immediate_reg_ah,
@@ -4157,7 +3602,7 @@ pub fn main() !void {
             .mov_mem8_acc8,
             .mov_mem16_acc16,
             => {
-                payload = decodeMovWithoutMod(w, InstructionBytes);
+                payload = decoder.decodeMovWithoutMod(w, InstructionBytes);
             },
             // else => {
             //     log.debug("Instruction not yet implemented. Skipping...", .{});
@@ -4249,7 +3694,7 @@ fn printEffectiveAddressCalculationDest(
     address_calculation: EffectiveAddressCalculation,
 ) void {
     const log = std.log.scoped(.printEffectiveAddressCalculationDest);
-    const Address = RegisterDirectory.RegisterName;
+    const Address = Locations.Register;
     if (address_calculation.index == Address.none) {
         if (address_calculation.displacement == DisplacementFormat.none) {
             log.info("[{t}], ", .{
@@ -4382,7 +3827,7 @@ fn printEffectiveAddressCalculationSource(
     address_calculation: EffectiveAddressCalculation,
 ) void {
     const log = std.log.scoped(.printEffectiveAddressCalculationSource);
-    const Address = RegisterDirectory.RegisterName;
+    const Address = Locations.Register;
     if (address_calculation.index == Address.none) {
         if (address_calculation.displacement == DisplacementFormat.none) {
             log.info("[{t}]", .{
@@ -4783,7 +4228,7 @@ fn disassemble(
                     };
                 },
                 .address_calculation => {
-                    const Address = RegisterDirectory.RegisterName;
+                    const Address = Locations.Register;
                     if (destination.address_calculation.index == Address.none) {
                         if (destination.address_calculation.displacement == DisplacementFormat.none) {
                             log.info("[{t}], ", .{
@@ -4938,7 +4383,7 @@ fn disassemble(
                     };
                 },
                 .address_calculation => {
-                    const Address = RegisterDirectory.RegisterName;
+                    const Address = Locations.Register;
                     if (source.address_calculation.index == Address.none) {
                         if (source.address_calculation.displacement == DisplacementFormat.none) {
                             log.info("[{t}]", .{
@@ -5496,482 +4941,5 @@ test decodeImmediateOp {
             input_0x81_immediate16_to_regmem16,
         ),
         output_payload_0x81_immediate16_to_regmem16,
-    );
-}
-
-test decodeMovWithMod {
-    const expectEqual = std.testing.expectEqual;
-
-    // MOV
-    // listing_0037_single_register_mov
-    // 0x89
-    // Mod: 0b11, R/M != 0b110,
-    const test_input_0x89_mod_register_mode_no_displacement: [6]u8 = [_]u8{
-        0b1000_1001, // 0x89 => mov, d=source, w=word
-        0b1101_1001, // mod=registerMode, reg=BLBX, R/M=CLCX
-        0b0000_0000,
-        0b0000_0000,
-        0b0000_0000,
-        0b0000_0000,
-    };
-    const test_output_payload_0x89_mod_register_mode_no_displacement = DecodePayload{
-        .mov_with_mod_instruction = MovWithModInstruction{
-            .opcode = BinaryInstructions.mov_source_regmem16_reg16,
-            .mnemonic = "mov",
-            .d = DValue.source,
-            .w = WValue.word,
-            .mod = ModValue.registerModeNoDisplacement,
-            .reg = RegValue.BLBX,
-            .sr = null,
-            .rm = RmValue.CLCX_BXDI_BXDID8_BXDID16,
-            .disp_lo = null,
-            .disp_hi = null,
-            .data = null,
-            .w_data = null,
-        },
-    };
-    try expectEqual(
-        decodeMovWithMod(
-            ModValue.registerModeNoDisplacement,
-            RmValue.CLCX_BXDI_BXDID8_BXDID16,
-            test_input_0x89_mod_register_mode_no_displacement,
-        ).mov_with_mod_instruction,
-        test_output_payload_0x89_mod_register_mode_no_displacement.mov_with_mod_instruction,
-    );
-
-    // listing_0038_many_register_mov
-    // 0x88, 0x89
-
-    // 0x88, Mod: 0b11, R/M: 0b010
-    const input_0x88_register_mode_no_displacement: [6]u8 = [_]u8{
-        0b1000_1000,
-        0b1110_1010,
-        0b0000_0000,
-        0b0000_0000,
-        0b0000_0000,
-        0b0000_0000,
-    };
-    const output_payload_0x88_register_mode_no_displacement = DecodePayload{
-        .mov_with_mod_instruction = MovWithModInstruction{
-            .opcode = BinaryInstructions.mov_source_regmem8_reg8,
-            .mnemonic = "mov",
-            .d = DValue.source,
-            .w = WValue.byte,
-            .mod = ModValue.registerModeNoDisplacement,
-            .reg = RegValue.CHBP,
-            .sr = null,
-            .rm = RmValue.DLDX_BPSI_BPSID8_BPSID16,
-            .disp_lo = null,
-            .disp_hi = null,
-            .data = null,
-            .w_data = null,
-        },
-    };
-    try expectEqual(
-        decodeMovWithMod(
-            ModValue.registerModeNoDisplacement,
-            RmValue.DLDX_BPSI_BPSID8_BPSID16,
-            input_0x88_register_mode_no_displacement,
-        ),
-        output_payload_0x88_register_mode_no_displacement,
-    );
-
-    // 0x88, Mod: 0b00, R/M: 0b110
-    const input_0x88_memory_mode_with_displacement: [6]u8 = [_]u8{
-        0b1000_1000,
-        0b0001_1110,
-        0b0101_0101,
-        0b1010_1010,
-        0b0000_0000,
-        0b0000_0000,
-    };
-    const output_payload_0x88_memory_mode_with_displacement = DecodePayload{
-        .mov_with_mod_instruction = MovWithModInstruction{
-            .opcode = BinaryInstructions.mov_source_regmem8_reg8,
-            .mnemonic = "mov",
-            .d = DValue.source,
-            .w = WValue.byte,
-            .mod = ModValue.memoryModeNoDisplacement,
-            .reg = RegValue.BLBX,
-            .sr = null,
-            .rm = RmValue.DHSI_DIRECTACCESS_BPD8_BPD16,
-            .disp_lo = input_0x88_memory_mode_with_displacement[2],
-            .disp_hi = input_0x88_memory_mode_with_displacement[3],
-            .data = null,
-            .w_data = null,
-        },
-    };
-    try expectEqual(
-        decodeMovWithMod(
-            ModValue.memoryModeNoDisplacement,
-            RmValue.DHSI_DIRECTACCESS_BPD8_BPD16,
-            input_0x88_memory_mode_with_displacement,
-        ),
-        output_payload_0x88_memory_mode_with_displacement,
-    );
-
-    // 0x89, Mod: 0b00, R/M: 0b100
-    const input_0x89_memory_mode_no_displacement: [6]u8 = [_]u8{
-        0b1000_1001,
-        0b0010_1100,
-        0b0000_0000,
-        0b0000_0000,
-        0b0000_0000,
-        0b0000_0000,
-    };
-    const output_payload_0x89_memory_mode_no_displacement = DecodePayload{
-        .mov_with_mod_instruction = MovWithModInstruction{
-            .opcode = BinaryInstructions.mov_source_regmem16_reg16,
-            .mnemonic = "mov",
-            .d = DValue.source,
-            .w = WValue.word,
-            .mod = ModValue.memoryModeNoDisplacement,
-            .reg = RegValue.CHBP,
-            .sr = null,
-            .rm = RmValue.AHSP_SI_SID8_SID16,
-            .disp_lo = null,
-            .disp_hi = null,
-            .data = null,
-            .w_data = null,
-        },
-    };
-    try expectEqual(
-        decodeMovWithMod(
-            ModValue.memoryModeNoDisplacement,
-            RmValue.AHSP_SI_SID8_SID16,
-            input_0x89_memory_mode_no_displacement,
-        ),
-        output_payload_0x89_memory_mode_no_displacement,
-    );
-
-    // 0x89, Mod: 0b01, R/M: 0b010
-    const input_0x89_memory_mode_8_bit_displacement: [6]u8 = [_]u8{
-        0b1000_1001,
-        0b0110_0010,
-        0b0101_0101,
-        0b0000_0000,
-        0b0000_0000,
-        0b0000_0000,
-    };
-    const output_payload_0x89_memory_mode_8_bit_displacement = DecodePayload{
-        .mov_with_mod_instruction = MovWithModInstruction{
-            .opcode = BinaryInstructions.mov_source_regmem16_reg16,
-            .mnemonic = "mov",
-            .d = @enumFromInt(0b0),
-            .w = @enumFromInt(0b1),
-            .mod = @enumFromInt(0b01),
-            .reg = @enumFromInt(0b100),
-            .sr = null,
-            .rm = @enumFromInt(0b010),
-            .disp_lo = 0b0101_0101,
-            .disp_hi = null,
-            .data = null,
-            .w_data = null,
-        },
-    };
-    try expectEqual(
-        decodeMovWithMod(
-            ModValue.memoryMode8BitDisplacement,
-            RmValue.DLDX_BPSI_BPSID8_BPSID16,
-            input_0x89_memory_mode_8_bit_displacement,
-        ),
-        output_payload_0x89_memory_mode_8_bit_displacement,
-    );
-
-    // 0x89, Mod: 0b10, R/M: 0b001
-    const test_input_0x89_mod_memory_mode_16_bit_displacement: [6]u8 = [_]u8{
-        0b1000_1001,
-        0b1001_0001,
-        0b0101_0101,
-        0b1010_1010,
-        0b0000_0000,
-        0b0000_0000,
-    };
-    const test_output_payload_0x89_mod_memory_mode_16_bit_displacement = DecodePayload{
-        .mov_with_mod_instruction = MovWithModInstruction{
-            .opcode = BinaryInstructions.mov_source_regmem16_reg16,
-            .mnemonic = "mov",
-            .d = @enumFromInt(0b0),
-            .w = @enumFromInt(0b1),
-            .mod = @enumFromInt(0b10),
-            .reg = @enumFromInt(0b010),
-            .sr = null,
-            .rm = @enumFromInt(0b001),
-            .disp_lo = 0b0101_0101,
-            .disp_hi = 0b1010_1010,
-            .data = null,
-            .w_data = null,
-        },
-    };
-    try expectEqual(
-        decodeMovWithMod(
-            ModValue.memoryMode16BitDisplacement,
-            RmValue.CLCX_BXDI_BXDID8_BXDID16,
-            test_input_0x89_mod_memory_mode_16_bit_displacement,
-        ),
-        test_output_payload_0x89_mod_memory_mode_16_bit_displacement,
-    );
-
-    // 0x88 - 0x8B, 0xB0 - 0xBF
-
-    // 0x8A, mod: 0b10, rm: 0b000
-    const input_0x8A_memory_mode_16_bit_displacement: [6]u8 = [_]u8{
-        0b1000_1010, // mov, d=0b1, w=0b0
-        0b1000_0000, // mod=0b10, reg=0b000, rm=0b000
-        0b1000_0111,
-        0b0001_0011,
-        0b0000_0000,
-        0b0000_0000,
-    };
-    const output_payload_0x8A_memory_mode_16_bit_displacement = DecodePayload{
-        .mov_with_mod_instruction = MovWithModInstruction{
-            .opcode = BinaryInstructions.mov_dest_reg8_regmem8,
-            .mnemonic = "mov",
-            .d = @enumFromInt(0b1),
-            .w = @enumFromInt(0b0),
-            .mod = @enumFromInt(0b10),
-            .reg = @enumFromInt(0b000),
-            .sr = null,
-            .rm = @enumFromInt(0b000),
-            .disp_lo = 0b1000_0111,
-            .disp_hi = 0b0001_0011,
-            .data = null,
-            .w_data = null,
-        },
-    };
-    try expectEqual(
-        decodeMovWithMod(
-            ModValue.memoryMode16BitDisplacement,
-            RmValue.ALAX_BXSI_BXSID8_BXSID16,
-            input_0x8A_memory_mode_16_bit_displacement,
-        ),
-        output_payload_0x8A_memory_mode_16_bit_displacement,
-    );
-
-    // 0x8B, mod: 0b01, rm: 0b001
-    const input_0x8B_memory_mode_8_bit_displacement: [6]u8 = [_]u8{
-        0b1000_1011,
-        0b0111_0001,
-        0b0101_0101,
-        0b0000_0000,
-        0b0000_0000,
-        0b0000_0000,
-    };
-    const output_payload_0x8B_memory_mode_8_bit_displacement = DecodePayload{
-        .mov_with_mod_instruction = MovWithModInstruction{
-            .opcode = BinaryInstructions.mov_dest_reg16_regmem16,
-            .mnemonic = "mov",
-            .d = DValue.destination,
-            .w = WValue.word,
-            .mod = ModValue.memoryMode8BitDisplacement,
-            .reg = RegValue.DHSI,
-            .sr = null,
-            .rm = RmValue.CLCX_BXDI_BXDID8_BXDID16,
-            .disp_lo = input_0x8B_memory_mode_8_bit_displacement[2],
-            .disp_hi = null,
-            .data = null,
-            .w_data = null,
-        },
-    };
-    try expectEqual(
-        decodeMovWithMod(
-            ModValue.memoryMode8BitDisplacement,
-            RmValue.CLCX_BXDI_BXDID8_BXDID16,
-            input_0x8B_memory_mode_8_bit_displacement,
-        ),
-        output_payload_0x8B_memory_mode_8_bit_displacement,
-    );
-
-    // 0x8B, mod: 0b10, rm: 0b110
-    const input_0x8B_memory_mode_16_bit_displacement: [6]u8 = [_]u8{
-        0b1000_1011,
-        0b1011_0110,
-        0b0101_0101,
-        0b1010_1010,
-        0b0000_0000,
-        0b0000_0000,
-    };
-    const output_payload_0x8B_memory_mode_16_bit_displacement = DecodePayload{
-        .mov_with_mod_instruction = MovWithModInstruction{
-            .opcode = BinaryInstructions.mov_dest_reg16_regmem16,
-            .mnemonic = "mov",
-            .d = DValue.destination,
-            .w = WValue.word,
-            .mod = ModValue.memoryMode16BitDisplacement,
-            .reg = RegValue.DHSI,
-            .sr = null,
-            .rm = RmValue.DHSI_DIRECTACCESS_BPD8_BPD16,
-            .disp_lo = input_0x8B_memory_mode_16_bit_displacement[2],
-            .disp_hi = input_0x8B_memory_mode_16_bit_displacement[3],
-            .data = null,
-            .w_data = null,
-        },
-    };
-    try expectEqual(
-        decodeMovWithMod(
-            ModValue.memoryMode16BitDisplacement,
-            RmValue.DHSI_DIRECTACCESS_BPD8_BPD16,
-            input_0x8B_memory_mode_16_bit_displacement,
-        ),
-        output_payload_0x8B_memory_mode_16_bit_displacement,
-    );
-
-    // 0xC6, mod: 0b00, sr: 0b00,
-    const input_0xC6_memory_mode_no_displacement: [6]u8 = [_]u8{
-        0b1100_0110, // 0xC6
-        0b0000_0011, // 0x03
-        0b0000_0111, // 0x07
-        0b0000_0000,
-        0b0000_0000,
-        0b0000_0000,
-    };
-    const output_payload_0xC6_memory_mode_no_displacement = DecodePayload{
-        .mov_with_mod_instruction = MovWithModInstruction{
-            .opcode = BinaryInstructions.mov_immediate_to_regmem8,
-            .mnemonic = "mov",
-            .d = null,
-            .w = WValue.byte,
-            .mod = ModValue.memoryModeNoDisplacement,
-            .reg = null,
-            .sr = null,
-            .rm = RmValue.BLBX_BPDI_BPDID8_BPDID16,
-            .disp_lo = null,
-            .disp_hi = null,
-            .data = input_0xC6_memory_mode_no_displacement[2],
-            .w_data = null,
-        },
-    };
-    try expectEqual(
-        decodeMovWithMod(
-            ModValue.memoryModeNoDisplacement,
-            RmValue.BLBX_BPDI_BPDID8_BPDID16,
-            input_0xC6_memory_mode_no_displacement,
-        ),
-        output_payload_0xC6_memory_mode_no_displacement,
-    );
-
-    // 0xC7, mod: 0b10, sr: 0b10,
-    const input_0xC7_memory_mode_16_bit_displacement: [6]u8 = [_]u8{
-        0b1100_0111, // 0xC7
-        0b1001_0100, // 0x94
-        0b0100_0010, // 0x42
-        0b0001_0001, // 0x11
-        0b0010_1100, // 0x2C
-        0b0010_0100, // 0x24
-    };
-    const output_payload_0xC7_memory_mode_16_bit_displacement = DecodePayload{
-        .mov_with_mod_instruction = MovWithModInstruction{
-            .opcode = BinaryInstructions.mov_immediate_to_regmem16,
-            .mnemonic = "mov",
-            .d = null,
-            .w = WValue.word,
-            .mod = ModValue.memoryMode16BitDisplacement,
-            .reg = null,
-            .sr = null,
-            .rm = RmValue.AHSP_SI_SID8_SID16,
-            .disp_lo = input_0xC7_memory_mode_16_bit_displacement[2],
-            .disp_hi = input_0xC7_memory_mode_16_bit_displacement[3],
-            .data = input_0xC7_memory_mode_16_bit_displacement[4],
-            .w_data = input_0xC7_memory_mode_16_bit_displacement[5],
-        },
-    };
-    try expectEqual(
-        decodeMovWithMod(
-            ModValue.memoryMode16BitDisplacement,
-            RmValue.AHSP_SI_SID8_SID16,
-            input_0xC7_memory_mode_16_bit_displacement,
-        ),
-        output_payload_0xC7_memory_mode_16_bit_displacement,
-    );
-}
-
-test decodeMovWithoutMod {
-    const expectEqual = std.testing.expectEqual;
-
-    // 0xB1, w: byte
-    const input_0xB1_byte: [6]u8 = [_]u8{
-        0b1011_0001,
-        0b1000_1000,
-        0b0000_0000,
-        0b0000_0000,
-        0b0000_0000,
-        0b0000_0000,
-    };
-    const output_payload_0xB1_byte = DecodePayload{
-        .mov_without_mod_instruction = MovWithoutModInstruction{
-            .opcode = BinaryInstructions.mov_immediate_reg_cl,
-            .mnemonic = "mov",
-            .w = WValue.byte,
-            .reg = RegValue.CLCX,
-            .data = input_0xB1_byte[1],
-            .w_data = null,
-            .addr_lo = null,
-            .addr_hi = null,
-        },
-    };
-    try expectEqual(
-        decodeMovWithoutMod(
-            WValue.byte,
-            input_0xB1_byte,
-        ),
-        output_payload_0xB1_byte,
-    );
-
-    // 0xBB, w: word
-    const input_0xBB_word: [6]u8 = [_]u8{
-        0b1011_1011,
-        0b0000_0000,
-        0b0010_0100,
-        0b0100_1000,
-        0b0000_0000,
-        0b0000_0000,
-    };
-    const output_payload_0xBB_word = DecodePayload{
-        .mov_without_mod_instruction = MovWithoutModInstruction{
-            .opcode = BinaryInstructions.mov_immediate_reg_bx,
-            .mnemonic = "mov",
-            .w = WValue.word,
-            .reg = RegValue.BLBX,
-            .data = input_0xBB_word[1],
-            .w_data = input_0xBB_word[2],
-            .addr_lo = null,
-            .addr_hi = null,
-        },
-    };
-    try expectEqual(
-        decodeMovWithoutMod(
-            WValue.word,
-            input_0xBB_word,
-        ),
-        output_payload_0xBB_word,
-    );
-
-    // 0xA1, 0xA2, 0xA3, 0xA4
-    const input_0xA1_memory_to_accumulator: [6]u8 = [_]u8{
-        0b1010_0001, // 0xA2
-        0b0101_0101, // 0x55
-        0b1010_1010, // 0xAA
-        0b0000_0000,
-        0b0000_0000,
-        0b0000_0000,
-    };
-    const output_payload_0xA1_memory_to_accumulator = DecodePayload{
-        .mov_without_mod_instruction = MovWithoutModInstruction{
-            .opcode = BinaryInstructions.mov_mem16_acc16,
-            .mnemonic = "mov",
-            .w = WValue.word,
-            .reg = null,
-            .data = null,
-            .w_data = null,
-            .addr_lo = input_0xA1_memory_to_accumulator[1],
-            .addr_hi = input_0xA1_memory_to_accumulator[2],
-        },
-    };
-    try expectEqual(
-        decodeMovWithoutMod(
-            WValue.word,
-            input_0xA1_memory_to_accumulator,
-        ),
-        output_payload_0xA1_memory_to_accumulator,
     );
 }
