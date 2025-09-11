@@ -23,145 +23,455 @@ const errors = @import("../errors.zig");
 const InstructionDecodeError = errors.InstructionDecodeError;
 
 // zig fmt: off
+
+// TODO: DocString for BinaryInstructions
 pub const BinaryInstructions = enum(u8) {
-
-    // ASM-86 ADD INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
-    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
-    // ADD: Reg/memory with register to either| 0 0 0 0 0 0|D|W | MOD| REG | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|
-
     /// Register 8 bit with register/memory to register/memory 8 bit
-    add_reg8_source_regmem8_dest        = 0x00,
+    add_regmem8_reg8                            = 0x00,
     /// Register 16 bit with register/memory to register/memory 16 bit
-    add_reg16_source_regmem16_dest      = 0x01,
+    add_regmem16_reg16                          = 0x01,
     /// Register/Memory 8 bit with register to register 8 bit
-    add_regmem8_source_reg8_dest        = 0x02,
+    add_reg8_regmem8                            = 0x02,
     /// Register/Memory 16 bit with register to register 16 bit
-    add_regmem16_source_reg16_dest      = 0x03,
+    add_reg16_regmem16                          = 0x03,
+    /// Add 8 bit immediate value to al
+    add_al_immed8                               = 0x04,
+    /// Add 16 bit immediate value to ax
+    add_ax_immed16                              = 0x05,
 
-    // ASM-86 ADD INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
-    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
-    // ADD: Immediate to accumulator          | 0 0 0 0 0 1 0|W |       data      |   data if W=1   |<------------------------XXX------------------------>|
+    // TODO: Implement push/pop segment register es
+    push_es                                     = 0x06,
+    pop_es                                      = 0x07,
 
-    // TODO: Implement
-    // /// DocString
-    add_immediate_8_bit_to_acc  = 0x04,
-    // /// DocString
-    add_immediate_16_bit_to_acc = 0x05,
+    // TODO: Implement or
+    or_regmem8_reg8                             = 0x08,
+    or_regmem16_reg16                           = 0x09,
+    or_reg8_regmem8                             = 0x0A,
+    or_reg16_regmem16                           = 0x0B,
 
-    // ASM-86 Immediate INSTRUCTIONS          | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
-    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
-    // ADD: Immediate to register/memory      | 1 0 0 0 0 0|S|W | MOD|0 0 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
-    // OR: Immediate with register/memory     | 1 0 0 0 0 0 0|W | MOD|0 0 1| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
-    // ADC: Immediate to register/memory      | 1 0 0 0 0 0|S|W | MOD|0 1 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
-    // SBB: Immediate from register/memory    | 1 0 0 0 0 0|S|W | MOD|0 1 1| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
-    // AND: Immediate with register/memory    | 1 0 0 0 0 0 0|W | MOD|1 0 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
-    // SUB: Immediate from register/memory    | 1 0 0 0 0 0|S|W | MOD|1 0 1| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
-    // XOR: Immediate with register/memory    | 1 0 0 0 0 0 0|W | MOD|1 1 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
-    // CMP: Immediate with register/memory    | 1 0 0 0 0 0|S|W | MOD|1 1 1| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      | data if S: w=01 |
+    // TODO: Implement or immediate value to accumulator
+    or_al_immed8                                = 0x0C,
+    or_ax_immed16                               = 0x0D,
+
+    // TODO: Implement push segment register cs
+    push_cs                                     = 0x0E,
+
+    // TODO: Implement adc
+    adc_regmem8_reg8                            = 0x10,
+    adc_regmem16_reg16                          = 0x11,
+    adc_reg8_regmem8                            = 0x12,
+    adc_reg16_regmem16                          = 0x13,
+
+    // TODO: Implement adc immediate value to accumulator
+    adc_al_immed8                               = 0x14,
+    adc_ax_immed16                              = 0x15,
+
+    // TODO: Implement push/pop segment register ss
+    push_ss                                     = 0x16,
+    pop_ss                                      = 0x17,
+
+    // TODO: Implement sbb
+    sbb_regmem8_reg8                            = 0x18,
+    sbb_regmem16_reg16                          = 0x19,
+    sbb_reg8_regmem8                            = 0x1A,
+    sbb_reg16_regmem16                          = 0x1B,
+
+    // TODO: Implement sbb immediate value from accumulator
+    sbb_al_immed8                               = 0x1C,
+    sbb_ax_immed16                              = 0x1D,
+
+    // TODO: Implement push/pop segment register ss
+    push_ds                                     = 0x1E,
+    pop_ds                                      = 0x1F,
+
+    // TODO: Implement and
+    and_regmem8_reg8                            = 0x20,
+    and_regmem16_reg16                          = 0x21,
+    and_reg8_regmem8                            = 0x22,
+    and_reg16_regmem16                          = 0x23,
+
+    // TODO: Implement and immediate value with accumulator
+    and_al_immed8                               = 0x24,
+    and_ax_immed16                              = 0x25,
+
+    // TODO: Implement es segment override prefix
+    segment_override_prefix_es                  = 0x26,
+
+    // TODO: Implement daa
+    daa_decimal_adjust_add                      = 0x27,
+
+    // TODO: Implement sub
+    sub_regmem8_reg8                            = 0x28,
+    sub_regmem16_reg16                          = 0x29,
+    sub_reg8_regmem8                            = 0x2A,
+    sub_reg16_regmem16                          = 0x2B,
+
+    // TODO: Implement sub immediate value from accumulator
+    sub_al_immed8                               = 0x2C,
+    sub_ax_immed16                              = 0x2D,
+
+    // TODO: Implement cs segment override prefix
+    segment_override_prefix_cs                  = 0x2E,
+
+    // TODO: Implement das
+    das_decimal_adjust_sub                      = 0x2F,
+
+    // TODO: Implement xor
+    xor_regmem8_reg8                            = 0x30,
+    xor_regmem16_reg16                          = 0x31,
+    xor_reg8_regmem8                            = 0x32,
+    xor_reg16_regmem16                          = 0x33,
+
+    // TODO: Implement xor immediate value to accumulator
+    xor_al_immed8                               = 0x34,
+    xor_ax_immed16                              = 0x35,
+
+    // TODO: Implement ss segment override prefix
+    segment_override_prefix_ss                  = 0x36,
+
+    // TODO: Implement aaa
+    aaa_ASCII_adjust_add                        = 0x37,
+
+    // TODO: Implement cmp
+    cmp_regmem8_reg8                            = 0x38,
+    cmp_regmem16_reg16                          = 0x39,
+    cmp_reg8_regmem8                            = 0x3A,
+    cmp_reg16_regmem16                          = 0x3B,
+
+    // TODO: Implement cmp immediate value with accumulator
+    cmp_al_immed8                               = 0x3C,
+    cmp_ax_immed16                              = 0x3D,
+
+    // TODO: Implement ds segment override prefix
+    segment_override_prefix_ds                  = 0x3E,
+
+    // TODO: Implement aas
+    aas_ASCII_adjust_sub                        = 0x3F,
+
+    // TODO: Implement inc register
+    inc_ax                                      = 0x40,
+    inc_cx                                      = 0x41,
+    inc_dx                                      = 0x42,
+    inc_bx                                      = 0x43,
+    inc_sp                                      = 0x44,
+    inc_bp                                      = 0x45,
+    inc_si                                      = 0x46,
+    inc_di                                      = 0x47,
+
+    // TODO: Implement dec register
+    dec_ax                                      = 0x48,
+    dec_cx                                      = 0x49,
+    dec_dx                                      = 0x4A,
+    dec_bx                                      = 0x4B,
+    dec_sp                                      = 0x4C,
+    dec_bp                                      = 0x4D,
+    dec_si                                      = 0x4E,
+    dec_di                                      = 0x4F,
+
+    // TODO: Push register
+    push_ax                                     = 0x50,
+    push_cx                                     = 0x51,
+    push_dx                                     = 0x52,
+    push_bx                                     = 0x53,
+    push_sp                                     = 0x54,
+    push_bp                                     = 0x55,
+    push_si                                     = 0x56,
+    push_di                                     = 0x57,
+
+    // TODO: Pop register
+    pop_ax                                      = 0x58,
+    pop_cx                                      = 0x59,
+    pop_dx                                      = 0x5A,
+    pop_bx                                      = 0x5B,
+    pop_sp                                      = 0x5C,
+    pop_bp                                      = 0x5D,
+    pop_si                                      = 0x5E,
+    pop_di                                      = 0x5F,
+
+    // TODO: Implement jumps
+    jo_jump_on_overflow                         = 0x70,
+    jno_jump_on_not_overflow                    = 0x71,
+    jb_jnae_jump_on_below_not_above_or_equal    = 0x72,
+    jnb_jae_jump_on_not_below_above_or_equal    = 0x73,
+    je_jz_jump_on_equal_zero                    = 0x74,
+    jne_jnz_jumb_on_not_equal_not_zero          = 0x75,
+    jbe_jna_jump_on_below_or_equal_above        = 0x76,
+    jnbe_ja_jump_on_not_below_or_equal_above    = 0x77,
+    js_jump_on_sign                             = 0x78,
+    jns_jump_on_not_sign                        = 0x79,
+    jp_jpe_jump_on_parity_parity_even           = 0x7A,
+    jnp_jpo_jump_on_not_parity_parity_odd       = 0x7B,
+    jl_jnge_jump_on_less_not_greater_or_equal   = 0x7C,
+    jnl_jge_jump_on_not_less_greater_or_equal   = 0x7D,
+    jle_jng_jump_on_less_or_equal_not_greater   = 0x7E,
+    jnle_jg_jump_on_not_less_or_equal_greater   = 0x7F,
 
     /// Immediate 8 bit value <action> to/with/from 8 bit register/memory operation (DATA-8).
-    immediate8_to_regmem8       = 0x80,
+    regmem8_immed8                              = 0x80,
     /// Immediate 16 bit value <action> to/with/from 16 bit register/memory operation (DATA-LO, DATA-HI).
-    immediate16_to_regmem16     = 0x81,
+    regmem16_immed16                            = 0x81,
     /// Signed immediate value <action> to/with/from 16 bit register/memory operation (DATA-8).
-    s_immediate8_to_regmem8     = 0x82,
+    signed_regmem8_immed8                       = 0x82,
     /// Auto-sign-extend immediate 8 bit value <action> to/with/from 16 bit register/memory operation (DATA-SX).
-    immediate8_to_regmem16      = 0x83,
+    sign_extend_regmem16_immed8                 = 0x83,
 
-    // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
-    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
-    // MOV: Register/memory to/from register  | 1 0 0 0 1 0|D|W | MOD| REG | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|
+    // TODO: Implement test
+    test_regmem8_reg8                           = 0x84,
+    test_regmem16_reg16                         = 0x85,
+
+    // TODO: Implmement xchg
+    xchg_reg8_regmem8                           = 0x86,
+    xchg_reg16_regmem16                         = 0x87,
 
     /// 8 bit Register/memory to/from register with Reg defining the source
     /// and R/M defining the destination. If R/M is .DHSI_DIRECTACCESS_BPD8_BPD16
     /// (0b110) a 16 bit displacement follows, so the instruction length is 4 bytes.
-    mov_source_regmem8_reg8     = 0x88,
+    mov_regmem8_reg8                            = 0x88,
     /// 16 bit Register/memory to/from register with Reg defining the source
     /// and R/M defining the destination for the instruction
-    mov_source_regmem16_reg16   = 0x89,
+    mov_regmem16_reg16                          = 0x89,
     /// 8 bit Register/memory to/from register
-    mov_dest_reg8_regmem8       = 0x8A,
+    mov_reg8_regmem8                            = 0x8A,
     /// 16 bit Register/memory to/from register
-    mov_dest_reg16_regmem16     = 0x8B,
-
-    // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
-    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
-    // MOV: Segment reg. to register/memory   | 1 0 0 0 1 1 0 0 | MOD|0|SR | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|
-
+    mov_reg16_regmem16                          = 0x8B,
     /// Segment register to register/memory if second byte of format 0x|MOD|0|SR|R/M|
-    mov_seg_regmem              = 0x8C,
+    mov_regmem16_segreg                         = 0x8C,
 
-    // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
-    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
-    // MOV: Register/memory to segment reg.   | 1 0 0 0 1 1 1 0 | MOD|0|SR | R/M  |    (DISP-LO)    |    (DISP-HI)    |<---------------XXX--------------->|
+    // TODO: Implement load ea to register
+    lea_reg16_mem16                             = 0x8D,
 
     /// Register/memory to segment register if second byte of format 0x|MOD|0|SR|R/M|
-    mov_regmem_seg              = 0x8E,
+    mov_segreg_regmem16                         = 0x8E,
 
-    // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
-    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
-    // MOV: Memory to accumulator             | 1 0 1 0 0 0 0|W |     addr-lo     |     addr-hi     |<-----------------------XXX------------------------->|
+    // TODO: Implement Register/memory pop
+    pop_regmem16                                = 0x8F,
+
+    // TODO: Implement no op
+    nop_xchg_ax_ax                              = 0x90,
+
+    // TODO: Implement xchg
+    xchg_ax_cx                                  = 0x91,
+    xchg_ax_dx                                  = 0x92,
+    xchg_ax_bx                                  = 0x93,
+    xchg_ax_sp                                  = 0x94,
+    xchg_ax_bp                                  = 0x95,
+    xchg_ax_si                                  = 0x96,
+    xchg_ax_di                                  = 0x97,
+
+    // TODO: Implement cbw
+    cbw_byte_to_word                            = 0x98,
+
+    // TODO: Implement cwd
+    cwd_word_to_double_word                     = 0x99,
+
+    // TODO: Implement call
+    call_direct_intersegment                    = 0x9A,
+
+    // TODO: Implement wait
+    wait                                        = 0x9B,
+
+    // TODO: Implement push flags
+    pushf                                       = 0x9C,
+
+    // TODO: Implement pop flags
+    popf                                        = 0x9D,
+
+    // TODO: Implement store ah into flags sahf
+    sahf                                        = 0x9E,
+
+    // TODO: Implement load ah with flags lahf
+    lahf                                        = 0x9F,
 
     /// Memory to accumulator
-    mov_mem8_acc8               = 0xA0,
+    mov_al_mem8                                 = 0xA0,
     /// Memory to accumulator
-    mov_mem16_acc16             = 0xA1,
-
-    // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
-    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
-    // MOV: Accumulator to memory             | 1 0 1 0 0 0 1|W |     addr-lo     |     addr-hi     |<-----------------------XXX------------------------->|
-
+    mov_ax_mem16                                = 0xA1,
     /// Accumulator to memory
-    mov_acc8_mem8               = 0xA2,
+    mov_mem8_al                                 = 0xA2,
     /// Accumulator to memory
-    mov_acc16_mem16             = 0xA3,
+    mov_mem16_ax                                = 0xA3,
 
-    // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
-    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
-    // MOV: Immediate to register             | 1 0 1 1|W| reg  |      data       |   data if W=1   |<-----------------------XXX------------------------->|
+    // TODO: Implement movs
+    movs_byte                                   = 0xA4,
+    movs_word                                   = 0xA5,
 
-    /// 8 bit Immediate to register
-    mov_immediate_reg_al        = 0xB0,
-    /// 8 bit Immediate to register
-    mov_immediate_reg_cl        = 0xB1,
-    /// 8 bit Immediate to register
-    mov_immediate_reg_dl        = 0xB2,
-    /// 8 bit Immediate to register
-    mov_immediate_reg_bl        = 0xB3,
-    /// 8 bit Immediate to register
-    mov_immediate_reg_ah        = 0xB4,
-    /// 8 bit Immediate to register
-    mov_immediate_reg_ch        = 0xB5,
-    /// 8 bit Immediate to register
-    mov_immediate_reg_dh        = 0xB6,
-    /// 8 bit Immediate to register
-    mov_immediate_reg_bh        = 0xB7,
-    /// 8 bit Immediate to register
-    mov_immediate_reg_ax        = 0xB8,
-    /// 16 bit Immediate to register
-    mov_immediate_reg_cx        = 0xB9,
-    /// 16 bit Immediate to register
-    mov_immediate_reg_dx        = 0xBA,
-    /// 16 bit Immediate to register
-    mov_immediate_reg_bx        = 0xBB,
-    /// 16 bit Immediate to register
-    mov_immediate_reg_sp        = 0xBC,
-    /// 16 bit Immediate to register
-    mov_immediate_reg_bp        = 0xBD,
-    /// 16 bit Immediate to register
-    mov_immediate_reg_si        = 0xBE,
-    /// 16 bit Immediate to register
-    mov_immediate_reg_di        = 0xBF,
+    // TODO: Implement cmps
+    cmps_byte                                   = 0xA6,
+    cmps_word                                   = 0xA7,
 
-    // ASM-86 MOV INSTRUCTIONS                | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 | 7 6 5 4 3 2 1 0 |
-    // ---------------------------------------|-----------------------------------------------------------------------------------------------------------|
-    // MOV: Immediate to register/memory      | 1 1 0 0 0 1 1|W | MOD|0 0 0| R/M  |    (DISP-LO)    |    (DISP-HI)    |       data      |   data if W=1   |
+    // TODO: Implement immediate and accumulator
+    test_al_immed8                              = 0xA8,
+    test_ax_immed16                             = 0xA9,
+
+    // TODO: Implement stos
+    stos_byte                                   = 0xAA,
+    stos_word                                   = 0xAB,
+
+    // TODO: Implement lods
+    lods_byte                                   = 0xAC,
+    lods_word                                   = 0xAD,
+
+    // TODO: Implement scas
+    scas_byte                                   = 0xAE,
+    scas_word                                   = 0xAF,
+
+    /// 8 bit Immediate to register al
+    mov_al_immed8                               = 0xB0,
+    /// 8 bit Immediate to register cl
+    mov_cl_immed8                               = 0xB1,
+    /// 8 bit Immediate to register dl
+    mov_dl_immed8                               = 0xB2,
+    /// 8 bit Immediate to register bl
+    mov_bl_immed8                               = 0xB3,
+    /// 8 bit Immediate to register ah
+    mov_ah_immed8                               = 0xB4,
+    /// 8 bit Immediate to register ch
+    mov_ch_immed8                               = 0xB5,
+    /// 8 bit Immediate to register dh
+    mov_dh_immed8                               = 0xB6,
+    /// 8 bit Immediate to register bh
+    mov_bh_immed8                               = 0xB7,
+    /// 8 bit Immediate to register ax
+    mov_ax_immed16                              = 0xB8,
+    /// 16 bit Immediate to register cx
+    mov_cx_immed16                              = 0xB9,
+    /// 16 bit Immediate to register dx
+    mov_dx_immed16                              = 0xBA,
+    /// 16 bit Immediate to register bx
+    mov_bx_immed16                              = 0xBB,
+    /// 16 bit Immediate to register sp
+    mov_sp_immed16                              = 0xBC,
+    /// 16 bit Immediate to register bp
+    mov_bp_immed16                              = 0xBD,
+    /// 16 bit Immediate to register si
+    mov_si_immed16                              = 0xBE,
+    /// 16 bit Immediate to register di
+    mov_di_immed16                              = 0xBF,
+
+    // TODO: Implement ret - return
+    ret_within_seg_adding_immed16_to_sp         = 0xC2,
+    ret_within_segment                          = 0xC3,
+
+    /// Load pointer to ES
+    load_es_regmem16                            = 0xC4,
+    /// Load pointer to DS
+    load_ds_regmem16                            = 0xC5,
 
     /// Immediate to register/memory
-    mov_immediate_to_regmem8    = 0xC6,
+    mov_mem8_immed8                             = 0xC6,
     /// Immediate to register/memory
-    mov_immediate_to_regmem16   = 0xC7,
+    mov_mem16_immed16                           = 0xC7,
+
+    // TODO: Implement ret - return
+    ret_intersegment_adding_immed16_to_sp       = 0xCA,
+    ret_intersegment                            = 0xCB,
+
+    // TODO: Implement int - interrupt
+    int_interrupt_type_3                        = 0xCC,
+    int_interrupt_type_specified                = 0xCD,
+    into_interrupt_on_overflow                  = 0xCE,
+    iret_interrupt_return                       = 0xCF,
+
+    // TODO: Implement rotate
+    // TODO: Implement shift
+    logical_regmem8                             = 0xD0,
+    logical_regmem16                        = 0xD1,
+    logical_regmem8_cl                          = 0xD2,
+    logical_regmem16_cl                         = 0xD3,
+
+    // TODO: Implement ASCII adjust multiply
+    aam_ASCII_adjust_multiply                   = 0xD4,
+
+    // TODO: Implmement ASCII adjust divide
+    aad_ASCII_adjust_divide                     = 0xD5,
+
+    // TODO: Implement xlat
+    xlat_translate_byte_to_al                   = 0xD7,
+
+    // TODO: Implement esc
+    esc_external_opcode_000_yyy_source          = 0xD8,
+    esc_external_opcode_001_yyy_source          = 0xD9,
+    esc_external_opcode_010_yyy_source          = 0xDA,
+    esc_external_opcode_011_yyy_source          = 0xDB,
+    esc_external_opcode_100_yyy_source          = 0xDC,
+    esc_external_opcode_101_yyy_source          = 0xDD,
+    esc_external_opcode_110_yyy_source          = 0xDE,
+    esc_external_opcode_111_yyy_source          = 0xDF,
+
+    // TODO: Implement loops
+    loopne_loopnz_loop_while_not_zero_equal     = 0xE0,
+    loope_loopz_loop_while_zero_equal           = 0xE1,
+    loop_loop_cx_times                          = 0xE2,
+
+    // TODO: Implement jump
+    jcxz_jump_on_cx_zero                        = 0xE3,
+
+    // TODO: Implement in fixed port
+    in_al_immed8                                = 0xE4,
+    in_ax_immed8                                = 0xE5,
+
+    // TODO: Implement out fixed port
+    out_al_immed8                               = 0xE6,
+    out_ax_immed8                               = 0xE7,
+
+    // TODO: Implement call
+    call_direct_within_segment                  = 0xE8,
+
+    // TODO: Implement jmp
+    jmp_direct_within_segment                   = 0xE9,
+    jmp_direct_intersegment                     = 0xEA,
+    jmp_direct_within_segment_short             = 0xEB,
+
+    // TODO: Implement in variable port
+    in_al_dx                                    = 0xEC,
+    in_ax_dx                                    = 0xED,
+
+    // TODO: Implement out variable port
+    out_al_dx                                   = 0xEE,
+    out_ax_dx                                   = 0xEF,
+
+    // TODO: Implement lock
+    lock_bus_lock_prefix                        = 0xF0,
+
+    // TODO: Implement Repeat
+    repne_repnz_not_equal_zero                  = 0xF2,
+    rep_repe_repz_equal_zero                    = 0xF3,
+
+    // TODO: Implement halt
+    halt                                        = 0xF4,
+
+    // TODO: Implement complement carry
+    cmc_complement_carry                        = 0xF5,
+
+    // TODO: Implement test
+    logical_regmem8_immed8                      = 0xF6,
+
+    // TODO: Implement invert
+    logical_regmem16_immed16                    = 0xF7,
+
+    // TODO: Implement clc - clear carry
+    clc_clear_carry                             = 0xF8,
+
+    // TODO: Implement stc - set carry
+    stc_set_carry                               = 0xF9,
+
+    // TODO: Implement cli - clear interrupt
+    cli_clear_interrupt                         = 0xFA,
+
+    // TODO: Implement sti - set interrupt
+    sti_set_interrupt                           = 0xFB,
+
+    // TODO: Implement cld - clear direction
+    cld_clear_direction                         = 0xFC,
+
+    // TODO: Implement std - set direction
+    std_set_direction                           = 0xFD,
+
+    // TODO: Implement Register/memory
+    regmem8                                     = 0xFE,
+    regmem16                                    = 0xFF,
 };
+
 // zig fmt: on
 
 /// Add instructions
@@ -284,10 +594,10 @@ pub fn decodeAdd(
     const w: WValue = @enumFromInt((input[0] << 7) >> 7);
 
     switch (instruction) {
-        .add_reg8_source_regmem8_dest,
-        .add_reg16_source_regmem16_dest,
-        .add_regmem8_source_reg8_dest,
-        .add_regmem16_source_reg16_dest,
+        .add_regmem8_reg8,
+        .add_regmem16_reg16,
+        .add_reg8_regmem8,
+        .add_reg16_regmem16,
         => {
             const reg: RegValue = @enumFromInt((input[1] << 2) >> 5);
             return InstructionPayload{
@@ -306,7 +616,7 @@ pub fn decodeAdd(
                 },
             };
         },
-        .add_immediate_8_bit_to_acc => {
+        .add_al_immed8 => {
             const data: u8 = input[1];
 
             return InstructionPayload{
@@ -325,7 +635,7 @@ pub fn decodeAdd(
                 },
             };
         },
-        .add_immediate_16_bit_to_acc => {
+        .add_ax_immed16 => {
             const data: u8 = input[1];
             const w_data: u8 = input[2];
 
@@ -439,10 +749,10 @@ pub fn decodeImmediateOp(
         data_sx = @intCast(input[2]);
     }
     switch (instruction) {
-        .immediate8_to_regmem8 => {
+        .regmem8_immed8 => {
             return InstructionPayload{
                 .immediate_op_instruction = ImmediateOp{
-                    .opcode = BinaryInstructions.immediate8_to_regmem8,
+                    .opcode = BinaryInstructions.regmem8_immed8,
                     .mnemonic = mnemonic,
                     .s = s,
                     .w = w,
@@ -458,10 +768,10 @@ pub fn decodeImmediateOp(
                 },
             };
         },
-        .immediate16_to_regmem16 => {
+        .regmem16_immed16 => {
             return InstructionPayload{
                 .immediate_op_instruction = ImmediateOp{
-                    .opcode = BinaryInstructions.immediate16_to_regmem16,
+                    .opcode = BinaryInstructions.regmem16_immed16,
                     .mnemonic = mnemonic,
                     .s = s,
                     .w = w,
@@ -477,10 +787,10 @@ pub fn decodeImmediateOp(
                 },
             };
         },
-        .s_immediate8_to_regmem8 => {
+        .signed_regmem8_immed8 => {
             return InstructionPayload{
                 .immediate_op_instruction = ImmediateOp{
-                    .opcode = BinaryInstructions.s_immediate8_to_regmem8,
+                    .opcode = BinaryInstructions.signed_regmem8_immed8,
                     .mnemonic = mnemonic,
                     .s = s,
                     .w = w,
@@ -496,10 +806,10 @@ pub fn decodeImmediateOp(
                 },
             };
         },
-        .immediate8_to_regmem16 => {
+        .sign_extend_regmem16_immed8 => {
             return InstructionPayload{
                 .immediate_op_instruction = ImmediateOp{
-                    .opcode = BinaryInstructions.immediate8_to_regmem16,
+                    .opcode = BinaryInstructions.sign_extend_regmem16_immed8,
                     .mnemonic = mnemonic,
                     .s = s,
                     .w = w,
@@ -522,6 +832,55 @@ pub fn decodeImmediateOp(
     }
 }
 
+const DecodedIdentifier = enum {
+    err,
+    mod_with_reg,
+    mod_without_reg,
+    identifier,
+};
+
+const Decoded = union(DecodedIdentifier) {
+    err: InstructionDecodeError,
+    mod_with_reg,
+    mod_without_reg,
+    identifier,
+};
+
+pub fn decode(
+    opcode: BinaryInstructions,
+) InstructionDecodeError!InstructionPayload {
+    const log = std.log.scoped(.decode);
+
+    switch (opcode) {
+        .add_regmem8_reg8,
+        .add_regmem16_reg16,
+        .add_reg8_regmem8,
+        .add_reg16_regmem16,
+        .add_al_immed8,
+        .add_ax_immed16,
+        .adc_regmem8_reg8,
+        .adc_regmem16_reg16,
+        .adc_reg8_regmem8,
+        .adc_reg16_regmem16,
+        .and_regmem8_reg8,
+        .and_regmem16_reg16,
+        .and_reg8_regmem8,
+        .and_reg16_regmem16,
+        .regmem8_immed8,
+        .regmem16_immed16,
+        .signed_regmem8_immed8,
+        .sign_extend_regmem16_immed8,
+        .mov_mem8_immed8,
+        .mov_mem16_immed16,
+        => {},
+
+        // Error cases
+        else => {
+            return InstructionDecodeError.DecodeError;
+        },
+    }
+}
+
 /// Matching binary values against instruction- and register enum's. Returns a DecodePayload union
 /// with instruction specific decoded conten.
 pub fn decodeMovWithMod(
@@ -537,8 +896,8 @@ pub fn decodeMovWithMod(
     const instruction: BinaryInstructions = @enumFromInt(input[0]);
 
     switch (instruction) {
-        .mov_seg_regmem,
-        .mov_regmem_seg,
+        .mov_regmem16_segreg,
+        .mov_segreg_regmem16,
         => {
             switch (_mod) {
                 ModValue.memoryModeNoDisplacement => {
@@ -647,10 +1006,10 @@ pub fn decodeMovWithMod(
                 },
             }
         },
-        .mov_source_regmem8_reg8,
-        .mov_source_regmem16_reg16,
-        .mov_dest_reg8_regmem8,
-        .mov_dest_reg16_regmem16,
+        .mov_regmem8_reg8,
+        .mov_regmem16_reg16,
+        .mov_reg8_regmem8,
+        .mov_reg16_regmem16,
         => {
             switch (_mod) {
                 ModValue.memoryModeNoDisplacement => {
@@ -818,8 +1177,8 @@ pub fn decodeMovWithMod(
                 },
             }
         },
-        .mov_immediate_to_regmem8,
-        .mov_immediate_to_regmem16,
+        .mov_mem8_immed8,
+        .mov_mem16_immed16,
         => {
             const w: WValue = @enumFromInt((input[0] << 7) >> 7);
             switch (mod) {
@@ -925,22 +1284,22 @@ pub fn decodeMovWithoutMod(
     const instruction: BinaryInstructions = @enumFromInt(input[0]);
 
     switch (instruction) {
-        .mov_immediate_reg_al,
-        .mov_immediate_reg_cl,
-        .mov_immediate_reg_dl,
-        .mov_immediate_reg_bl,
-        .mov_immediate_reg_ah,
-        .mov_immediate_reg_ch,
-        .mov_immediate_reg_dh,
-        .mov_immediate_reg_bh,
-        .mov_immediate_reg_ax,
-        .mov_immediate_reg_cx,
-        .mov_immediate_reg_dx,
-        .mov_immediate_reg_bx,
-        .mov_immediate_reg_sp,
-        .mov_immediate_reg_bp,
-        .mov_immediate_reg_si,
-        .mov_immediate_reg_di,
+        .mov_al_immed8,
+        .mov_cl_immed8,
+        .mov_dl_immed8,
+        .mov_bl_immed8,
+        .mov_ah_immed8,
+        .mov_ch_immed8,
+        .mov_dh_immed8,
+        .mov_bh_immed8,
+        .mov_ax_immed16,
+        .mov_cx_immed16,
+        .mov_dx_immed16,
+        .mov_bx_immed16,
+        .mov_sp_immed16,
+        .mov_bp_immed16,
+        .mov_si_immed16,
+        .mov_di_immed16,
         => {
             switch (w) {
                 .byte => {
@@ -975,10 +1334,10 @@ pub fn decodeMovWithoutMod(
                 },
             }
         },
-        .mov_mem8_acc8,
-        .mov_mem16_acc16,
-        .mov_acc8_mem8,
-        .mov_acc16_mem16,
+        .mov_al_mem8,
+        .mov_ax_mem16,
+        .mov_mem8_al,
+        .mov_mem16_ax,
         => {
             const result = InstructionPayload{
                 .mov_without_mod_instruction = MovWithoutMod{
@@ -1019,7 +1378,7 @@ test decodeAdd {
     };
     const output_payload_0x03_register_mode = InstructionPayload{
         .add_instruction = Add{
-            .opcode = BinaryInstructions.add_regmem16_source_reg16_dest,
+            .opcode = BinaryInstructions.add_reg16_regmem16,
             .mnemonic = "add",
             .d = DValue.destination,
             .w = WValue.word,
@@ -1059,7 +1418,7 @@ test decodeImmediateOp {
     };
     const output_payload_0x83_immediate8_to_regmem16 = InstructionPayload{
         .immediate_op_instruction = ImmediateOp{
-            .opcode = BinaryInstructions.immediate8_to_regmem16,
+            .opcode = BinaryInstructions.sign_extend_regmem16_immed8,
             .mnemonic = "add",
             .s = SValue.sign_extend,
             .w = WValue.word,
@@ -1095,7 +1454,7 @@ test decodeImmediateOp {
     };
     const output_payload_0x80_immediate8_to_regmem8 = InstructionPayload{
         .immediate_op_instruction = ImmediateOp{
-            .opcode = BinaryInstructions.immediate8_to_regmem8,
+            .opcode = BinaryInstructions.regmem8_immed8,
             .mnemonic = "add",
             .s = SValue.no_sign,
             .w = WValue.byte,
@@ -1129,7 +1488,7 @@ test decodeImmediateOp {
     };
     const output_payload_0x81_immediate16_to_regmem16_memory_mode_no_displacement = InstructionPayload{
         .immediate_op_instruction = ImmediateOp{
-            .opcode = BinaryInstructions.immediate16_to_regmem16,
+            .opcode = BinaryInstructions.regmem16_immed16,
             .mnemonic = "add",
             .s = SValue.no_sign,
             .w = WValue.word,
@@ -1163,7 +1522,7 @@ test decodeImmediateOp {
     };
     const output_payload_0x81_immediate16_to_regmem16 = InstructionPayload{
         .immediate_op_instruction = ImmediateOp{
-            .opcode = BinaryInstructions.immediate16_to_regmem16,
+            .opcode = BinaryInstructions.regmem16_immed16,
             .mnemonic = "add",
             .s = SValue.no_sign,
             .w = WValue.word,
@@ -1205,7 +1564,7 @@ test decodeMovWithMod {
     };
     const test_output_payload_0x89_mod_register_mode_no_displacement = InstructionPayload{
         .mov_with_mod_instruction = MovWithMod{
-            .opcode = BinaryInstructions.mov_source_regmem16_reg16,
+            .opcode = BinaryInstructions.mov_regmem16_reg16,
             .mnemonic = "mov",
             .d = DValue.source,
             .w = WValue.word,
@@ -1242,7 +1601,7 @@ test decodeMovWithMod {
     };
     const output_payload_0x88_register_mode_no_displacement = InstructionPayload{
         .mov_with_mod_instruction = MovWithMod{
-            .opcode = BinaryInstructions.mov_source_regmem8_reg8,
+            .opcode = BinaryInstructions.mov_regmem8_reg8,
             .mnemonic = "mov",
             .d = DValue.source,
             .w = WValue.byte,
@@ -1276,7 +1635,7 @@ test decodeMovWithMod {
     };
     const output_payload_0x88_memory_mode_with_displacement = InstructionPayload{
         .mov_with_mod_instruction = MovWithMod{
-            .opcode = BinaryInstructions.mov_source_regmem8_reg8,
+            .opcode = BinaryInstructions.mov_regmem8_reg8,
             .mnemonic = "mov",
             .d = DValue.source,
             .w = WValue.byte,
@@ -1310,7 +1669,7 @@ test decodeMovWithMod {
     };
     const output_payload_0x89_memory_mode_no_displacement = InstructionPayload{
         .mov_with_mod_instruction = MovWithMod{
-            .opcode = BinaryInstructions.mov_source_regmem16_reg16,
+            .opcode = BinaryInstructions.mov_regmem16_reg16,
             .mnemonic = "mov",
             .d = DValue.source,
             .w = WValue.word,
@@ -1344,7 +1703,7 @@ test decodeMovWithMod {
     };
     const output_payload_0x89_memory_mode_8_bit_displacement = InstructionPayload{
         .mov_with_mod_instruction = MovWithMod{
-            .opcode = BinaryInstructions.mov_source_regmem16_reg16,
+            .opcode = BinaryInstructions.mov_regmem16_reg16,
             .mnemonic = "mov",
             .d = @enumFromInt(0b0),
             .w = @enumFromInt(0b1),
@@ -1378,7 +1737,7 @@ test decodeMovWithMod {
     };
     const test_output_payload_0x89_mod_memory_mode_16_bit_displacement = InstructionPayload{
         .mov_with_mod_instruction = MovWithMod{
-            .opcode = BinaryInstructions.mov_source_regmem16_reg16,
+            .opcode = BinaryInstructions.mov_regmem16_reg16,
             .mnemonic = "mov",
             .d = @enumFromInt(0b0),
             .w = @enumFromInt(0b1),
@@ -1414,7 +1773,7 @@ test decodeMovWithMod {
     };
     const output_payload_0x8A_memory_mode_16_bit_displacement = InstructionPayload{
         .mov_with_mod_instruction = MovWithMod{
-            .opcode = BinaryInstructions.mov_dest_reg8_regmem8,
+            .opcode = BinaryInstructions.mov_reg8_regmem8,
             .mnemonic = "mov",
             .d = @enumFromInt(0b1),
             .w = @enumFromInt(0b0),
@@ -1448,7 +1807,7 @@ test decodeMovWithMod {
     };
     const output_payload_0x8B_memory_mode_8_bit_displacement = InstructionPayload{
         .mov_with_mod_instruction = MovWithMod{
-            .opcode = BinaryInstructions.mov_dest_reg16_regmem16,
+            .opcode = BinaryInstructions.mov_reg16_regmem16,
             .mnemonic = "mov",
             .d = DValue.destination,
             .w = WValue.word,
@@ -1482,7 +1841,7 @@ test decodeMovWithMod {
     };
     const output_payload_0x8B_memory_mode_16_bit_displacement = InstructionPayload{
         .mov_with_mod_instruction = MovWithMod{
-            .opcode = BinaryInstructions.mov_dest_reg16_regmem16,
+            .opcode = BinaryInstructions.mov_reg16_regmem16,
             .mnemonic = "mov",
             .d = DValue.destination,
             .w = WValue.word,
@@ -1516,7 +1875,7 @@ test decodeMovWithMod {
     };
     const output_payload_0xC6_memory_mode_no_displacement = InstructionPayload{
         .mov_with_mod_instruction = MovWithMod{
-            .opcode = BinaryInstructions.mov_immediate_to_regmem8,
+            .opcode = BinaryInstructions.mov_mem8_immed8,
             .mnemonic = "mov",
             .d = null,
             .w = WValue.byte,
@@ -1550,7 +1909,7 @@ test decodeMovWithMod {
     };
     const output_payload_0xC7_memory_mode_16_bit_displacement = InstructionPayload{
         .mov_with_mod_instruction = MovWithMod{
-            .opcode = BinaryInstructions.mov_immediate_to_regmem16,
+            .opcode = BinaryInstructions.mov_mem16_immed16,
             .mnemonic = "mov",
             .d = null,
             .w = WValue.word,
@@ -1588,7 +1947,7 @@ test decodeMovWithoutMod {
     };
     const output_payload_0xB1_byte = InstructionPayload{
         .mov_without_mod_instruction = MovWithoutMod{
-            .opcode = BinaryInstructions.mov_immediate_reg_cl,
+            .opcode = BinaryInstructions.mov_cl_immed8,
             .mnemonic = "mov",
             .w = WValue.byte,
             .reg = RegValue.CLCX,
@@ -1617,7 +1976,7 @@ test decodeMovWithoutMod {
     };
     const output_payload_0xBB_word = InstructionPayload{
         .mov_without_mod_instruction = MovWithoutMod{
-            .opcode = BinaryInstructions.mov_immediate_reg_bx,
+            .opcode = BinaryInstructions.mov_bx_immed16,
             .mnemonic = "mov",
             .w = WValue.word,
             .reg = RegValue.BLBX,
@@ -1646,7 +2005,7 @@ test decodeMovWithoutMod {
     };
     const output_payload_0xA1_memory_to_accumulator = InstructionPayload{
         .mov_without_mod_instruction = MovWithoutMod{
-            .opcode = BinaryInstructions.mov_mem16_acc16,
+            .opcode = BinaryInstructions.mov_ax_mem16,
             .mnemonic = "mov",
             .w = WValue.word,
             .reg = null,
