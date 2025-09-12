@@ -15,7 +15,9 @@ const ModValue = types.instruction_field_names.ModValue;
 const RegValue = types.instruction_field_names.RegValue;
 const RmValue = types.instruction_field_names.RmValue;
 const DValue = types.instruction_field_names.DValue;
+const VValue = types.instruction_field_names.VValue;
 const WValue = types.instruction_field_names.WValue;
+const ZValue = types.instruction_field_names.ZValue;
 const SValue = types.instruction_field_names.SValue;
 const SrValue = types.instruction_field_names.SrValue;
 
@@ -472,9 +474,1583 @@ pub const BinaryInstructions = enum(u8) {
     regmem16                                    = 0xFF,
 };
 
-// zig fmt: on
+/// Identifier action codes - rol set
+const RolSet = enum(u3) {
+    rol     = 0b000,
+    ror     = 0b001,
+    rcl     = 0b010,
+    rcr     = 0b011,
+    sal_shl = 0b100,
+    shr     = 0b101,
+    sar     = 0b111,
+};
 
-/// Add instructions
+/// Identifier action codes - add set
+/// When using @tagName() don't forget to make the mnemonics lower case.
+const AddSet = enum(u3) {
+    ADD     = 0b000,
+    OR      = 0b001,
+    ADC     = 0b010,
+    SBB     = 0b011,
+    AND     = 0b100,
+    SUB     = 0b101,
+    XOR     = 0b110,
+    CMP     = 0b111,
+};
+
+/// Identifier action codes - test set
+/// When using @tagName() don't forget to make the mnemonics lower case.
+const TestSet = enum(u3) {
+    TEST    = 0b000,
+    NOT     = 0b010,
+    NEG     = 0b011,
+    MUL     = 0b100,
+    IMUL    = 0b101,
+    DIV     = 0b110,
+    IDIV    = 0b111,
+};
+
+/// Identifier action codes - inc set
+const IncSet = enum(u3) {
+    inc                 = 0b000,
+    dec                 = 0b001,
+    call_within         = 0b010,
+    call_intersegment   = 0b011,
+    jmp_within          = 0b100,
+    jmp_intersegment    = 0b101,
+    push                = 0b110,
+};
+
+// zig fmt: off
+
+/// Id enum for the Identifier union
+const IdentifierId = enum {
+    rol_set,
+    add_set,
+    test_set,
+    inc_set,
+};
+
+/// Opcode identifier sometimes occuring in the second instruction byte
+/// and decoding different sets of data.
+const Identifier = union(IdentifierId) {
+    rol_set: RolSet,
+    add_set: AddSet,
+    test_set: TestSet,
+    inc_set: IncSet,
+};
+
+/// Instruction with mod and reg
+const RegisterMemoryToFromRegisterOp = struct {
+    opcode: BinaryInstructions,
+    mnemonic: []const u8,
+    mod: ModValue,
+    rm: RmValue,
+    reg: RegValue,
+    d: ?DValue,
+    w: ?WValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+};
+
+/// Instruction with mod but no reg or sr
+const RegisterMemoryOp = struct {
+    opcode: BinaryInstructions,
+    mnemonic: []const u8,
+    mod: ModValue,
+    rm: RmValue,
+    w: ?WValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+};
+
+/// Instructions without mod but with reg and only containing two bytes
+const RegisterOp = struct {
+    opcode: BinaryInstructions,
+    mnemonic: []const u8,
+    reg: RegValue,
+};
+
+/// Instructions without mod but with reg
+const ImmediateToRegisterOp = struct {
+    opcode: BinaryInstructions,
+    mnemonic: []const u8,
+    w: WValue,
+    reg: RegValue,
+    data_lo: ?u8,
+    data_hi: ?u8,
+    data_8: ?u8,
+};
+
+// Immediate to memory instructions
+const ImmediateOp = struct {
+    opcode: BinaryInstructions,
+    mnemonic: []const u8,
+    w: WValue,
+    mod: ModValue,
+    rm: RmValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+    data_8: ?u8,
+    data_lo: ?u8,
+    data_hi: ?u8,
+};
+
+/// Instructions with sr involving segment registers
+const SegmentRegisterOp = struct {
+    opcode: BinaryInstructions,
+    mnemonic: []const u8,
+    mod: ?ModValue,
+    sr: SrValue,
+    rm: ?RmValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+};
+
+/// Packed instructions with identifier using the add-set
+const IdentifierAddOp = struct {
+    opcode: BinaryInstructions,
+    mnemonic: []const u8,
+    identifier: Identifier.add_set,
+    w: WValue,
+    s: ?SValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+    data_lo: ?u8,
+    data_hi: ?u8,
+    data_8: ?u8,
+    data_sx: ?u16,
+};
+
+/// Packed instructions with identifier using rol-set
+const IdentifierRolOp = struct {
+    opcode: BinaryInstructions,
+    mnemonic: []const u8,
+    identifier: Identifier.rol_set,
+    v: VValue,
+    mod: ModValue,
+    rm: RmValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+};
+
+/// Packed instructions with identifier using the test-set
+const IdentifierTestOp = struct {
+    opcode: BinaryInstructions,
+    mnemonic: []const u8,
+    identifier: Identifier.test_set,
+    w: WValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+    data_lo: ?u8,
+    data_hi: ?u8,
+    data_8: ?u8,
+};
+
+/// Packed instructions with identifier using the inc-set
+const IdentifierIncOp = struct {
+    opcode: BinaryInstructions,
+    mnemonic: []const u8,
+    mod: ModValue,
+    identifier: Identifier.inc_set,
+    rm: RmValue,
+    w: ?WValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+};
+
+/// Instructions without mod, reg or sr but containing additional instruction bytes
+const DirectOp = struct {
+    opcode: BinaryInstructions,
+    mnemonic: []const u8,
+    w: ?WValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+    data_8: ?u8,
+    data_lo: ?u8,
+    data_hi: ?u8,
+    addr_lo: ?u8,
+    addr_hi: ?u8,
+    ip_lo: ?u8,
+    ip_hi: ?u8,
+    ip_inc_lo: ?u8,
+    ip_inc_hi: ?u8,
+    ip_inc_8: ?u8,
+    seg_lo: ?u8,
+    seg_hi: ?u8,
+};
+
+/// Accumulator instructions
+const AccumulatorOp = struct {
+    opcode: BinaryInstructions,
+    mnemonic: []const u8,
+    w: ?WValue,
+    data_8: ?u8,
+    data_lo: ?u8,
+    data_hi: ?u8,
+    addr_lo: ?u8,
+    addr_hi: ?u8,
+};
+
+/// Single byte instructions
+const SingleByteOp = struct {
+    opcode: BinaryInstructions,
+    mnemonic: []const u8,
+    z: ?ZValue,
+    w: ?WValue,
+};
+
+/// Escape instructions
+const EscapeOp = struct {
+    opcode: BinaryInstructions,
+    mnemonic: []const u8 = "esc",
+    mod: ModValue,
+    rm: RmValue,
+    external_opcode: u3,
+    source: u3,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+};
+
+/// Id enum for the InstructionData union.
+const InstructionDataId = enum {
+    err,
+    accumulator_op,
+    escape_op,
+    register_memory_to_from_register_op,
+    register_memory_op,
+    register_op,
+    immediate_to_register_op,
+    immediate_op,
+    segment_register_op,
+    identifier_add_op,
+    identifier_rol_op,
+    identifier_test_op,
+    identifier_inc_op,
+    direct_op,
+    single_byte_op,
+};
+
+/// Union holding containers for the data of decoded InstructionBytes.
+const InstructionData = union(InstructionDataId) {
+    err: InstructionDecodeError,
+    accumulator_op: AccumulatorOp,
+    escape_op: EscapeOp,
+    register_memory_to_from_register_op: RegisterMemoryToFromRegisterOp,
+    register_memory_op: RegisterMemoryOp,
+    register_op: RegisterOp,
+    immediate_to_register_op: ImmediateToRegisterOp,
+    immediate_op: ImmediateOp,
+    segment_register_op: SegmentRegisterOp,
+    identifier_add_op: IdentifierAddOp,
+    identifier_rol_op: IdentifierRolOp,
+    identifier_test_op: IdentifierTestOp,
+    identifier_inc_op: IdentifierIncOp,
+    direct_op: DirectOp,
+    single_byte_op: SingleByteOp,
+};
+
+/// Provided a valid opcode and the input bytes as parameters this function
+/// returns a InstructionData object containing all extracted instruction data.
+pub fn decode(
+    opcode: BinaryInstructions,
+    input: [6]u8,
+) InstructionDecodeError!InstructionData {
+    const log = std.log.scoped(.decode);
+    log.debug("Beginning with decoding of binary input...", .{});
+
+    // Categorize instruction structure
+    switch (opcode) {
+        // Register/Memory to/from Register instructions - with mod and reg
+        // min 2, max 4 bytes long with disp_lo and disp_hi
+        .add_regmem8_reg8,
+        .add_regmem16_reg16,
+        .add_reg8_regmem8,
+        .add_reg16_regmem16,
+        .or_regmem8_reg8,
+        .or_regmem16_reg16,
+        .or_reg8_regmem8,
+        .or_reg16_regmem16,
+        .adc_regmem8_reg8,
+        .adc_regmem16_reg16,
+        .adc_reg8_regmem8,
+        .adc_reg16_regmem16,
+        .sbb_regmem8_reg8,
+        .sbb_regmem16_reg16,
+        .sbb_reg8_regmem8,
+        .sbb_reg16_regmem16,
+        .and_regmem8_reg8,
+        .and_regmem16_reg16,
+        .and_reg8_regmem8,
+        .and_reg16_regmem16,
+        .sub_regmem8_reg8,
+        .sub_regmem16_reg16,
+        .sub_reg8_regmem8,
+        .sub_reg16_regmem16,
+        .xor_regmem8_reg8,
+        .xor_regmem16_reg16,
+        .xor_reg8_regmem8,
+        .xor_reg16_regmem16,
+        .cmp_regmem8_reg8,
+        .cmp_regmem16_reg16,
+        .cmp_reg8_regmem8,
+        .cmp_reg16_regmem16,
+        .test_regmem8_reg8,
+        .test_regmem16_reg16,
+        .xchg_reg8_regmem8,
+        .xchg_reg16_regmem16,
+        .mov_regmem8_reg8,
+        .mov_regmem16_reg16,
+        .mov_reg8_regmem8,
+        .mov_reg16_regmem16,
+        .lea_reg16_mem16,
+        .load_es_regmem16,
+        .load_ds_regmem16,
+        => {
+            const mod: ModValue = @enumFromInt(input[1] >> 6);
+            const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
+            const reg: RegValue = @enumFromInt((input[1] << 2) >> 5);
+            const mnemonic: []const u8 = switch (opcode) {
+                .add_regmem8_reg8,
+                .add_regmem16_reg16,
+                .add_reg8_regmem8,
+                .add_reg16_regmem16,
+                => "add",
+                .or_regmem8_reg8,
+                .or_regmem16_reg16,
+                .or_reg8_regmem8,
+                .or_reg16_regmem16,
+                => "or",
+                .adc_regmem8_reg8,
+                .adc_regmem16_reg16,
+                .adc_reg8_regmem8,
+                .adc_reg16_regmem16,
+                => "adc",
+                .sbb_regmem8_reg8,
+                .sbb_regmem16_reg16,
+                .sbb_reg8_regmem8,
+                .sbb_reg16_regmem16,
+                => "sbb",
+                .and_regmem8_reg8,
+                .and_regmem16_reg16,
+                .and_reg8_regmem8,
+                .and_reg16_regmem16,
+                => "and",
+                .sub_regmem8_reg8,
+                .sub_regmem16_reg16,
+                .sub_reg8_regmem8,
+                .sub_reg16_regmem16,
+                => "sub",
+                .xor_regmem8_reg8,
+                .xor_regmem16_reg16,
+                .xor_reg8_regmem8,
+                .xor_reg16_regmem16,
+                => "xor",
+                .cmp_regmem8_reg8,
+                .cmp_regmem16_reg16,
+                .cmp_reg8_regmem8,
+                .cmp_reg16_regmem16,
+                => "cmp",
+                .test_regmem8_reg8,
+                .test_regmem16_reg16,
+                => "test",
+                .xchg_reg8_regmem8,
+                .xchg_reg16_regmem16,
+                => "xchg",
+                .mov_regmem8_reg8,
+                .mov_regmem16_reg16,
+                .mov_reg8_regmem8,
+                .mov_reg16_regmem16,
+                => "mov",
+                .lea_reg16_mem16,
+                => "lea",
+                .load_es_regmem16,
+                => "les",
+                .load_ds_regmem16,
+                => "lds",
+            };
+            const d: ?DValue = switch (opcode) {
+                .test_regmem8_reg8,
+                .test_regmem16_reg16,
+                .xchg_reg8_regmem8,
+                .xchg_reg16_regmem16,
+                .lea_reg16_mem16,
+                .load_es_regmem16,
+                .load_ds_regmem16,
+                => null,
+                else => if ((input[0] << 6) >> 7 == 0) DValue.source else DValue.destination,
+            };
+            const w: ?WValue = switch (opcode) {
+                .lea_reg16_mem16,
+                .load_es_regmem16,
+                .load_ds_regmem16,
+                => null,
+                else => if ((input[0] << 7) >> 7 == 0) WValue.byte else WValue.word,
+            };
+            const disp_lo: ?u8 = switch (mod) {
+                .memoryModeNoDisplacement => if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
+                .memoryMode8BitDisplacement => input[2],
+                .memoryMode16BitDisplacement => input[2],
+                .registerModeNoDisplacement => null,
+            };
+            const disp_hi: ?u8 = switch (mod) {
+                .memoryModeNoDisplacement => if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
+                .memoryMode8BitDisplacement => null,
+                .memoryMode16BitDisplacement => input[3],
+                .registerModeNoDisplacement => null,
+            };
+
+            return InstructionData{
+                .register_memory_to_from_register_op = RegisterMemoryToFromRegisterOp{
+                    .opcode = opcode,
+                    .mnemonic = mnemonic,
+                    .mod = mod,
+                    .rm = rm,
+                    .reg = reg,
+                    .d = d,
+                    .w = w,
+                    .disp_lo = disp_lo,
+                    .disp_hi = disp_hi,
+                },
+            };
+        },
+
+        // Identifier instructions - with mod without reg
+        // min 3, max 6 bytes long with disp_lo, disp_hi,
+        // data_8 or data_lo and data_hi or data_sx
+        // Identifier.add_set
+        .regmem8_immed8,
+        .regmem16_immed16,
+        .signed_regmem8_immed8,
+        .sign_extend_regmem16_immed8,
+        => {
+            const s: SValue =  @enumFromInt((input[0] << 6) >> 7);
+            const w: WValue = @enumFromInt((input[0] << 7) >> 7);
+            const mod: ModValue = @enumFromInt(input[1] >> 6);
+            const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
+            const identifier: Identifier.add_set = @enumFromInt((input[1] << 2) >> 5);
+            const mnemonic: []const u8 = switch (identifier) {
+                .ADD => "add",
+                .OR => "or",
+                .ADC => "adc",
+                .SBB => "sbb",
+                .AND => "and",
+                .SUB => "sub",
+                .XOR => "xor",
+                .CMP => "cmp",
+            };
+
+            switch (mod) {
+                .memoryModeNoDisplacement => {
+                    if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
+                        const disp_lo: u8 = input[2];
+                        const disp_hi: u8 = input[3];
+                        const data_lo: ?u8 = switch (opcode) {
+                            .regmem16_immed16 => input[4],
+                            else => return InstructionDecodeError.InstructionError,
+                        };
+                        const data_hi: ?u8 = switch (opcode) {
+                            .regmem16_immed16 => input[5],
+                            else => return InstructionDecodeError.InstructionError,
+                        };
+                        const data_8: ?u8 = switch (opcode) {
+                            .regmem8_immed8,
+                            .signed_regmem8_immed8,
+                            => input[4],
+                        };
+                        const data_sx: ?u8 = switch (opcode) {
+                            .sign_extend_regmem16_immed8 => input[4],
+                        };
+                        return InstructionData{
+                            .identifier_op = IdentifierAddOp{
+                                .opcode = opcode,
+                                .mnemonic = mnemonic,
+                                .identifier = identifier,
+                                .mod = mod,
+                                .rm = rm,
+                                .w = w,
+                                .s = s,
+                                .disp_lo = disp_lo,
+                                .disp_hi = disp_hi,
+                                .data_lo = data_lo,
+                                .data_hi = data_hi,
+                                .data_8 = data_8,
+                                .data_sx = data_sx,
+                            },
+                        };
+                    } else {
+                        const data_lo: ?u8 = switch (opcode) {
+                            .regmem16_immed16 => input[2],
+                            else => return InstructionDecodeError.InstructionError,
+                        };
+                        const data_hi: ?u8 = switch (opcode) {
+                            .regmem16_immed16 => input[3],
+                            else => return InstructionDecodeError.InstructionError,
+                        };
+                        const data_8: ?u8 = switch (opcode) {
+                            .regmem8_immed8,
+                            .signed_regmem8_immed8,
+                            => input[2],
+                        };
+                        const data_sx: ?u8 = switch (opcode) {
+                            .sign_extend_regmem16_immed8 => input[2],
+                        };
+                        return InstructionData{
+                            .identifier_op = IdentifierAddOp{
+                                .opcode = opcode,
+                                .mnemonic = mnemonic,
+                                .identifier = identifier,
+                                .mod = mod,
+                                .rm = rm,
+                                .w = w,
+                                .s = s,
+                                .disp_lo = null,
+                                .disp_hi = null,
+                                .data_lo = data_lo,
+                                .data_hi = data_hi,
+                                .data_8 = data_8,
+                                .data_sx = data_sx,
+                            },
+                        };
+                    }
+                },
+                .memoryMode8BitDisplacement => {
+                    const disp_lo: u8 = input[2];
+                    const data_lo: ?u8 = switch (opcode) {
+                        .regmem16_immed16 => input[3],
+                        else => return InstructionDecodeError.InstructionError,
+                    };
+                    const data_hi: ?u8 = switch (opcode) {
+                        .regmem16_immed16 => input[4],
+                        else => return InstructionDecodeError.InstructionError,
+                    };
+                    const data_8: ?u8 = switch (opcode) {
+                        .regmem8_immed8,
+                        .signed_regmem8_immed8,
+                        => input[3],
+                    };
+                    const data_sx: ?u8 = switch (opcode) {
+                        .sign_extend_regmem16_immed8 => input[3],
+                    };
+                    return InstructionData{
+                        .identifier_op = IdentifierAddOp{
+                            .opcode = opcode,
+                            .mnemonic = mnemonic,
+                            .identifier = identifier,
+                            .mod = mod,
+                            .rm = rm,
+                            .w = w,
+                            .s = s,
+                            .disp_lo = disp_lo,
+                            .disp_hi = null,
+                            .data_lo = data_lo,
+                            .data_hi = data_hi,
+                            .data_8 = data_8,
+                            .data_sx = data_sx,
+                        },
+                    };
+                },
+                .memoryMode16BitDisplacement => {
+                    const disp_lo: u8 = input[2];
+                    const disp_hi: u8 = input[3];
+                    const data_lo: ?u8 = switch (opcode) {
+                        .regmem16_immed16 => input[4],
+                        else => return InstructionDecodeError.InstructionError,
+                    };
+                    const data_hi: ?u8 = switch (opcode) {
+                        .regmem16_immed16 => input[5],
+                        else => return InstructionDecodeError.InstructionError,
+                    };
+                    const data_8: ?u8 = switch (opcode) {
+                        .regmem8_immed8,
+                        .signed_regmem8_immed8,
+                        => input[4],
+                    };
+                    const data_sx: ?u8 = switch (opcode) {
+                        .sign_extend_regmem16_immed8 => input[4],
+                    };
+                    return InstructionData{
+                        .identifier_op = IdentifierAddOp{
+                            .opcode = opcode,
+                            .mnemonic = mnemonic,
+                            .identifier = identifier,
+                            .mod = mod,
+                            .rm = rm,
+                            .w = w,
+                            .s = s,
+                            .disp_lo = disp_lo,
+                            .disp_hi = disp_hi,
+                            .data_lo = data_lo,
+                            .data_hi = data_hi,
+                            .data_8 = data_8,
+                            .data_sx = data_sx,
+                        },
+                    };
+                },
+                .registerModeNoDisplacement => {
+                    const data_lo: ?u8 = switch (opcode) {
+                        .regmem16_immed16 => input[2],
+                        else => return InstructionDecodeError.InstructionError,
+                    };
+                    const data_hi: ?u8 = switch (opcode) {
+                        .regmem16_immed16 => input[3],
+                        else => return InstructionDecodeError.InstructionError,
+                    };
+                    const data_8: ?u8 = switch (opcode) {
+                        .regmem8_immed8,
+                        .signed_regmem8_immed8,
+                        => input[2],
+                    };
+                    const data_sx: ?u8 = switch (opcode) {
+                        .sign_extend_regmem16_immed8 => input[2],
+                    };
+                    return InstructionData{
+                        .identifier_op = IdentifierAddOp{
+                            .opcode = opcode,
+                            .mnemonic = mnemonic,
+                            .identifier = identifier,
+                            .mod = mod,
+                            .rm = rm,
+                            .w = w,
+                            .s = s,
+                            .disp_lo = null,
+                            .disp_hi = null,
+                            .data_lo = data_lo,
+                            .data_hi = data_hi,
+                            .data_8 = data_8,
+                            .data_sx = data_sx,
+                        },
+                    };
+                },
+            }
+        },
+
+
+        // Identifier instructions - with mod without reg
+        // min 3, max 6 bytes long with disp_lo, disp_hi,
+        // data_8 or data_lo and data_hi or data_sx
+        .pop_regmem16 => {
+            const mod: ModValue = @enumFromInt(input[1] >> 6);
+            const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
+            const disp_lo: ?u8 = switch (mod) {
+                .memoryModeNoDisplacement => if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
+                .memoryMode8BitDisplacement => input[2],
+                .memoryMode16BitDisplacement => input[2],
+                .registerModeNoDisplacement => null,
+            };
+            const disp_hi: ?u8 = switch (mod) {
+                .memoryModeNoDisplacement => if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[3] else null,
+                .memoryMode8BitDisplacement => null,
+                .memoryMode16BitDisplacement => input[3],
+                .registerModeNoDisplacement => null,
+            };
+            return InstructionData{
+                .identifier_inc_op = IdentifierIncOp{
+                    .opcode = opcode,
+                    .mnemonic = "pop",
+                    .mod = mod,
+                    .identifier = @enumFromInt(0b000),
+                    .rm = rm,
+                    .w = null,
+                    .disp_lo = disp_lo,
+                    .disp_hi = disp_hi,
+                },
+            };
+        },
+
+        // Identifier instructions - with mod without reg
+        // min 3, max 6 bytes long with disp_lo, disp_hi,
+        // data_8 or data_lo and data_hi or data_sx
+        .mov_mem8_immed8,
+        .mov_mem16_immed16,
+        => {
+            const w: WValue = @enumFromInt((input[1] << 7) >> 7);
+            const mod: ModValue = @enumFromInt(input[1] >> 6);
+            const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
+            switch (mod) {
+                .memoryModeNoDisplacement => {
+                    if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
+                        const disp_lo: u8 = input[2];
+                        const disp_hi: u8 = input[3];
+                        return InstructionData{
+                            .immediate_op = ImmediateOp{
+                                .opcode = opcode,
+                                .mnemonic = "mov",
+                                .mod = mod,
+                                .rm = rm,
+                                .w = w,
+                                .disp_lo = disp_lo,
+                                .disp_hi = disp_hi,
+                                .data_8 = if (w == WValue.byte) input[4] else null,
+                                .data_lo = if (w == WValue.word) input[4] else null,
+                                .data_hi = if (w == WValue.word) input[5] else null,
+                            },
+                        };
+                    } else {
+                        return InstructionData{
+                            .immediate_op = ImmediateOp{
+                                .opcode = opcode,
+                                .mnemonic = "mov",
+                                .mod = mod,
+                                .rm = rm,
+                                .w = w,
+                                .disp_lo = null,
+                                .disp_hi = null,
+                                .data_8 = if (w == WValue.byte) input[2] else null,
+                                .data_lo = if (w == WValue.word) input[2] else null,
+                                .data_hi = if (w == WValue.word) input[3] else null,
+                            },
+                        };
+                    }
+                },
+                .memoryMode8BitDisplacement => {
+                    const disp_lo: u8 = input[2];
+                    return InstructionData{
+                        .immediate_op = ImmediateOp{
+                            .opcode = opcode,
+                            .mnemonic = "mov",
+                            .mod = mod,
+                            .rm = rm,
+                            .w = w,
+                            .disp_lo = disp_lo,
+                            .disp_hi = null,
+                            .data_8 = if (w == WValue.byte) input[3] else null,
+                            .data_lo = if (w == WValue.word) input[3] else null,
+                            .data_hi = if (w == WValue.word) input[4] else null,
+                        },
+                    };
+                },
+                .memoryMode16BitDisplacement => {
+                    const disp_lo: u8 = input[2];
+                    const disp_hi: u8 = input[3];
+                    return InstructionData{
+                        .immediate_op = ImmediateOp{
+                            .opcode = opcode,
+                            .mnemonic = "mov",
+                            .mod = mod,
+                            .rm = rm,
+                            .w = w,
+                            .disp_lo = disp_lo,
+                            .disp_hi = disp_hi,
+                            .data_8 = if (w == WValue.byte) input[4] else null,
+                            .data_lo = if (w == WValue.word) input[4] else null,
+                            .data_hi = if (w == WValue.word) input[5] else null,
+                        },
+                    };
+                },
+                .registerModeNoDisplacement => {
+                    return InstructionData{
+                        .immediate_op = ImmediateOp{
+                            .opcode = opcode,
+                            .mnemonic = "mov",
+                            .w = w,
+                            .mod = mod,
+                            .rm = rm,
+                            .disp_lo = null,
+                            .disp_hi = null,
+                            .data_8 = if (w == WValue.byte) input[2] else null,
+                            .data_lo = if (w == WValue.word) input[2] else null,
+                            .data_hi = if (w == WValue.word) input[3] else null,
+                        },
+                    };
+                },
+            }
+        },
+
+        // Identifier instructions - with mod without reg
+        // min 3, max 6 bytes long with disp_lo, disp_hi,
+        // data_8 or data_lo and data_hi or data_sx
+        // Identifier.rol_set
+        .logical_regmem8,
+        .logical_regmem16,
+        .logical_regmem8_cl,
+        .logical_regmem16_cl,
+        => {
+            const v: VValue = @enumFromInt((input[0] << 6) >> 7);
+            const mod: ModValue = @enumFromInt(input[1] >> 6);
+            const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
+            const identifier: Identifier.rol_set = @enumFromInt((input[1] << 2) >> 5);
+            const mnemonic: []const u8 = @tagName(identifier);
+            switch (mod) {
+                .memoryModeNoDisplacement => {
+                    if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
+                        const disp_lo: u8 = input[2];
+                        const disp_hi: u8 = input[3];
+                        return InstructionData{
+                            .identifier_op = IdentifierRolOp{
+                                .opcode = opcode,
+                                .identifier = identifier,
+                                .mnemonic = mnemonic,
+                                .v = v,
+                                .mod = mod,
+                                .rm = rm,
+                                .disp_lo = disp_lo,
+                                .disp_hi = disp_hi,
+                            },
+                        };
+                    } else {
+                        return InstructionData{
+                            .identifier_op = IdentifierRolOp{
+                                .opcode = opcode,
+                                .identifier = identifier,
+                                .mnemonic = mnemonic,
+                                .v = v,
+                                .mod = mod,
+                                .rm = rm,
+                                .disp_lo = null,
+                                .disp_hi = null,
+                            },
+                        };
+                    }
+                },
+                .memoryMode8BitDisplacement => {
+                    const disp_lo: u8 = input[2];
+                    return InstructionData{
+                        .identifier_op = IdentifierRolOp{
+                            .opcode = opcode,
+                            .identifier = identifier,
+                            .mnemonic = mnemonic,
+                            .v = v,
+                            .mod = mod,
+                            .rm = rm,
+                            .disp_lo = disp_lo,
+                            .disp_hi = null,
+                        },
+                    };
+                },
+                .memoryMode16BitDisplacement => {
+                    const disp_lo: u8 = input[2];
+                    const disp_hi: u8 = input[3];
+                    return InstructionData{
+                        .identifier_op = IdentifierRolOp{
+                            .opcode = opcode,
+                            .identifier = identifier,
+                            .mnemonic = mnemonic,
+                            .v = v,
+                            .mod = mod,
+                            .rm = rm,
+                            .disp_lo = disp_lo,
+                            .disp_hi = disp_hi,
+                        },
+                    };
+                },
+                .registerModeNoDisplacement => {
+                    return InstructionData{
+                        .identifier_op = IdentifierRolOp{
+                            .opcode = opcode,
+                            .identifier = identifier,
+                            .mnemonic = mnemonic,
+                            .v = v,
+                            .mod = mod,
+                            .rm = rm,
+                            .disp_lo = null,
+                            .disp_hi = null,
+                        },
+                    };
+                },
+            }
+        },
+
+        // Identifier instructions - with mod without reg
+        // min 3, max 6 bytes long with disp_lo, disp_hi,
+        // data_8 or data_lo and data_hi or data_sx
+        // Identifier.test_set
+        .logical_regmem8_immed8,
+        .logical_regmem16_immed16,
+        => {
+            const mod: ModValue = @enumFromInt(input[1] >> 6);
+            const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
+            const w: WValue = @enumFromInt((input[0] << 7) >> 7);
+            const identifier: Identifier.test_set = @enumFromInt((input[1] << 2) >> 5);
+            const mnemonic: []const u8 = switch (identifier) {
+                .TEST => "test",
+                .NOT => "not",
+                .NEG => "neg",
+                .MUL => "mul",
+                .IMUL => "imul",
+                .DIV => "div",
+                .IDIV => "idiv",
+            };
+            switch (mod) {
+                .memoryModeNoDisplacement => {
+                    if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
+                        const disp_lo: u8 = input[2];
+                        const disp_hi: u8 = input[3];
+                        return InstructionData{
+                            .identifier_op = IdentifierTestOp{
+                                .opcode = opcode,
+                                .mnemonic = mnemonic,
+                                .identifier = identifier,
+                                .mod = mod,
+                                .rm = rm,
+                                .w = w,
+                                .disp_lo = disp_lo,
+                                .disp_hi = disp_hi,
+                                .data_8 = if (w == WValue.byte) input[4] else null,
+                                .data_lo = if (w == WValue.word) input[4] else null,
+                                .data_hi = if (w == WValue.word) input[5] else null,
+                            },
+                        };
+                    } else {
+                        return InstructionData{
+                            .identifier_op = IdentifierTestOp{
+                                .opcode = opcode,
+                                .mnemonic = mnemonic,
+                                .identifier = identifier,
+                                .mod = mod,
+                                .rm = rm,
+                                .w = w,
+                                .disp_lo = null,
+                                .disp_hi = null,
+                                .data_8 = if (w == WValue.byte) input[2] else null,
+                                .data_lo = if (w == WValue.word) input[2] else null,
+                                .data_hi = if (w == WValue.word) input[3] else null,
+                            },
+                        };
+                    }
+                },
+                .memoryMode8BitDisplacement => {
+                    const disp_lo: u8 = input[2];
+                    return InstructionData{
+                        .identifier_op = IdentifierTestOp{
+                            .opcode = opcode,
+                            .mnemonic = mnemonic,
+                            .identifier = identifier,
+                            .mod = mod,
+                            .rm = rm,
+                            .w = w,
+                            .disp_lo = disp_lo,
+                            .disp_hi = null,
+                            .data_8 = if (w == WValue.byte) input[3] else null,
+                            .data_lo = if (w == WValue.word) input[3] else null,
+                            .data_hi = if (w == WValue.word) input[4] else null,
+                        },
+                    };
+                },
+                .memoryMode16BitDisplacement => {
+                    const disp_lo: u8 = input[2];
+                    const disp_hi: u8 = input[3];
+                    return InstructionData{
+                        .identifier_op = IdentifierTestOp{
+                            .opcode = opcode,
+                            .mnemonic = mnemonic,
+                            .identifier = identifier,
+                            .mod = mod,
+                            .rm = rm,
+                            .w = w,
+                            .disp_lo = disp_lo,
+                            .disp_hi = disp_hi,
+                            .data_8 = if (w == WValue.byte) input[4] else null,
+                            .data_lo = if (w == WValue.word) input[4] else null,
+                            .data_hi = if (w == WValue.word) input[5] else null,
+                        },
+                    };
+                },
+                .registerModeNoDisplacement => {
+                    return InstructionData{
+                        .identifier_op = IdentifierTestOp{
+                            .opcode = opcode,
+                            .mnemonic = mnemonic,
+                            .identifier = identifier,
+                            .mod = mod,
+                            .rm = rm,
+                            .w = w,
+                            .disp_lo = null,
+                            .disp_hi = null,
+                            .data_8 = if (w == WValue.byte) input[2] else null,
+                            .data_lo = if (w == WValue.word) input[2] else null,
+                            .data_hi = if (w == WValue.word) input[3] else null,
+                        },
+                    };
+                },
+            }
+        },
+
+        // Identifier instructions - with mod without reg
+        // min 2, max 4 bytes long with disp_lo, disp_hi,
+        // Identifier.inc_set
+        .regmem8,
+        .regmem16,
+        => {
+            const mod: ModValue = @enumFromInt(input[0] >> 6);
+            const identifier: Identifier.inc_set = @enumFromInt((input[1] << 2) >> 5);
+            const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
+            const disp_lo: ?u8 = switch (mod) {
+                .memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
+                .memoryMode8BitDisplacement => input[2],
+                .memoryMode16BitDisplacement => input[2],
+                .registerModeNoDisplacement => null,
+            };
+            const disp_hi: ?u8 = switch (mod) {
+                .memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[3] else null,
+                .memoryMode8BitDisplacement => null,
+                .memoryMode16BitDisplacement => input[3],
+                .registerModeNoDisplacement => null,
+            };
+            switch (identifier) {
+                .inc => {
+                    const w: WValue = @enumFromInt((input[0] << 7) >> 7);
+                    return InstructionData{
+                        .identifier_inc_op = IdentifierIncOp{
+                            .opcode = opcode,
+                            .mnemonic = "inc",
+                            .w = w,
+                            .mod = mod,
+                            .identifier = identifier,
+                            .rm = rm,
+                            .disp_lo = disp_lo,
+                            .disp_hi = disp_hi,
+                        },
+                    };
+                },
+                .dec => {
+                    const w: WValue = @enumFromInt((input[0] << 7) >> 7);
+                    return InstructionData{
+                        .identifier_inc_op = IdentifierIncOp{
+                            .opcode = opcode,
+                            .mnemonic = "dec",
+                            .w = w,
+                            .mod = mod,
+                            .identifier = identifier,
+                            .rm = rm,
+                            .disp_lo = disp_lo,
+                            .disp_hi = disp_hi,
+                        },
+                    };
+                },
+                .call_within,
+                .call_intersegment,
+                .jmp_within,
+                .jmp_intersegment,
+                .push,
+                => {
+                    return InstructionData{
+                        .instruction_inc_op = IdentifierIncOp{
+                            .opcode = opcode,
+                            .mnemonic = "call",
+                            .w = null,
+                            .mod = mod,
+                            .identifier = identifier,
+                            .rm = rm,
+                            .disp_lo = disp_lo,
+                            .disp_hi = disp_hi,
+                        },
+                    };
+                },
+            }
+        },
+
+        // (Segment) Register ops
+        .push_es,
+        .push_cs,
+        .push_ss,
+        .push_ds,
+        => {
+            const sr: SrValue = @enumFromInt((input[0] << 3) >> 6);
+            return InstructionData{
+                .segment_register_op = SegmentRegisterOp{
+                    .opcode = opcode,
+                    .mnemonic = "push",
+                    .mod = null,
+                    .sr = sr,
+                    .rm = null,
+                    .disp_lo = null,
+                    .disp_hi = null,
+                },
+            };
+        },
+        .pop_es,
+        .pop_ss,
+        .pop_ds,
+        => {
+            const sr: SrValue = @enumFromInt((input[0] << 3) >> 6);
+            return InstructionData{
+                .segment_register_op = SegmentRegisterOp{
+                    .opcode = opcode,
+                    .mnemonic = "pop",
+                    .mod = null,
+                    .sr = sr,
+                    .rm = null,
+                    .disp_lo = null,
+                    .disp_hi = null,
+                },
+            };
+        },
+        .inc_ax,
+        .inc_cx,
+        .inc_dx,
+        .inc_bx,
+        .inc_sp,
+        .inc_bp,
+        .inc_si,
+        .inc_di,
+        => {
+            const reg: RegValue = @enumFromInt((input[0] << 5) >> 5);
+            return InstructionData{
+                .register_op = RegisterOp{
+                    .opcode = opcode,
+                    .mnemonic = "inc",
+                    .reg = reg,
+                },
+            };
+        },
+        .dec_ax,
+        .dec_cx,
+        .dec_dx,
+        .dec_bx,
+        .dec_sp,
+        .dec_bp,
+        .dec_si,
+        .dec_di,
+        => {
+            const reg: RegValue = @enumFromInt((input[0] << 5) >> 5);
+            return InstructionData{
+                .register_op = RegisterOp{
+                    .opcode = opcode,
+                    .mnemonic = "dec",
+                    .reg = reg,
+                },
+            };
+        },
+        .push_ax,
+        .push_cx,
+        .push_dx,
+        .push_bx,
+        .push_sp,
+        .push_bp,
+        .push_si,
+        .push_di,
+        => {
+            const reg: RegValue = @enumFromInt((input[0] << 5) >> 5);
+            return InstructionData{
+                .register_op = RegisterOp{
+                    .opcode = opcode,
+                    .mnemonic = "push",
+                    .reg = reg,
+                },
+            };
+        },
+        .pop_ax,
+        .pop_cx,
+        .pop_dx,
+        .pop_bx,
+        .pop_sp,
+        .pop_bp,
+        .pop_si,
+        .pop_di,
+        => {
+            const reg: RegValue = @enumFromInt((input[0] << 5) >> 5);
+            return InstructionData{
+                .register_op = RegisterOp{
+                    .opcode = opcode,
+                    .mnemonic = "pop",
+                    .reg = reg,
+                },
+            };
+        },
+        .nop_xchg_ax_ax => {
+            const reg: RegValue = @enumFromInt((input[0] << 5) >> 5);
+            return InstructionData{
+                .register_op = RegisterOp{
+                    .opcode = opcode,
+                    .mnemonic = "nop",
+                    .reg = reg,
+                },
+            };
+        },
+        .xchg_ax_cx,
+        .xchg_ax_dx,
+        .xchg_ax_bx,
+        .xchg_ax_sp,
+        .xchg_ax_bp,
+        .xchg_ax_si,
+        .xchg_ax_di,
+        => {
+            const reg: RegValue = @enumFromInt((input[0] << 5) >> 5);
+            return InstructionData{
+                .register_op = RegisterOp{
+                    .opcode = opcode,
+                    .mnemonic = "xchg",
+                    .reg = reg,
+                },
+            };
+        },
+
+        // Immediate to register mov
+        .mov_al_immed8,
+        .mov_cl_immed8,
+        .mov_dl_immed8,
+        .mov_bl_immed8,
+        .mov_ah_immed8,
+        .mov_ch_immed8,
+        .mov_dh_immed8,
+        .mov_bh_immed8,
+        .mov_ax_immed16,
+        .mov_cx_immed16,
+        .mov_dx_immed16,
+        .mov_bx_immed16,
+        .mov_sp_immed16,
+        .mov_bp_immed16,
+        .mov_si_immed16,
+        .mov_di_immed16,
+        => {
+            const w: WValue = @enumFromInt((input[0] << 4) >> 7);
+            const reg: RegValue = @enumFromInt((input[0] << 5) >> 5);
+            return InstructionData{
+                .immediate_to_register_op = ImmediateToRegisterOp{
+                    .opcode = opcode,
+                    .mnemonic = "mov",
+                    .w = w,
+                    .reg = reg,
+                    .data_8 = if (@intFromEnum(opcode) <= 0xBE) input[1] else null,
+                    .data_lo = if (@intFromEnum(opcode) > 0xBE) input[1] else null,
+                    .data_hi = if (@intFromEnum(opcode) > 0xBE) input[2] else null,
+                },
+            };
+        },
+
+        // Segment register instructions
+        .mov_regmem16_segreg,
+        .mov_segreg_regmem16,
+        => {
+            const mod: ModValue = @enumFromInt(input[1] >> 6);
+            const sr: SrValue = @enumFromInt((input[1] << 3) >> 6);
+            const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
+            return InstructionData{
+                .segment_register_op = SegmentRegisterOp{
+                    .opcode = opcode,
+                    .mnemonic = "mov",
+                    .mod = mod,
+                    .sr = sr,
+                    .rm = rm,
+                    .disp_lo = switch (mod) {
+                        .memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
+                        .memoryMode8BitDisplacement => input[2],
+                        .memoryMode16BitDisplacement => input[2],
+                        .registerModeNoDisplacement => null,
+                    },
+                    .disp_hi = switch (mod) {
+                        .memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[3] else null,
+                        .memoryMode8BitDisplacement => null,
+                        .memoryMode16BitDisplacement => input[3],
+                        .registerModeNoDisplacement => null,
+                    },
+                },
+            };
+        },
+
+        // no mod no reg with w
+        .add_al_immed8,
+        .add_ax_immed16,
+        .or_al_immed8,
+        .or_ax_immed16,
+        .adc_al_immed8,
+        .adc_ax_immed16,
+        .sbb_al_immed8,
+        .sbb_ax_immed16,
+        .and_al_immed8,
+        .and_ax_immed16,
+        .sub_al_immed8,
+        .sub_ax_immed16,
+        .xor_al_immed8,
+        .xor_ax_immed16,
+        .cmp_al_immed8,
+        .cmp_ax_immed16,
+        .test_al_immed8,
+        .test_ax_immed16,
+        .in_al_dx,
+        .in_ax_dx,
+        .out_al_dx,
+        .out_ax_dx,
+        => {
+            const w: WValue = @enumFromInt((input[0] << 7) >> 7);
+            return InstructionData{
+                .accumulator_op = AccumulatorOp{
+                    .opcode = opcode,
+                    .mnemonic = switch (opcode) {
+                        .add_al_immed8,
+                        .add_ax_immed16,
+                        => "add",
+                        .or_al_immed8,
+                        .or_ax_immed16,
+                        => "or",
+                        .adc_al_immed8,
+                        .adc_ax_immed16,
+                        => "adc",
+                        .sbb_al_immed8,
+                        .sbb_ax_immed16,
+                        => "sbb",
+                        .and_al_immed8,
+                        .and_ax_immed16,
+                        => "and",
+                        .sub_al_immed8,
+                        .sub_ax_immed16,
+                        => "sub",
+                        .xor_al_immed8,
+                        .xor_ax_immed16,
+                        => "xor",
+                        .cmp_al_immed8,
+                        .cmp_ax_immed16,
+                        => "cmp",
+                        .test_al_immed8,
+                        .test_ax_immed16,
+                        => "test",
+                        .in_al_dx,
+                        .in_ax_dx,
+                        => "in",
+                        .out_al_dx,
+                        .out_ax_dx,
+                        => "out",
+                    },
+                    .w = w,
+                    .data_8 = if (w == WValue.byte) input[1] else null,
+                    .data_lo = if (w == WValue.word) input[1] else null,
+                    .data_hi = if (w == WValue.word) input[2] else null,
+                    .addr_lo = null,
+                    .addr_hi = null,
+                },
+            };
+        },
+
+        // Direct address (offset) addr-lo, addr-hi
+        .mov_al_mem8,
+        .mov_ax_mem16,
+        .mov_mem8_al,
+        .mov_mem16_ax,
+        => {
+            const w: WValue = @enumFromInt((input[0] << 7) >> 7);
+            return InstructionData{
+                .accumulator_op = AccumulatorOp{
+                    .opcode = opcode,
+                    .mnemonic = "mov",
+                    .w = w,
+                    .data_8 = null,
+                    .data_lo = null,
+                    .data_hi = null,
+                    .addr_lo = input[1],
+                    .addr_hi = input[2],
+                },
+            };
+        },
+
+        // no mod no reg no w
+        .segment_override_prefix_es,
+        .segment_override_prefix_cs,
+        .segment_override_prefix_ss,
+        .segment_override_prefix_ds,
+        .jo_jump_on_overflow,
+        .jno_jump_on_not_overflow,
+        .jb_jnae_jump_on_below_not_above_or_equal,
+        .jnb_jae_jump_on_not_below_above_or_equal,
+        .je_jz_jump_on_equal_zero,
+        .jne_jnz_jumb_on_not_equal_not_zero,
+        .jbe_jna_jump_on_below_or_equal_above,
+        .jnbe_ja_jump_on_not_below_or_equal_above,
+        .js_jump_on_sign,
+        .jns_jump_on_not_sign,
+        .jp_jpe_jump_on_parity_parity_even,
+        .jnp_jpo_jump_on_not_parity_parity_odd,
+        .jl_jnge_jump_on_less_not_greater_or_equal,
+        .jnl_jge_jump_on_not_less_greater_or_equal,
+        .jle_jng_jump_on_less_or_equal_not_greater,
+        .jnle_jg_jump_on_not_less_or_equal_greater,
+        .call_direct_intersegment,
+        .ret_within_seg_adding_immed16_to_sp,
+        .ret_intersegment_adding_immed16_to_sp,
+        .int_interrupt_type_specified,
+        .aam_ASCII_adjust_multiply,
+        .aad_ASCII_adjust_divide,
+        .loopne_loopnz_loop_while_not_zero_equal,
+        .loope_loopz_loop_while_zero_equal,
+        .loop_loop_cx_times,
+        .jcxz_jump_on_cx_zero,
+        .call_direct_within_segment,
+        .jmp_direct_within_segment,
+        .jmp_direct_intersegment,
+        .jmp_direct_within_segment_short,
+        => {
+            // TODO: Whatever this is...
+        },
+
+        // Single byte instructions - no w, no z
+        .daa_decimal_adjust_add,
+        .das_decimal_adjust_sub,
+        .aaa_ASCII_adjust_add,
+        .aas_ASCII_adjust_sub,
+        .cbw_byte_to_word,
+        .cwd_word_to_double_word,
+        .wait,
+        .pushf,
+        .popf,
+        .sahf,
+        .lahf,
+        .ret_within_segment,
+        .ret_intersegment,
+        .int_interrupt_type_3,
+        .into_interrupt_on_overflow,
+        .iret_interrupt_return,
+        .xlat_translate_byte_to_al,
+        .lock_bus_lock_prefix,
+        .halt,
+        .cmc_complement_carry,
+        .clc_clear_carry,
+        .stc_set_carry,
+        .cli_clear_interrupt,
+        .sti_set_interrupt,
+        .cld_clear_direction,
+        .std_set_direction,
+        => {
+            return InstructionData{
+                .single_byte_op = SingleByteOp{
+                    .opcode = opcode,
+                    .mnemonic = switch (opcode) {
+                        .daa_decimal_adjust_add => "daa",
+                        .das_decimal_adjust_sub => "das",
+                        .aaa_ASCII_adjust_add => "aaa",
+                        .aas_ASCII_adjust_sub => "aas",
+                        .cbw_byte_to_word => "cbw",
+                        .cwd_word_to_double_word => "cwd",
+                        .int_interrupt_type_3 => "int",
+                        .into_interrupt_on_overflow => "into",
+                        .iret_interrupt_return => "iret",
+                        .xlat_translate_byte_to_al => "xlat",
+                        .lock_bus_lock_prefix => "lock",
+                        .cmc_complement_carry => "cmc",
+                        .stc_set_carry => "stc",
+                        .cli_clear_interrupt => "cli",
+                        .sti_set_interrupt => "sti",
+                        .cld_clear_direction => "cld",
+                        .std_set_direction => "std",
+
+                        .ret_within_segment,
+                        .ret_intersegment,
+                        => "ret",
+
+                        .wait,
+                        .pushf,
+                        .popf,
+                        .sahf,
+                        .lahf,
+                        .halt,
+                        => @tagName(opcode),
+                    },
+                    .w = null,
+                    .z = null,
+                },
+            };
+        },
+
+        // Single byte instructions - w, no z
+        .movs_byte,
+        .movs_word,
+        .cmps_byte,
+        .cmps_word,
+        .stos_byte,
+        .stos_word,
+        .lods_byte,
+        .lods_word,
+        .scas_byte,
+        .scas_word,
+        .in_al_immed8,
+        .in_ax_immed8,
+        .out_al_immed8,
+        .out_ax_immed8,
+        => {
+            const w: WValue = @enumFromInt((input[0] << 7) >> 7);
+            return InstructionData{
+                .single_byte_op = SingleByteOp{
+                    .opcode = opcode,
+                    .mnemonic = switch (opcode) {
+                        .movs_byte,
+                        .movs_word,
+                        => "movs",
+                        .cmps_byte,
+                        .cmps_word,
+                        => "cmps",
+                        .stos_byte,
+                        .stos_word,
+                        => "stos",
+                        .lods_byte,
+                        .lods_word,
+                        => "lods",
+                        .scas_byte,
+                        .scas_word,
+                        => "scas",
+                        .in_al_immed8,
+                        .in_ax_immed8,
+                        => "in",
+                        .out_al_immed8,
+                        .out_ax_immed8,
+                        => "out",
+                    },
+                    .w = w,
+                    .z = null,
+                },
+            };
+        },
+
+        // Single byte instructions - z, no w
+        .repne_repnz_not_equal_zero,
+        .rep_repe_repz_equal_zero,
+        => {
+            const z: ZValue = @enumFromInt((input[0] << 7) >> 7);
+            return InstructionData{
+                .single_byte_op = SingleByteOp{
+                    .opcode = opcode,
+                    .mnemonic = "rep",
+                    .w = null,
+                    .z = z,
+                },
+            };
+        },
+
+        // Escape instructions
+        .esc_external_opcode_000_yyy_source,
+        .esc_external_opcode_001_yyy_source,
+        .esc_external_opcode_010_yyy_source,
+        .esc_external_opcode_011_yyy_source,
+        .esc_external_opcode_100_yyy_source,
+        .esc_external_opcode_101_yyy_source,
+        .esc_external_opcode_110_yyy_source,
+        .esc_external_opcode_111_yyy_source,
+        => {
+            const external_opcode: u3 = (input[0] << 5) >> 5;
+            const mod: ModValue = @enumFromInt(input[1] >> 6);
+            const source: u3 = (input[1] << 2) >> 5;
+            const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
+
+            return InstructionData{
+                .escape_op = EscapeOp{
+                    .opcode = opcode,
+                    .mnemonic = "esc",
+                    .external_opcode = external_opcode,
+                    .mod = mod,
+                    .source = source,
+                    .rm = rm,
+                    .disp_lo = switch (mod) {
+                        .memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
+                        .memoryMode8BitDisplacement => input[2],
+                        .memoryMode16BitDisplacement => input[2],
+                        .registerModeNoDisplacement => null,
+                    },
+                    .disp_hi = switch (mod) {
+                        .memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[3] else null,
+                        .memoryMode8BitDisplacement => null,
+                        .memoryMode16BitDisplacement => input[3],
+                        .registerModeNoDisplacement => null,
+                    },
+                },
+            };
+        },
+
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DEPRECATED BELOW
+////////////////////////////////////////////////////////////////////////////////
+
+/// Add instructions - DEPRECATED
 /// - Register/memory with register to either: 0x00 - 0x03
 /// - Immediate to accumulator: 0x04, 0x05
 pub const Add = struct {
@@ -496,21 +2072,21 @@ pub const Add = struct {
 /// - Immediate word value to register/memory 0x81
 /// - Sign-extended byte value to register/memory (data-8) 0x82
 /// - Immediate byte value to 16 bit register (data-sx) 0x83
-pub const ImmediateOp = struct {
-    opcode: BinaryInstructions,
-    mnemonic: []const u8,
-    s: SValue,
-    w: WValue,
-    mod: ModValue,
-    rm: RmValue,
-    disp_lo: ?u8,
-    disp_hi: ?u8,
-    data_lo: ?u8,
-    data_hi: ?u8,
-    data_8: ?u8,
-    signed_data_8: ?i8,
-    data_sx: ?i16,
-};
+// pub const ImmediateOp = struct {
+//     opcode: BinaryInstructions,
+//     mnemonic: []const u8,
+//     s: SValue,
+//     w: WValue,
+//     mod: ModValue,
+//     rm: RmValue,
+//     disp_lo: ?u8,
+//     disp_hi: ?u8,
+//     data_lo: ?u8,
+//     data_hi: ?u8,
+//     data_8: ?u8,
+//     signed_data_8: ?i8,
+//     data_sx: ?i16,
+// };
 
 /// MovInstruction with mod field
 /// - register/memory to/from register: 0x88, 0x89, 0x8A, 0x8B
@@ -662,8 +2238,8 @@ pub fn decodeAdd(
     }
 }
 
-/// Immediate operation action codes
-const ImmediateAction = enum(u3) {
+/// IdentifierOp action codes
+const IdentifierOld = enum(u3) {
     ADD = 0b000,
     OR = 0b001,
     ADC = 0b010,
@@ -685,8 +2261,8 @@ pub fn decodeImmediateOp(
     const instruction: BinaryInstructions = @enumFromInt(input[0]);
     const mod: ModValue = @enumFromInt(input[1] >> 6);
     const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
-    const action_code: ImmediateAction = @enumFromInt((input[1] << 2) >> 5);
-    const mnemonic: []const u8 = switch (action_code) {
+    const identifier: IdentifierOld = @enumFromInt((input[1] << 2) >> 5);
+    const mnemonic: []const u8 = switch (identifier) {
         .ADD => "add",
         .OR => "or",
         .ADC => "adc",
@@ -828,55 +2404,6 @@ pub fn decodeImmediateOp(
         else => {
             log.debug("Instruction not yet implemented.", .{});
             return InstructionDecodeError.NotYetImplemented;
-        },
-    }
-}
-
-const DecodedIdentifier = enum {
-    err,
-    mod_with_reg,
-    mod_without_reg,
-    identifier,
-};
-
-const Decoded = union(DecodedIdentifier) {
-    err: InstructionDecodeError,
-    mod_with_reg,
-    mod_without_reg,
-    identifier,
-};
-
-pub fn decode(
-    opcode: BinaryInstructions,
-) InstructionDecodeError!InstructionPayload {
-    const log = std.log.scoped(.decode);
-
-    switch (opcode) {
-        .add_regmem8_reg8,
-        .add_regmem16_reg16,
-        .add_reg8_regmem8,
-        .add_reg16_regmem16,
-        .add_al_immed8,
-        .add_ax_immed16,
-        .adc_regmem8_reg8,
-        .adc_regmem16_reg16,
-        .adc_reg8_regmem8,
-        .adc_reg16_regmem16,
-        .and_regmem8_reg8,
-        .and_regmem16_reg16,
-        .and_reg8_regmem8,
-        .and_reg16_regmem16,
-        .regmem8_immed8,
-        .regmem16_immed16,
-        .signed_regmem8_immed8,
-        .sign_extend_regmem16_immed8,
-        .mov_mem8_immed8,
-        .mov_mem16_immed16,
-        => {},
-
-        // Error cases
-        else => {
-            return InstructionDecodeError.DecodeError;
         },
     }
 }
