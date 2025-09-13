@@ -10,7 +10,7 @@
 
 const std = @import("std");
 
-const types = @import("../types.zig");
+const types = @import("types.zig");
 const RegValue = types.instruction_field_names.RegValue;
 const WValue = types.instruction_field_names.WValue;
 

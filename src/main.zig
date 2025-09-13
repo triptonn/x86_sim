@@ -30,7 +30,7 @@ const InstructionInfo = locator.InstructionInfo;
 const DestinationInfo = locator.DestinationInfo;
 const SourceInfo = locator.SourceInfo;
 
-const types = @import("types.zig");
+const types = @import("modules/types.zig");
 const ModValue = types.instruction_field_names.ModValue;
 const RegValue = types.instruction_field_names.RegValue;
 const RmValue = types.instruction_field_names.RmValue;
@@ -39,7 +39,7 @@ const WValue = types.instruction_field_names.WValue;
 const SValue = types.instruction_field_names.SValue;
 const SrValue = types.instruction_field_names.SrValue;
 
-const errors = @import("errors.zig");
+const errors = @import("modules/errors.zig");
 const InstructionDecodeError = errors.InstructionDecodeError;
 const InstructionExecutionError = errors.InstructionExecutionError;
 const SimulatorError = errors.SimulatorError;
