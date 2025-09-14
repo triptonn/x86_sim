@@ -10,30 +10,27 @@
 
 const std = @import("std");
 
+const errors = @import("errors.zig");
+const InstructionExecutionError = errors.InstructionExecutionError;
+
+const MemoryError = errors.MemoryError;
+
 const types = @import("types.zig");
+const ModValue = types.instruction_field_names.ModValue;
+const RmValue = types.instruction_field_names.RmValue;
 const RegValue = types.instruction_field_names.RegValue;
 const WValue = types.instruction_field_names.WValue;
 
-/// Simulates the bus interface unit of the 8086 Processor, mainly the
-/// instruction queue.
-pub const BusInterfaceUnit = struct {
-    InstructionQueue: [6]u8 = [1]u8{0} ** 6,
+const locator = @import("locator.zig");
+const AddressBook = locator.AddressBook;
+const DisplacementFormat = locator.DisplacementFormat;
 
-    /// Set a byte of the instruction queue by passing an index (0 - 5) and the
-    /// value.
-    pub fn setIndex(self: *BusInterfaceUnit, index: u3, value: u8) void {
-        if (index > 5 or index < 0) unreachable;
-        self.InstructionQueue[index] = value;
-    }
+const EffectiveAddressCalculation = types.data_types.EffectiveAddressCalculation;
 
-    /// Get a byte of the instruction queue by passing an index (0 - 5).
-    pub fn getIndex(self: *BusInterfaceUnit, index: u3) u8 {
-        if (index < 0 or index > 5) unreachable;
-        return self.InstructionQueue[index];
-    }
-};
+const decoder = @import("decoder.zig");
+const InstructionData = decoder.InstructionData;
 
-const RegisterPayload = union {
+const GeneralRegisterPayload = union {
     value8: u8,
     value16: u16,
 };
@@ -71,44 +68,19 @@ const RegisterPayload = union {
 // 16 bit pointer containing the offset (distance in bytes) of the next instruction
 // in the current code segment (CS). Saves and restores to / from the Stack.
 //
-// AF - Auxiliary Carry flag
-// CF - Carry flag
-// OF - Overflow flag
-// SF - Sign flag
-// PF - Parity flag
-// ZF - Zero flag
-//
-// Additional flags
-//
-// DF - Direction flag
-// IF - Interrupt-enable flag
-// TF - Trap flag
-//
-// 8086 General Register
-//
-// |76543210 76543210|
-// |--------|--------|                          AX - Word multiply, word divide, word i/o
-// |   AH   |   AL   | AX - ACCUMULATOR         AL - Byte multiply, byte divide, byte i/o, translate, decimal arithmatic
-// |--------|--------|                          AH - Byte multiply, byte divide
-// |   BH   |   BL   | BX - BASE                BX - Translate
-// |--------|--------|
-// |   CH   |   CL   | CX - COUNT               CX - String operations, loops
-// |--------|--------|                          CL - Variable shift and rotate
-// |   DH   |   DL   | DX - DATA                DX - Word multiply, word divide, indirect i/o
-// |--------|--------|
-// |        SP       | SP - STACK POINTER       SP - Stack operations
-// |--------X--------|
-// |        BP       | BP - BASE POINTER
-// |--------X--------|
-// |        SI       | SI - SOURCE INDEX        SI - String operations
-// |--------X--------|
-// |        DI       | DI - DESTINATION INDEX   DI - String operations
-// |--------X--------|
-// |76543210 76543210|
 
-/// Simulates the Internal Communication and General Registers of the
-/// Intel 8086 Processor.
-pub const Register = struct {
+/// Simulates the bus interface unit of the 8086 Processor, consisting of
+/// the Segment Registers, the Instruction Pointer and the Instruction Queue.
+/// It handles effective address generation and bus control.
+pub const BusInterfaceUnit = struct {
+    pub const InitValues = struct {
+        _CS: u16,
+        _DS: u16,
+        _ES: u16,
+        _SS: u16,
+        _IP: u16,
+    };
+
     // Internal Communication Registers
     _CS: u16, // Pointer to Code segment base
     _DS: u16, // Pointer to Data segment base
@@ -116,287 +88,168 @@ pub const Register = struct {
     _SS: u16, // Pointer to Stack segment base
     _IP: u16, // Pointer to the next instruction to execute
 
-    // Status Flags
-    _AF: bool, // Auxiliary Carry flag
-    _CF: bool, // Carry flag
-    _OF: bool, // Overflow flag
-    _SF: bool, // Sign flag
-    _PF: bool, // Parity flag
-    _ZF: bool, // Zero flag
+    InstructionQueue: [6]u8,
 
-    // Control Flags
-    _DF: bool, // Direction flag
-    _IF: bool, // Interrupt-enable flag
-    _TF: bool, // Trap flag
+    pub fn init(init_values: InitValues) BusInterfaceUnit {
+        return .{
+            ._CS = init_values._CS,
+            ._DS = init_values._DS,
+            ._ES = init_values._ES,
+            ._SS = init_values._SS,
+            ._IP = init_values._IP,
+            .InstructionQueue = [1]u8{0} ** 6,
+        };
+    }
 
-    // General Registers
-    _AX: u16, // Accumulator
-    _BX: u16, // Base
-    _CX: u16, // Count
-    _DX: u16, // Data
-    _SP: u16, // Stack Pointer
-    _BP: u16, // Base Pointer
-    _DI: u16, // Source Index (Offset)
-    _SI: u16, // Destination Index (Offset)
+    /// Set a byte of the instruction queue by passing an index (0 - 5) and the
+    /// value.
+    pub fn setIndex(self: *BusInterfaceUnit, index: u3, value: u8) void {
+        if (index > 5 or index < 0) unreachable;
+        self.InstructionQueue[index] = value;
+    }
 
-    pub fn getReg16FromRegValue(self: *Register, reg: RegValue) RegisterPayload {
-        switch (reg) {
-            .ALAX => {
-                return RegisterPayload{
-                    .value16 = self._AX,
-                };
-            },
-            .BLBX => {
-                return RegisterPayload{
-                    .value16 = self._BX,
-                };
-            },
-            .CLCX => {
-                return RegisterPayload{
-                    .value16 = self._CX,
-                };
-            },
-            .DLDX => {
-                return RegisterPayload{
-                    .value16 = self._DX,
-                };
-            },
-            .AHSP => {
-                return RegisterPayload{
-                    .value16 = self._SP,
-                };
-            },
-            .BHDI => {
-                return RegisterPayload{
-                    .value16 = self._DI,
-                };
-            },
-            .CHBP => {
-                return RegisterPayload{
-                    .value16 = self._BP,
-                };
-            },
-            .DHSI => {
-                return RegisterPayload{
-                    .value16 = self._SI,
-                };
-            },
-        }
+    /// Get a byte of the instruction queue by passing an index (0 - 5).
+    pub fn getIndex(self: *BusInterfaceUnit, index: u3) u8 {
+        if (index < 0 or index > 5) unreachable;
+        return self.InstructionQueue[index];
     }
 
     // Internal Communication Register Methods
-    pub fn setCS(self: *Register, value: u16) void {
+    pub fn setCS(self: *BusInterfaceUnit, value: u16) void {
         self._CS = value;
     }
-    pub fn getCS(self: *Register) RegisterPayload {
-        return RegisterPayload{ .value16 = self._CS };
+    pub fn getCS(self: *BusInterfaceUnit) GeneralRegisterPayload {
+        return GeneralRegisterPayload{ .value16 = self._CS };
     }
-    pub fn setDS(self: *Register, value: u16) void {
+    pub fn setDS(self: *BusInterfaceUnit, value: u16) void {
         self._DS = value;
     }
-    pub fn getDS(self: *Register) RegisterPayload {
-        return RegisterPayload{ .value16 = self._DS };
+    pub fn getDS(self: *BusInterfaceUnit) GeneralRegisterPayload {
+        return GeneralRegisterPayload{ .value16 = self._DS };
     }
-    pub fn setES(self: *Register, value: u16) void {
+    pub fn setES(self: *BusInterfaceUnit, value: u16) void {
         self._ES = value;
     }
-    pub fn getES(self: *Register) RegisterPayload {
-        return RegisterPayload{ .value16 = self._ES };
+    pub fn getES(self: *BusInterfaceUnit) GeneralRegisterPayload {
+        return GeneralRegisterPayload{ .value16 = self._ES };
     }
-    pub fn setSS(self: *Register, value: u16) void {
+    pub fn setSS(self: *BusInterfaceUnit, value: u16) void {
         self._SS = value;
     }
-    pub fn getSS(self: *Register) RegisterPayload {
-        return RegisterPayload{ .value16 = self._SS };
+    pub fn getSS(self: *BusInterfaceUnit) GeneralRegisterPayload {
+        return GeneralRegisterPayload{ .value16 = self._SS };
     }
-    pub fn setIP(self: *Register, value: u16) void {
+    pub fn setIP(self: *BusInterfaceUnit, value: u16) void {
         self._IP = value;
     }
-    pub fn getIP(self: *Register) RegisterPayload {
-        return RegisterPayload{ .value16 = self._IP };
+    pub fn getIP(self: *BusInterfaceUnit) GeneralRegisterPayload {
+        return GeneralRegisterPayload{ .value16 = self._IP };
     }
 
-    // Flag Methods
-    pub fn setAF(self: *Register, state: bool) void {
-        self._AF = state;
-    }
-    pub fn getAF(self: *Register) bool {
-        return self._AF;
-    }
-    pub fn setCF(self: *Register, state: bool) void {
-        self._CF = state;
-    }
-    pub fn getCF(self: *Register) bool {
-        return self._CF;
-    }
-    pub fn setOF(self: *Register, state: bool) void {
-        self._OF = state;
-    }
-    pub fn getOF(self: *Register) bool {
-        return self._OF;
-    }
-    pub fn setSF(self: *Register, state: bool) void {
-        self._SF = state;
-    }
-    pub fn getSF(self: *Register) bool {
-        return self._SF;
-    }
-    pub fn setPF(self: *Register, state: bool) void {
-        self._PF = state;
-    }
-    pub fn getPF(self: *Register) bool {
-        return self._PF;
-    }
-    pub fn setZF(self: *Register, state: bool) void {
-        self._ZF = state;
-    }
-    pub fn getZF(self: *Register) bool {
-        return self._ZF;
-    }
-    pub fn setDF(self: *Register, state: bool) void {
-        self._DF = state;
-    }
-    pub fn getDF(self: *Register) bool {
-        return self._DF;
-    }
-    pub fn setIF(self: *Register, state: bool) void {
-        self._IF = state;
-    }
-    pub fn getIF(self: *Register) bool {
-        return self._IF;
-    }
-    pub fn setTF(self: *Register, state: bool) void {
-        self._TF = state;
-    }
-    pub fn getTF(self: *Register) bool {
-        return self._TF;
-    }
+    //         Mod = 11      |           EFFECTIVE ADDRESS CALCULATION
+    // -------------------------------------------------------------------------------
+    // R/M | W=0|  W=1 | R/M |   MOD = 00     |      MOD = 01    |      MOD = 10
+    // -------------------------------------------------------------------------------
+    // 000 | AL |  AX  | 000 | (BX) + (SI)    | (BX) + (SI) + D8 | (BX) + (SI) + D16
+    // 001 | CL |  CX  | 001 | (BX) + (DI)    | (BX) + (DI) + D8 | (BX) + (DI) + D16
+    // 010 | DL |  DX  | 010 | (BP) + (SI)    | (BP) + (SI) + D8 | (BP) + (SI) + D16
+    // 011 | BL |  BX  | 011 | (BP) + (DI)    | (BP) + (DI) + D8 | (BP) + (DI) + D16
+    // 100 | AH |  SP  | 100 | (SI)           | (SI) + D8        | (SI) + D16
+    // 101 | CH |  BP  | 101 | (DI)           | (DI) + D8        | (DI) + D16
+    // 110 | DH |  SI  | 110 | DIRECT ADDRESS | (BP) + D8        | (BP) + D16
+    // 111 | BH |  DI  | 111 | (BX)           | (BX) + D8        | (BX) + D16
 
-    // General Register Methods
-    pub fn setAH(self: *Register, value: u8) void {
-        self._AX = value ++ self._AX[0..8];
-    }
-    pub fn setAL(self: *Register, value: u8) void {
-        self._AX = self._AX[8..] ++ value;
-    }
-    pub fn setAX(self: *Register, value: u16) void {
-        self._AX = value;
-    }
-    pub fn getAX(self: *Register, w: WValue, hilo: []const u8) RegisterPayload {
-        if (w == WValue.byte) {
-            if (std.mem.eql([]const u8, hilo, "hi")) {
-                return self._AX[0..8];
-            } else {
-                return self._AX[8..];
-            }
+    // TODO: DocString
+
+    pub fn calculateEffectiveAddress(
+        execution_unit: *ExecutionUnit,
+        mod: ModValue,
+        rm: RmValue,
+        disp_lo: ?u8,
+        disp_hi: ?u8,
+    ) EffectiveAddressCalculation {
+        const Address = AddressBook.RegisterNames;
+        var disp_format: DisplacementFormat = undefined;
+        var disp_value: u16 = undefined;
+        if (mod == ModValue.memoryMode16BitDisplacement) {
+            disp_format = DisplacementFormat.d16;
+            disp_value = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
+        } else if (mod == ModValue.memoryMode8BitDisplacement) {
+            disp_format = DisplacementFormat.d8;
+            disp_value = @as(u16, disp_lo.?);
         } else {
-            return self._AX;
+            disp_format = DisplacementFormat.none;
+            disp_value = 0;
         }
-    }
-    pub fn setBH(self: *Register, value: u8) void {
-        self._BX = value ++ self._BX[0..8];
-    }
-    pub fn setBL(self: *Register, value: u8) void {
-        self._BX = self._BX[8..] ++ value;
-    }
-    pub fn setBX(self: *Register, value: u16) void {
-        self._BX = value;
-    }
 
-    /// Returns value of BH, BL or BX depending on w and hilo. If
-    /// w = byte, hilo can be set to "hi" or "lo". If w = word hilo
-    /// should be set to "hilo"
-    pub fn getBX(self: *Register, w: WValue, hilo: ?[]const u8) RegisterPayload {
-        if (w == WValue.byte) {
-            if (std.mem.eql(u8, hilo.?, "hi")) {
-                return RegisterPayload{ .value8 = @intCast(self._BX >> 8) };
-            } else {
-                self._BX = self._BX << 8;
-                return RegisterPayload{ .value8 = @intCast(self._BX >> 8) };
-            }
-        } else {
-            return RegisterPayload{ .value16 = self._BX };
+        var base_value: u20 = undefined;
+        var index_value: u20 = undefined;
+        switch (rm) {
+            .ALAX_BXSI_BXSID8_BXSID16 => {
+                base_value = @as(u20, execution_unit.getBX(WValue.word, null).value16);
+                index_value = @as(u20, execution_unit.getSI());
+            },
+            .DLDX_BPSI_BPSID8_BPSID16 => {
+                base_value = @as(u20, execution_unit.getBP());
+                index_value = @as(u20, execution_unit.getSI());
+            },
+            .CLCX_BXDI_BXDID8_BXDID16 => {
+                base_value = @as(u20, execution_unit.getBX(WValue.word, null).value16);
+                index_value = @as(u20, execution_unit.getDI());
+            },
+            .BLBX_BPDI_BPDID8_BPDID16 => {
+                base_value = @as(u20, execution_unit.getBP());
+                index_value = @as(u20, execution_unit.getDI());
+            },
+            .AHSP_SI_SID8_SID16 => {
+                base_value = @as(u20, execution_unit.getSI());
+                index_value = 0;
+            },
+            .CHBP_DI_DID8_DID16 => {
+                base_value = @as(u20, execution_unit.getDI());
+                index_value = 0;
+            },
+            .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+                base_value = @as(u20, execution_unit.getBP());
+                index_value = 0;
+            },
+            .BHDI_BX_BXD8_BXD16 => {
+                base_value = @as(u20, execution_unit.getBX(WValue.word, null).value16);
+                index_value = 0;
+            },
         }
-    }
-    pub fn setCH(self: *Register, value: u8) void {
-        self._CX = value ++ self._CX[0..8];
-    }
-    pub fn setCL(self: *Register, value: u8) void {
-        self._CX = self._CX[8..] ++ value;
-    }
-    pub fn setCX(self: *Register, value: u16) void {
-        self._CX = value;
-    }
-    pub fn getCX(self: *Register, w: WValue, hilo: []const u8) RegisterPayload {
-        if (w == WValue.byte) {
-            if (std.mem.eql([]const u8, hilo, "hi")) {
-                return self._CX[0..8];
-            } else {
-                return self._CX[8..];
-            }
-        } else {
-            return self._CX;
-        }
-    }
-    pub fn setDH(self: *Register, value: u8) void {
-        self._DX = value ++ self._DX[0..8];
-    }
-    pub fn setDL(self: *Register, value: u8) void {
-        self._DX = self._DX[8..] ++ value;
-    }
-    pub fn setDX(self: *Register, value: u16) void {
-        self._DX = value;
-    }
-    pub fn getDX(self: *Register, w: WValue, hilo: []const u8) RegisterPayload {
-        if (w == WValue.byte) {
-            if (std.mem.eql([]const u8, hilo, "hi")) {
-                return self._DX[0..8];
-            } else {
-                return self._DX[8..];
-            }
-        } else {
-            return self._DX;
-        }
-    }
-    pub fn setSP(self: *Register, value: u16) void {
-        self._SP = value;
-    }
-    pub fn getSP(self: *Register) u16 {
-        return self._SP;
-    }
-    pub fn setBP(self: *Register, value: u16) void {
-        self._BP = value;
-    }
-    pub fn getBP(self: *Register) u16 {
-        return self._BP;
-    }
-    pub fn setSI(self: *Register, value: u16) void {
-        self._SI = value;
-    }
-    pub fn getSI(self: *Register) u16 {
-        return self._SI;
-    }
-    pub fn setDI(self: *Register, value: u16) void {
-        self._DI = value;
-    }
-    pub fn getDI(self: *Register) u16 {
-        return self._DI;
-    }
-};
 
-// TODO: Move MemoryError to errors.zig
-
-const MemoryError = error{
-    ValueError,
-    OutOfBoundError,
-};
-
-// TODO: Move MemoryPayload to types.zig
-
-const MemoryPayload = union {
-    err: MemoryError,
-    value8: u8,
-    value16: u16,
+        return EffectiveAddressCalculation{
+            .base = switch (rm) {
+                .ALAX_BXSI_BXSID8_BXSID16,
+                .CLCX_BXDI_BXDID8_BXDID16,
+                => Address.bx,
+                .DLDX_BPSI_BPSID8_BPSID16,
+                .BLBX_BPDI_BPDID8_BPDID16,
+                => Address.bp,
+                .AHSP_SI_SID8_SID16 => Address.si,
+                .CHBP_DI_DID8_DID16 => Address.di,
+                .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.bp,
+                .BHDI_BX_BXD8_BXD16 => Address.bx,
+            },
+            .index = switch (rm) {
+                .ALAX_BXSI_BXSID8_BXSID16,
+                .DLDX_BPSI_BPSID8_BPSID16,
+                => Address.si,
+                .CLCX_BXDI_BXDID8_BXDID16,
+                .BLBX_BPDI_BPDID8_BPDID16,
+                => Address.di,
+                .AHSP_SI_SID8_SID16,
+                .CHBP_DI_DID8_DID16,
+                .DHSI_DIRECTACCESS_BPD8_BPD16,
+                .BHDI_BX_BXD8_BXD16,
+                => Address.none,
+            },
+            .displacement = disp_format,
+            .displacement_value = disp_value,
+            .effective_address = base_value + index_value + disp_value,
+        };
+    }
 };
 
 // 8086 Memory
@@ -408,18 +261,30 @@ const MemoryPayload = union {
 //                                          |      location from the beginning of the segment.
 //                                          |      segment base and offset are u16
 
+pub const MemoryPayload = union {
+    err: MemoryError,
+    value8: u8,
+    value16: u16,
+};
+
 /// Simulates the memory of the 8086 Processor
 pub const Memory = struct {
-    _memory: [0xFFFFF]u8 = undefined,
+    _memory: [0xFFFFF]u1 = undefined,
 
     // byte     0x0 -    0x13 = dedicated
     // byte    0x14 -    0x7F = reserved
     // byte    0x80 - 0xFFFEF = open
     // byte 0xFFFF0 - 0xFFFFB = dedicated
     // byte 0xFFFFC - 0xFFFFF = reserved
-    pub fn init(self: *Memory) void {
-        self._memory = [1]u8{0} ** 0xFFFFF;
+
+    /// Taking a already allocated piece of memory sized 1024 kb this
+    /// constructor returns a Memory instance.
+    pub fn init(allocated_memory: *[0xFFFFF]u1) Memory {
+        return Memory{
+            ._memory = allocated_memory.*,
+        };
     }
+
     pub fn setDirectAddress(
         self: *Memory,
         addr: u16!u8,
@@ -465,5 +330,425 @@ pub const Memory = struct {
             };
             return payload;
         }
+    }
+};
+
+// Status Flags:
+//
+// AF - Auxiliary Carry flag
+// CF - Carry flag
+// OF - Overflow flag
+// SF - Sign flag
+// PF - Parity flag
+// ZF - Zero flag
+//
+// Control Flags:
+//
+// DF - Direction flag
+// IF - Interrupt-enable flag
+// TF - Trap flag
+//
+// 8086 General Register
+//
+// |76543210 76543210|
+// |--------|--------|                          AX - Word multiply, word divide, word i/o
+// |   AH   |   AL   | AX - ACCUMULATOR         AL - Byte multiply, byte divide, byte i/o, translate, decimal arithmatic
+// |--------|--------|                          AH - Byte multiply, byte divide
+// |   BH   |   BL   | BX - BASE                BX - Translate
+// |--------|--------|
+// |   CH   |   CL   | CX - COUNT               CX - String operations, loops
+// |--------|--------|                          CL - Variable shift and rotate
+// |   DH   |   DL   | DX - DATA                DX - Word multiply, word divide, indirect i/o
+// |--------|--------|
+// |        SP       | SP - STACK POINTER       SP - Stack operations
+// |--------X--------|
+// |        BP       | BP - BASE POINTER
+// |--------X--------|
+// |        SI       | SI - SOURCE INDEX        SI - String operations
+// |--------X--------|
+// |        DI       | DI - DESTINATION INDEX   DI - String operations
+// |--------X--------|
+// |76543210 76543210|
+
+/// Simulates the EU of the 8086 processor. It consists of the
+/// General Registers, Opareands, the Arithmetic/Logic Unit and the Control Flags.
+/// It executes decoded x86 instructions.
+pub const ExecutionUnit = struct {
+    pub const InitValues = struct {
+        _AF: bool,
+        _CF: bool,
+        _OF: bool,
+        _SF: bool,
+        _PF: bool,
+        _ZF: bool,
+        _DF: bool,
+        _IF: bool,
+        _TF: bool,
+        _AX: u16,
+        _BX: u16,
+        _CX: u16,
+        _DX: u16,
+        _SP: u16,
+        _BP: u16,
+        _SI: u16,
+        _DI: u16,
+    };
+
+    _initialized: bool = false,
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Status Flags
+    ////////////////////////////////////////////////////////////////////////////
+
+    /// Auxiliary Carry flag
+    _AF: bool,
+    /// Carry flag
+    _CF: bool,
+    /// Overflow flag
+    _OF: bool,
+    /// Sign flag
+    _SF: bool,
+    /// Parity flag
+    _PF: bool,
+    /// Zero flag
+    _ZF: bool,
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Control Flags
+    ////////////////////////////////////////////////////////////////////////////
+
+    /// Direction flag
+    _DF: bool,
+    /// Interrupt-enable flag
+    _IF: bool,
+    /// Trap flag
+    _TF: bool,
+
+    ////////////////////////////////////////////////////////////////////////////
+    // General Registers
+    ////////////////////////////////////////////////////////////////////////////
+
+    /// Accumulator
+    _AX: u16,
+    /// Base
+    _BX: u16,
+    /// Count
+    _CX: u16,
+    /// Data
+    _DX: u16,
+    /// Stack Pointer
+    _SP: u16,
+    /// Base Pointer
+    _BP: u16,
+    /// Source Index (Offset)
+    _DI: u16,
+    /// Destination Index (Offset)
+    _SI: u16,
+
+    pub fn init(
+        init_values: InitValues,
+    ) ExecutionUnit {
+        return .{
+            ._initialized = true,
+            ._AF = init_values._AF,
+            ._CF = init_values._CF,
+            ._OF = init_values._OF,
+            ._SF = init_values._SF,
+            ._PF = init_values._PF,
+            ._ZF = init_values._ZF,
+            ._DF = init_values._DF,
+            ._IF = init_values._IF,
+            ._TF = init_values._TF,
+            ._AX = init_values._AX,
+            ._BX = init_values._BX,
+            ._CX = init_values._CX,
+            ._DX = init_values._DX,
+            ._SP = init_values._SP,
+            ._BP = init_values._BP,
+            ._SI = init_values._SI,
+            ._DI = init_values._DI,
+        };
+    }
+
+    pub fn getReg16FromRegValue(
+        self: *ExecutionUnit,
+        reg: RegValue,
+    ) GeneralRegisterPayload {
+        switch (reg) {
+            .ALAX => {
+                return GeneralRegisterPayload{
+                    .value16 = self._AX,
+                };
+            },
+            .BLBX => {
+                return GeneralRegisterPayload{
+                    .value16 = self._BX,
+                };
+            },
+            .CLCX => {
+                return GeneralRegisterPayload{
+                    .value16 = self._CX,
+                };
+            },
+            .DLDX => {
+                return GeneralRegisterPayload{
+                    .value16 = self._DX,
+                };
+            },
+            .AHSP => {
+                return GeneralRegisterPayload{
+                    .value16 = self._SP,
+                };
+            },
+            .BHDI => {
+                return GeneralRegisterPayload{
+                    .value16 = self._DI,
+                };
+            },
+            .CHBP => {
+                return GeneralRegisterPayload{
+                    .value16 = self._BP,
+                };
+            },
+            .DHSI => {
+                return GeneralRegisterPayload{
+                    .value16 = self._SI,
+                };
+            },
+        }
+    }
+
+    pub fn next(
+        instruction_data: InstructionData,
+    ) InstructionExecutionError!void {
+        const log = std.log.scoped(.executeInstruction);
+        defer log.info("{t} has been executed", .{instruction_data});
+
+        switch (instruction_data) {
+            InstructionData.accumulator_op,
+            InstructionData.escape_op,
+            InstructionData.register_memory_to_from_register_op,
+            InstructionData.register_memory_op,
+            InstructionData.immediate_to_register_op,
+            InstructionData.immediate_op,
+            InstructionData.segment_register_op,
+            InstructionData.identifier_add_op,
+            InstructionData.identifier_rol_op,
+            InstructionData.identifier_test_op,
+            InstructionData.identifier_inc_op,
+            InstructionData.direct_op,
+            InstructionData.single_byte_op,
+            => {
+                log.info("Instruction execution not yet implemented.");
+            },
+            else => return InstructionExecutionError.InvalidInstruction,
+        }
+    }
+
+    // Status Flag methods
+    pub fn setAF(self: *ExecutionUnit, state: bool) void {
+        self._AF = state;
+    }
+
+    pub fn getAF(self: *ExecutionUnit) bool {
+        return self._AF;
+    }
+
+    pub fn setCF(self: *ExecutionUnit, state: bool) void {
+        self._CF = state;
+    }
+
+    pub fn getCF(self: *ExecutionUnit) bool {
+        return self._CF;
+    }
+
+    pub fn setOF(self: *ExecutionUnit, state: bool) void {
+        self._OF = state;
+    }
+
+    pub fn getOF(self: *ExecutionUnit) bool {
+        return self._OF;
+    }
+
+    pub fn setSF(self: *ExecutionUnit, state: bool) void {
+        self._SF = state;
+    }
+
+    pub fn getSF(self: *ExecutionUnit) bool {
+        return self._SF;
+    }
+
+    pub fn setPF(self: *ExecutionUnit, state: bool) void {
+        self._PF = state;
+    }
+
+    pub fn getPF(self: *ExecutionUnit) bool {
+        return self._PF;
+    }
+
+    pub fn setZF(self: *ExecutionUnit, state: bool) void {
+        self._ZF = state;
+    }
+
+    pub fn getZF(self: *ExecutionUnit) bool {
+        return self._ZF;
+    }
+
+    // Control Flag methods
+    pub fn setDF(self: *ExecutionUnit, state: bool) void {
+        self._DF = state;
+    }
+
+    pub fn getDF(self: *ExecutionUnit) bool {
+        return self._DF;
+    }
+
+    pub fn setIF(self: *ExecutionUnit, state: bool) void {
+        self._IF = state;
+    }
+
+    pub fn getIF(self: *ExecutionUnit) bool {
+        return self._IF;
+    }
+
+    pub fn setTF(self: *ExecutionUnit, state: bool) void {
+        self._TF = state;
+    }
+
+    pub fn getTF(self: *ExecutionUnit) bool {
+        return self._TF;
+    }
+
+    // General Register methods
+    pub fn setAH(self: *ExecutionUnit, value: u8) void {
+        self._AX = value ++ self._AX[0..8];
+    }
+
+    pub fn setAL(self: *ExecutionUnit, value: u8) void {
+        self._AX = self._AX[8..] ++ value;
+    }
+
+    pub fn setAX(self: *ExecutionUnit, value: u16) void {
+        self._AX = value;
+    }
+
+    pub fn getAX(self: *ExecutionUnit, w: WValue, hilo: []const u8) GeneralRegisterPayload {
+        if (w == WValue.byte) {
+            if (std.mem.eql([]const u8, hilo, "hi")) {
+                return self._AX[0..8];
+            } else {
+                return self._AX[8..];
+            }
+        } else {
+            return self._AX;
+        }
+    }
+
+    pub fn setBH(self: *ExecutionUnit, value: u8) void {
+        self._BX = value ++ self._BX[0..8];
+    }
+
+    pub fn setBL(self: *ExecutionUnit, value: u8) void {
+        self._BX = self._BX[8..] ++ value;
+    }
+
+    pub fn setBX(self: *ExecutionUnit, value: u16) void {
+        self._BX = value;
+    }
+
+    /// Returns value of BH, BL or BX depending on w and hilo. If
+    /// w = byte, hilo can be set to "hi" or "lo". If w = word hilo
+    /// should be set to "hilo"
+    pub fn getBX(self: *ExecutionUnit, w: WValue, hilo: ?[]const u8) GeneralRegisterPayload {
+        if (w == WValue.byte) {
+            if (std.mem.eql(u8, hilo.?, "hi")) {
+                return GeneralRegisterPayload{ .value8 = @intCast(self._BX >> 8) };
+            } else {
+                self._BX = self._BX << 8;
+                return GeneralRegisterPayload{ .value8 = @intCast(self._BX >> 8) };
+            }
+        } else {
+            return GeneralRegisterPayload{ .value16 = self._BX };
+        }
+    }
+
+    pub fn setCH(self: *ExecutionUnit, value: u8) void {
+        self._CX = value ++ self._CX[0..8];
+    }
+
+    pub fn setCL(self: *ExecutionUnit, value: u8) void {
+        self._CX = self._CX[8..] ++ value;
+    }
+
+    pub fn setCX(self: *ExecutionUnit, value: u16) void {
+        self._CX = value;
+    }
+
+    pub fn getCX(self: *ExecutionUnit, w: WValue, hilo: []const u8) GeneralRegisterPayload {
+        if (w == WValue.byte) {
+            if (std.mem.eql([]const u8, hilo, "hi")) {
+                return self._CX[0..8];
+            } else {
+                return self._CX[8..];
+            }
+        } else {
+            return self._CX;
+        }
+    }
+
+    pub fn setDH(self: *ExecutionUnit, value: u8) void {
+        self._DX = value ++ self._DX[0..8];
+    }
+
+    pub fn setDL(self: *ExecutionUnit, value: u8) void {
+        self._DX = self._DX[8..] ++ value;
+    }
+
+    pub fn setDX(self: *ExecutionUnit, value: u16) void {
+        self._DX = value;
+    }
+
+    pub fn getDX(self: *ExecutionUnit, w: WValue, hilo: []const u8) GeneralRegisterPayload {
+        if (w == WValue.byte) {
+            if (std.mem.eql([]const u8, hilo, "hi")) {
+                return self._DX[0..8];
+            } else {
+                return self._DX[8..];
+            }
+        } else {
+            return self._DX;
+        }
+    }
+
+    pub fn setSP(self: *ExecutionUnit, value: u16) void {
+        self._SP = value;
+    }
+
+    pub fn getSP(self: *ExecutionUnit) u16 {
+        return self._SP;
+    }
+
+    pub fn setBP(self: *ExecutionUnit, value: u16) void {
+        self._BP = value;
+    }
+
+    pub fn getBP(self: *ExecutionUnit) u16 {
+        return self._BP;
+    }
+
+    pub fn setSI(self: *ExecutionUnit, value: u16) void {
+        self._SI = value;
+    }
+
+    pub fn getSI(self: *ExecutionUnit) u16 {
+        return self._SI;
+    }
+
+    pub fn setDI(self: *ExecutionUnit, value: u16) void {
+        self._DI = value;
+    }
+
+    pub fn getDI(self: *ExecutionUnit) u16 {
+        return self._DI;
     }
 };

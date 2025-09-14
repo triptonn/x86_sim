@@ -8,6 +8,10 @@
 //
 // ========================================================================
 
+const locator = @import("locator.zig");
+const AddressBook = locator.AddressBook;
+const DisplacementFormat = locator.DisplacementFormat;
+
 pub const instruction_field_names = struct {
     /// 0 for no sign extension, 1 for extending 8-bit immediate data to 16 bits if W = 1
     pub const SValue = enum(u1) { no_sign = 0b0, sign_extend = 0b1 };
@@ -66,5 +70,15 @@ pub const instruction_field_names = struct {
         CHBP_DI_DID8_DID16 = 0b101,
         DHSI_DIRECTACCESS_BPD8_BPD16 = 0b110,
         BHDI_BX_BXD8_BXD16 = 0b111,
+    };
+};
+
+pub const data_types = struct {
+    pub const EffectiveAddressCalculation = struct {
+        base: ?AddressBook.RegisterNames,
+        index: ?AddressBook.RegisterNames,
+        displacement: ?DisplacementFormat,
+        displacement_value: ?u16,
+        effective_address: ?u20,
     };
 };

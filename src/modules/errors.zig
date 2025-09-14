@@ -39,3 +39,8 @@ pub const DiassembleError = error{
 pub const BiuError = error{
     InvalidIndex,
 };
+
+pub const MemoryError = error{
+    ValueError,
+    OutOfBoundError,
+};
