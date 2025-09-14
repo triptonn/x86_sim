@@ -334,6 +334,156 @@ pub fn next(
         .accumulator_op => {
             const accumulator_op: AccumulatorOp = instruction_data.accumulator_op;
             try OutputWriter.print("{s} ", .{accumulator_op.mnemonic});
+
+            const opcode = accumulator_op.opcode;
+            const w = accumulator_op.w;
+            const data_8 = accumulator_op.data_8;
+            const data_lo = accumulator_op.data_lo;
+            const data_hi = accumulator_op.data_hi;
+            const addr_lo = accumulator_op.addr_lo;
+            const addr_hi = accumulator_op.addr_hi;
+            const instruction_info: InstructionInfo = switch (opcode) {
+
+                //
+                BinaryInstructions.add_al_immed8,
+                BinaryInstructions.add_ax_immed16,
+                BinaryInstructions.or_al_immed8,
+                BinaryInstructions.or_ax_immed16,
+                BinaryInstructions.adc_al_immed8,
+                BinaryInstructions.adc_ax_immed16,
+                BinaryInstructions.sbb_al_immed8,
+                BinaryInstructions.sbb_ax_immed16,
+                BinaryInstructions.and_al_immed8,
+                BinaryInstructions.and_ax_immed16,
+                BinaryInstructions.sub_al_immed8,
+                BinaryInstructions.sub_ax_immed16,
+                BinaryInstructions.xor_al_immed8,
+                BinaryInstructions.xor_ax_immed16,
+                BinaryInstructions.cmp_al_immed8,
+                BinaryInstructions.cmp_ax_immed16,
+                BinaryInstructions.test_al_immed8,
+                BinaryInstructions.test_ax_immed16,
+                BinaryInstructions.in_al_dx,
+                BinaryInstructions.in_ax_dx,
+                BinaryInstructions.out_al_dx,
+                BinaryInstructions.out_ax_dx,
+                => locator.getImmediateToAccumulatorDest(
+                    w.?,
+                    data_8,
+                    data_lo,
+                    data_hi,
+                ),
+
+                // Direct address (offset) addr_lo, addr_hi
+                BinaryInstructions.mov_al_mem8,
+                BinaryInstructions.mov_ax_mem16,
+                => locator.getMemToAccSourceAndDest(
+                    w.?,
+                    addr_lo,
+                    addr_hi,
+                ),
+                BinaryInstructions.mov_mem8_al,
+                BinaryInstructions.mov_mem16_ax,
+                => locator.getAccToMemSourceAndDest(
+                    w.?,
+                    addr_lo,
+                    addr_hi,
+                ),
+                else => return InstructionDecodeError.InstructionError,
+            };
+
+            const destination: DestinationInfo = instruction_info.destination_info;
+            switch (destination) {
+                DestinationInfo.address => {
+                    log.info("{t}, ", .{destination.address});
+                    OutputWriter.print(
+                        "{t}, ",
+                        .{destination.address},
+                    ) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write destination {t} the output file.",
+                            .{ @errorName(err), destination.address },
+                        );
+                    };
+                },
+                DestinationInfo.mem_addr => {
+                    log.info("[{d}],", .{destination.mem_addr});
+                    OutputWriter.print("[{d}], ", .{
+                        destination.mem_addr,
+                    }) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write to memory address [{d}] to the output file.",
+                            .{ @errorName(err), destination.mem_addr },
+                        );
+                    };
+                },
+                else => return InstructionDecodeError.InstructionError,
+            }
+
+            const source: SourceInfo = instruction_info.source_info;
+            switch (source) {
+                SourceInfo.address => {
+                    log.info("{t}", .{source.address});
+                    OutputWriter.print(
+                        "{t}\n",
+                        .{source.address},
+                    ) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write source {any} to the output file.",
+                            .{ @errorName(err), source.address },
+                        );
+                    };
+                },
+                SourceInfo.immediate => {
+                    if (opcode == BinaryInstructions.mov_mem8_immed8) {
+                        log.info("byte {d}", .{source.immediate});
+                        OutputWriter.print(
+                            "byte {d}\n",
+                            .{source.immediate},
+                        ) catch |err| {
+                            log.err(
+                                "{s}: Something went wrong trying to write source index {any} to the output file.",
+                                .{ @errorName(err), source.immediate },
+                            );
+                        };
+                    } else if (opcode == BinaryInstructions.mov_mem16_immed16) {
+                        log.info("word {d}", .{source.immediate});
+                        OutputWriter.print(
+                            "word {d}\n",
+                            .{source.immediate},
+                        ) catch |err| {
+                            log.err(
+                                "{s}: Something went wrong trying to write source index {any} to the output file.",
+                                .{ @errorName(err), source.immediate },
+                            );
+                        };
+                    } else {
+                        log.info("{d}", .{source.immediate});
+                        OutputWriter.print(
+                            "{d}\n",
+                            .{source.immediate},
+                        ) catch |err| {
+                            log.err(
+                                "{s}: Something went wrong trying to write source index {any} to the output file.",
+                                .{ @errorName(err), source.immediate },
+                            );
+                        };
+                    }
+                },
+                SourceInfo.mem_addr => {
+                    log.info("[{d}]", .{source.mem_addr});
+                    OutputWriter.print(
+                        "[{d}]\n",
+                        .{source.mem_addr},
+                    ) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write source index {any} to the output file.",
+                            .{ @errorName(err), source.mem_addr },
+                        );
+                    };
+                },
+                else => return InstructionDecodeError.InstructionError,
+            }
         },
         .escape_op => {
             const escape_op: EscapeOp = instruction_data.escape_op;
@@ -357,8 +507,18 @@ pub fn next(
                 reg,
                 mod,
                 rm,
-                null,
-                null,
+                switch (mod) {
+                    ModValue.memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) register_memory_to_from_register_op.disp_lo else null,
+                    ModValue.memoryMode8BitDisplacement => register_memory_to_from_register_op.disp_lo,
+                    ModValue.memoryMode16BitDisplacement => register_memory_to_from_register_op.disp_lo,
+                    ModValue.registerModeNoDisplacement => null,
+                },
+                switch (mod) {
+                    ModValue.memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) register_memory_to_from_register_op.disp_hi else null,
+                    ModValue.memoryMode8BitDisplacement => null,
+                    ModValue.memoryMode16BitDisplacement => register_memory_to_from_register_op.disp_hi,
+                    ModValue.registerModeNoDisplacement => null,
+                },
             );
 
             const destination: DestinationInfo = instruction_info.destination_info;

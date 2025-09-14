@@ -293,11 +293,11 @@ pub fn getImmediateToRegMovDest(w: WValue, reg: RegValue, data: u8, w_data: ?u8)
     };
 }
 
-pub fn getAddImmediateToAccumulatorDest(
-    // execution_unit: *ExecutionUnit,
+pub fn getImmediateToAccumulatorDest(
     w: WValue,
-    data: u8,
-    w_data: ?u8,
+    data_8: ?u8,
+    data_lo: ?u8,
+    data_hi: ?u8,
 ) InstructionInfo {
     const Address = AddressBook.RegisterNames;
     var dest: Address = undefined;
@@ -305,7 +305,7 @@ pub fn getAddImmediateToAccumulatorDest(
     var immediate_16: u16 = undefined;
     if (w == WValue.byte) {
         dest = Address.al;
-        immediate_8 = data;
+        immediate_8 = data_8.?;
         return InstructionInfo{
             .destination_info = DestinationInfo{
                 .address = dest,
@@ -316,7 +316,7 @@ pub fn getAddImmediateToAccumulatorDest(
         };
     } else {
         dest = Address.ax;
-        immediate_16 = (@as(u16, w_data.?) << 8) + @as(u16, data);
+        immediate_16 = (@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?);
         return InstructionInfo{
             .destination_info = DestinationInfo{
                 .address = dest,
@@ -1717,7 +1717,7 @@ pub fn getSegToRegMemMovSourceAndDest(
     };
 }
 
-pub fn getMemToAccMovSourceAndDest(
+pub fn getMemToAccSourceAndDest(
     w: WValue,
     addr_lo: ?u8,
     addr_hi: ?u8,
@@ -1751,7 +1751,7 @@ pub fn getMemToAccMovSourceAndDest(
     };
 }
 
-pub fn getAccToMemMovSourceAndDest(
+pub fn getAccToMemSourceAndDest(
     w: WValue,
     addr_lo: ?u8,
     addr_hi: ?u8,
