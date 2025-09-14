@@ -23,6 +23,20 @@ const SrValue = types.instruction_field_names.SrValue;
 const decoder = @import("decoder.zig");
 const BinaryInstructions = decoder.BinaryInstructions;
 const InstructionData = decoder.InstructionData;
+const AccumulatorOp = decoder.AccumulatorOp;
+const EscapeOp = decoder.EscapeOp;
+const RegisterMemoryToFromRegisterOp = decoder.RegisterMemoryToFromRegisterOp;
+const RegisterMemoryOp = decoder.RegisterMemoryOp;
+const RegisterOp = decoder.RegisterOp;
+const ImmediateToRegisterOp = decoder.ImmediateToRegisterOp;
+const ImmediateOp = decoder.ImmediateOp;
+const SegmentRegisterOp = decoder.SegmentRegisterOp;
+const IdentifierAddOp = decoder.IdentifierAddOp;
+const IdentifierRolOp = decoder.IdentifierRolOp;
+const IdentifierTestOp = decoder.IdentifierTestOp;
+const IdentifierIncOp = decoder.IdentifierIncOp;
+const DirectOp = decoder.DirectOp;
+const SingleByteOp = decoder.SingleByteOp;
 
 const hardware = @import("hardware.zig");
 const ExecutionUnit = hardware.ExecutionUnit;
@@ -309,30 +323,436 @@ fn printEffectiveAddressCalculationSource(
 pub fn next(
     EU: *ExecutionUnit,
     // BIU: *BusInterfaceUnit,
-    // OutputWriter: *std.io.Writer,
+    OutputWriter: *std.io.Writer,
     instruction_data: InstructionData,
 ) InstructionDecodeError!void {
     const log = std.log.scoped(.next);
     switch (instruction_data) {
-        .err => {
-            const _af_value = EU.getAF();
-            log.info("{}", .{_af_value});
+        .err => |err| {
+            log.err("{s}: {any} occured.", .{ @errorName(err), err });
         },
-        .accumulator_op => {},
-        .escape_op => {},
-        .register_memory_to_from_register_op => {},
-        .register_memory_op => {},
-        .register_op => {},
-        .immediate_to_register_op => {},
-        .immediate_op => {},
-        .segment_register_op => {},
-        .identifier_add_op => {},
-        .identifier_rol_op => {},
-        .identifier_test_op => {},
-        .identifier_inc_op => {},
-        .direct_op => {},
-        .single_byte_op => {},
-        // else => return InstructionDecodeError.NotYetImplemented,
+        .accumulator_op => {
+            const accumulator_op: AccumulatorOp = instruction_data.accumulator_op;
+            try OutputWriter.print("{s} ", .{accumulator_op.mnemonic});
+        },
+        .escape_op => {
+            const escape_op: EscapeOp = instruction_data.escape_op;
+            try OutputWriter.print("{s} ", .{escape_op.mnemonic});
+        },
+        .register_memory_to_from_register_op => {
+            const register_memory_to_from_register_op: RegisterMemoryToFromRegisterOp = instruction_data.register_memory_to_from_register_op;
+            try OutputWriter.print("{s} ", .{register_memory_to_from_register_op.mnemonic});
+
+            const opcode = register_memory_to_from_register_op.opcode;
+            const d = register_memory_to_from_register_op.d;
+            const w = register_memory_to_from_register_op.w;
+            const mod = register_memory_to_from_register_op.mod;
+            const reg = register_memory_to_from_register_op.reg;
+            const rm = register_memory_to_from_register_op.rm;
+
+            const instruction_info: InstructionInfo = locator.getRegMemToFromRegSourceAndDest(
+                EU,
+                d.?,
+                w.?,
+                reg,
+                mod,
+                rm,
+                null,
+                null,
+            );
+
+            const destination: DestinationInfo = instruction_info.destination_info;
+            const source: SourceInfo = instruction_info.source_info;
+
+            switch (destination) {
+                .address => {
+                    log.info("{t}, ", .{destination.address});
+                    OutputWriter.print(
+                        "{t}, ",
+                        .{destination.address},
+                    ) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write destination {t} the output file.",
+                            .{ @errorName(err), destination.address },
+                        );
+                    };
+                },
+                .address_calculation => {
+                    const Address = AddressBook.RegisterNames;
+                    if (destination.address_calculation.index == Address.none) {
+                        if (destination.address_calculation.displacement == DisplacementFormat.none) {
+                            log.info("[{t}], ", .{
+                                destination.address_calculation.base.?,
+                            });
+                            OutputWriter.print("[{t}], ", .{
+                                destination.address_calculation.base.?,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), destination.address_calculation },
+                                );
+                            };
+                        } else if (destination.address_calculation.displacement != DisplacementFormat.none and destination.address_calculation.displacement_value.? == 0) {
+                            log.info("[{t}], ", .{
+                                destination.address_calculation.base.?,
+                            });
+                            OutputWriter.print("[{t}], ", .{
+                                destination.address_calculation.base.?,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), destination.address_calculation },
+                                );
+                            };
+                        } else if (destination.address_calculation.displacement != DisplacementFormat.none) {
+                            const disp_u16: u16 = @intCast(destination.address_calculation.displacement_value.?);
+                            const disp_signed: i16 = if (destination.address_calculation.displacement == DisplacementFormat.d8) blk: {
+                                const u8val: u8 = @intCast(disp_u16 & 0xFF);
+                                const s8: i8 = @bitCast(u8val);
+                                break :blk @as(i16, s8);
+                            } else blk: {
+                                const s16: i16 = @bitCast(disp_u16);
+                                break :blk s16;
+                            };
+                            if (disp_signed < 0) {
+                                log.info("[{t} - {d}], ", .{
+                                    destination.address_calculation.base.?,
+                                    -disp_signed,
+                                });
+                                OutputWriter.print("[{t} - {d}], ", .{
+                                    destination.address_calculation.base.?,
+                                    -disp_signed,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), destination.address_calculation },
+                                    );
+                                };
+                            } else {
+                                log.info("[{t} + {d}], ", .{
+                                    destination.address_calculation.base.?,
+                                    disp_signed,
+                                });
+                                OutputWriter.print("[{t} + {d}], ", .{
+                                    destination.address_calculation.base.?,
+                                    disp_signed,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), destination.address_calculation },
+                                    );
+                                };
+                            }
+                        }
+                    } else if (destination.address_calculation.index != Address.none) {
+                        if (destination.address_calculation.displacement == DisplacementFormat.none) {
+                            log.info("[{t} + {t}], ", .{
+                                destination.address_calculation.base.?,
+                                destination.address_calculation.index.?,
+                            });
+                            OutputWriter.print("[{t} + {t}], ", .{
+                                destination.address_calculation.base.?,
+                                destination.address_calculation.index.?,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), destination.address_calculation },
+                                );
+                            };
+                        } else if (destination.address_calculation.displacement != DisplacementFormat.none) {
+                            const disp_u16: u16 = @intCast(destination.address_calculation.displacement_value.?);
+                            const disp_signed: i16 = if (destination.address_calculation.displacement == DisplacementFormat.d8) blk: {
+                                const u8val: u8 = @intCast(disp_u16 & 0xFF);
+                                const s8: i8 = @bitCast(u8val);
+                                break :blk @as(i16, s8);
+                            } else blk: {
+                                const s16: i16 = @bitCast(disp_u16);
+                                break :blk s16;
+                            };
+                            if (disp_signed < 0) {
+                                log.info("[{t} + {t} - {d}], ", .{
+                                    destination.address_calculation.base.?,
+                                    destination.address_calculation.index.?,
+                                    -disp_signed,
+                                });
+                                OutputWriter.print("[{t} + {t} - {d}], ", .{
+                                    destination.address_calculation.base.?,
+                                    destination.address_calculation.index.?,
+                                    -disp_signed,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), destination.address_calculation },
+                                    );
+                                };
+                            } else {
+                                log.info("[{t} + {t} + {d}], ", .{
+                                    destination.address_calculation.base.?,
+                                    destination.address_calculation.index.?,
+                                    disp_signed,
+                                });
+                                OutputWriter.print("[{t} + {t} + {d}], ", .{
+                                    destination.address_calculation.base.?,
+                                    destination.address_calculation.index.?,
+                                    disp_signed,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write destination effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), destination.address_calculation },
+                                    );
+                                };
+                            }
+                        }
+                    }
+                },
+                .mem_addr => {
+                    log.info("[{d}],", .{destination.mem_addr});
+                    OutputWriter.print("[{d}], ", .{
+                        destination.mem_addr,
+                    }) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write to memory address [{d}] to the output file.",
+                            .{ @errorName(err), destination.mem_addr },
+                        );
+                    };
+                },
+            }
+
+            switch (source) {
+                .address => {
+                    log.info("{t}", .{source.address});
+                    OutputWriter.print(
+                        "{t}\n",
+                        .{source.address},
+                    ) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write source {any} to the output file.",
+                            .{ @errorName(err), source.address },
+                        );
+                    };
+                },
+                .address_calculation => {
+                    const Address = AddressBook.RegisterNames;
+                    if (source.address_calculation.index == Address.none) {
+                        if (source.address_calculation.displacement == DisplacementFormat.none) {
+                            log.info("[{t}]", .{
+                                source.address_calculation.base.?,
+                            });
+                            OutputWriter.print("[{t}]\n", .{
+                                source.address_calculation.base.?,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), source.address_calculation },
+                                );
+                            };
+                        } else if (source.address_calculation.displacement != DisplacementFormat.none and source.address_calculation.displacement_value.? == 0) {
+                            log.info("[{t}]", .{
+                                source.address_calculation.base.?,
+                            });
+                            OutputWriter.print("[{t}]\n", .{
+                                source.address_calculation.base.?,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), source.address_calculation },
+                                );
+                            };
+                        } else if (source.address_calculation.displacement != DisplacementFormat.none) {
+                            const disp_u16: u16 = @intCast(source.address_calculation.displacement_value.?);
+                            const disp_signed: i16 = if (source.address_calculation.displacement == DisplacementFormat.d8) blk: {
+                                const u8val: u8 = @intCast(disp_u16 & 0xFF);
+                                const s8: i8 = @bitCast(u8val);
+                                break :blk @as(i16, s8);
+                            } else blk: {
+                                const s16: i16 = @bitCast(disp_u16);
+                                break :blk s16;
+                            };
+                            if (disp_signed < 0) {
+                                log.info("[{t} - {d}]", .{
+                                    source.address_calculation.base.?,
+                                    -disp_signed,
+                                });
+                                OutputWriter.print("[{t} - {d}]\n", .{
+                                    source.address_calculation.base.?,
+                                    -disp_signed,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), source.address_calculation },
+                                    );
+                                };
+                            } else {
+                                log.info("[{t} + {d}]", .{
+                                    source.address_calculation.base.?,
+                                    disp_signed,
+                                });
+                                OutputWriter.print("[{t} + {d}]\n", .{
+                                    source.address_calculation.base.?,
+                                    disp_signed,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), source.address_calculation },
+                                    );
+                                };
+                            }
+                        }
+                    } else if (source.address_calculation.index != Address.none) {
+                        if (source.address_calculation.displacement == DisplacementFormat.none) {
+                            log.info("[{t} + {t}]", .{
+                                source.address_calculation.base.?,
+                                source.address_calculation.index.?,
+                            });
+                            OutputWriter.print("[{t} + {t}]\n", .{
+                                source.address_calculation.base.?,
+                                source.address_calculation.index.?,
+                            }) catch |err| {
+                                log.err(
+                                    "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                    .{ @errorName(err), source.address_calculation },
+                                );
+                            };
+                        } else if (source.address_calculation.displacement != DisplacementFormat.none) {
+                            const disp_u16: u16 = @intCast(source.address_calculation.displacement_value.?);
+                            const disp_signed: i16 = if (source.address_calculation.displacement == DisplacementFormat.d8) blk: {
+                                const u8val: u8 = @intCast(disp_u16 & 0xFF);
+                                const s8: i8 = @bitCast(u8val);
+                                break :blk @as(i16, s8);
+                            } else blk: {
+                                const s16: i16 = @bitCast(disp_u16);
+                                break :blk s16;
+                            };
+                            if (disp_signed < 0) {
+                                log.info("[{t} + {t} - {d}]", .{
+                                    source.address_calculation.base.?,
+                                    source.address_calculation.index.?,
+                                    -disp_signed,
+                                });
+                                OutputWriter.print("[{t} + {t} - {d}]\n", .{
+                                    source.address_calculation.base.?,
+                                    source.address_calculation.index.?,
+                                    -disp_signed,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), source.address_calculation },
+                                    );
+                                };
+                            } else {
+                                log.info("[{t} + {t} + {d}]", .{
+                                    source.address_calculation.base.?,
+                                    source.address_calculation.index.?,
+                                    disp_signed,
+                                });
+                                OutputWriter.print("[{t} + {t} + {d}]\n", .{
+                                    source.address_calculation.base.?,
+                                    source.address_calculation.index.?,
+                                    disp_signed,
+                                }) catch |err| {
+                                    log.err(
+                                        "{s}: Something went wrong trying to write source effective address calculation {any} to the output file.",
+                                        .{ @errorName(err), source.address_calculation },
+                                    );
+                                };
+                            }
+                        }
+                    }
+                },
+                .immediate => {
+                    if (opcode == BinaryInstructions.mov_mem8_immed8) {
+                        log.info("byte {d}", .{source.immediate});
+                        OutputWriter.print(
+                            "byte {d}\n",
+                            .{source.immediate},
+                        ) catch |err| {
+                            log.err(
+                                "{s}: Something went wrong trying to write source index {any} to the output file.",
+                                .{ @errorName(err), source.immediate },
+                            );
+                        };
+                    } else if (opcode == BinaryInstructions.mov_mem16_immed16) {
+                        log.info("word {d}", .{source.immediate});
+                        OutputWriter.print(
+                            "word {d}\n",
+                            .{source.immediate},
+                        ) catch |err| {
+                            log.err(
+                                "{s}: Something went wrong trying to write source index {any} to the output file.",
+                                .{ @errorName(err), source.immediate },
+                            );
+                        };
+                    } else {
+                        log.info("{d}", .{source.immediate});
+                        OutputWriter.print(
+                            "{d}\n",
+                            .{source.immediate},
+                        ) catch |err| {
+                            log.err(
+                                "{s}: Something went wrong trying to write source index {any} to the output file.",
+                                .{ @errorName(err), source.immediate },
+                            );
+                        };
+                    }
+                },
+                .mem_addr => {
+                    log.info("[{d}]", .{source.mem_addr});
+                    OutputWriter.print(
+                        "[{d}]\n",
+                        .{source.mem_addr},
+                    ) catch |err| {
+                        log.err(
+                            "{s}: Something went wrong trying to write source index {any} to the output file.",
+                            .{ @errorName(err), source.mem_addr },
+                        );
+                    };
+                },
+            }
+        },
+        .register_memory_op => {
+            const register_memory_op: RegisterMemoryOp = instruction_data.register_memory_op;
+            try OutputWriter.print("{s} ", .{register_memory_op.mnemonic});
+        },
+        .register_op => {
+            const register_op: RegisterOp = instruction_data.register_op;
+            try OutputWriter.print("{s} ", .{register_op.mnemonic});
+        },
+        .immediate_to_register_op => {
+            const immediate_to_register_op: ImmediateToRegisterOp = instruction_data.immediate_to_register_op;
+            try OutputWriter.print("{s} ", .{immediate_to_register_op.mnemonic});
+        },
+        .immediate_op => {
+            const immediate_op: ImmediateOp = instruction_data.immediate_op;
+            try OutputWriter.print("{s} ", .{immediate_op.mnemonic});
+        },
+        .segment_register_op => {
+            const segment_register_op: SegmentRegisterOp = instruction_data.segment_register_op;
+            try OutputWriter.print("{s} ", .{segment_register_op.mnemonic});
+        },
+        .identifier_add_op => {
+            const identifier_add_op: IdentifierAddOp = instruction_data.identifier_add_op;
+            try OutputWriter.print("{s} ", .{identifier_add_op.mnemonic});
+        },
+        .identifier_rol_op => {
+            const identifier_rol_op: IdentifierRolOp = instruction_data.identifier_rol_op;
+            try OutputWriter.print("{s} ", .{identifier_rol_op.mnemonic});
+        },
+        .identifier_test_op => {
+            const identifier_test_op: IdentifierTestOp = instruction_data.identifier_test_op;
+            try OutputWriter.print("{s} ", .{identifier_test_op.mnemonic});
+        },
+        .identifier_inc_op => {
+            const identifier_inc_op: IdentifierIncOp = instruction_data.identifier_inc_op;
+            try OutputWriter.print("{s} ", .{identifier_inc_op.mnemonic});
+        },
+        .direct_op => {
+            const direct_op: DirectOp = instruction_data.direct_op;
+            try OutputWriter.print("{s} ", .{direct_op.mnemonic});
+        },
+        .single_byte_op => {
+            const single_byte_op: SingleByteOp = instruction_data.single_byte_op;
+            try OutputWriter.print("{s} ", .{single_byte_op.mnemonic});
+        },
     }
 }
 

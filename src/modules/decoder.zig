@@ -736,7 +736,7 @@ const Identifier = union(IdentifierId) {
 };
 
 /// Instruction with mod and reg
-const RegisterMemoryToFromRegisterOp = struct {
+pub const RegisterMemoryToFromRegisterOp = struct {
     opcode: BinaryInstructions,
     mnemonic: []const u8,
     mod: ModValue,
@@ -749,7 +749,7 @@ const RegisterMemoryToFromRegisterOp = struct {
 };
 
 /// Instruction with mod but no reg or sr
-const RegisterMemoryOp = struct {
+pub const RegisterMemoryOp = struct {
     opcode: BinaryInstructions,
     mnemonic: []const u8,
     mod: ModValue,
@@ -760,14 +760,14 @@ const RegisterMemoryOp = struct {
 };
 
 /// Instructions without mod but with reg and only containing two bytes
-const RegisterOp = struct {
+pub const RegisterOp = struct {
     opcode: BinaryInstructions,
     mnemonic: []const u8,
     reg: RegValue,
 };
 
 /// Instructions without mod but with reg
-const ImmediateToRegisterOp = struct {
+pub const ImmediateToRegisterOp = struct {
     opcode: BinaryInstructions,
     mnemonic: []const u8,
     w: WValue,
@@ -778,7 +778,7 @@ const ImmediateToRegisterOp = struct {
 };
 
 // Immediate to memory instructions
-const ImmediateOp = struct {
+pub const ImmediateOp = struct {
     opcode: BinaryInstructions,
     mnemonic: []const u8,
     w: WValue,
@@ -792,7 +792,7 @@ const ImmediateOp = struct {
 };
 
 /// Instructions with sr involving segment registers
-const SegmentRegisterOp = struct {
+pub const SegmentRegisterOp = struct {
     opcode: BinaryInstructions,
     mnemonic: []const u8,
     mod: ?ModValue,
@@ -803,7 +803,7 @@ const SegmentRegisterOp = struct {
 };
 
 /// Packed instructions with identifier using the add-set
-const IdentifierAddOp = struct {
+pub const IdentifierAddOp = struct {
     opcode: BinaryInstructions,
     mnemonic: []const u8,
     identifier: AddSet,
@@ -820,7 +820,7 @@ const IdentifierAddOp = struct {
 };
 
 /// Packed instructions with identifier using rol-set
-const IdentifierRolOp = struct {
+pub const IdentifierRolOp = struct {
     opcode: BinaryInstructions,
     mnemonic: []const u8,
     identifier: RolSet,
@@ -832,7 +832,7 @@ const IdentifierRolOp = struct {
 };
 
 /// Packed instructions with identifier using the test-set
-const IdentifierTestOp = struct {
+pub const IdentifierTestOp = struct {
     opcode: BinaryInstructions,
     mnemonic: []const u8,
     identifier: TestSet,
@@ -845,7 +845,7 @@ const IdentifierTestOp = struct {
 };
 
 /// Packed instructions with identifier using the inc-set
-const IdentifierIncOp = struct {
+pub const IdentifierIncOp = struct {
     opcode: BinaryInstructions,
     mnemonic: []const u8,
     mod: ModValue,
@@ -857,7 +857,7 @@ const IdentifierIncOp = struct {
 };
 
 /// Instructions without mod, reg or sr but containing additional instruction bytes
-const DirectOp = struct {
+pub const DirectOp = struct {
     opcode: BinaryInstructions,
     mnemonic: []const u8,
     w: ?WValue,
@@ -880,7 +880,7 @@ const DirectOp = struct {
 };
 
 /// Accumulator instructions
-const AccumulatorOp = struct {
+pub const AccumulatorOp = struct {
     opcode: BinaryInstructions,
     mnemonic: []const u8,
     w: ?WValue,
@@ -892,7 +892,7 @@ const AccumulatorOp = struct {
 };
 
 /// Single byte instructions
-const SingleByteOp = struct {
+pub const SingleByteOp = struct {
     opcode: BinaryInstructions,
     mnemonic: []const u8,
     z: ?ZValue,
@@ -900,7 +900,7 @@ const SingleByteOp = struct {
 };
 
 /// Escape instructions
-const EscapeOp = struct {
+pub const EscapeOp = struct {
     opcode: BinaryInstructions,
     mnemonic: []const u8 = "esc",
     mod: ModValue,

@@ -50,8 +50,8 @@ const InstructionExecutionError = errors.InstructionExecutionError;
 const SimulatorError = errors.SimulatorError;
 
 /// global log level
-const LogLevel: std.log.Level = .debug;
-// const LogLevel: std.log.Level = .info;
+// const LogLevel: std.log.Level = .debug;
+const LogLevel: std.log.Level = .info;
 
 /// Checks if a displacement value fits inside a 8 bit signed integer
 /// or if a 16 bit signed integer is needed. Returns true if a 8 bit integer
@@ -489,88 +489,6 @@ pub fn main() !void {
             instruction,
             InstructionBytes,
         );
-        switch (instruction_data) {
-            InstructionData.accumulator_op => {},
-            InstructionData.escape_op => {},
-            InstructionData.register_memory_to_from_register_op => {},
-            InstructionData.register_memory_op => {},
-            InstructionData.immediate_to_register_op => {},
-            InstructionData.immediate_op => {},
-            InstructionData.segment_register_op => {},
-            InstructionData.identifier_add_op => {},
-            InstructionData.identifier_rol_op => {},
-            InstructionData.identifier_test_op => {},
-            InstructionData.identifier_inc_op => {},
-            InstructionData.direct_op => {},
-            InstructionData.err => {},
-            else => {},
-        }
-
-        // var payload: DecodePayload = undefined;
-        // switch (instruction) {
-        //     .add_reg8_source_regmem8_dest,
-        //     .add_reg16_source_regmem16_dest,
-        //     .add_regmem8_source_reg8_dest,
-        //     .add_regmem16_source_reg16_dest,
-        //     .add_immediate_8_bit_to_acc,
-        //     .add_immediate_16_bit_to_acc,
-        //     => {
-        //         payload = decoder.decodeAdd(mod, rm, InstructionBytes) catch |err| {
-        //             log.err("{s}: DecodePayload could not be receivied. Continueing...", .{@errorName(err)});
-        //             continue;
-        //         };
-        //     },
-        //     .immediate8_to_regmem8,
-        //     .immediate16_to_regmem16,
-        //     .s_immediate8_to_regmem8,
-        //     .immediate8_to_regmem16,
-        //     => {
-        //         s = @enumFromInt(((biu.getIndex(0) >> 1) << 7) >> 7);
-        //         w = @enumFromInt((biu.getIndex(0) << 7) >> 7);
-
-        //         payload = decoder.decodeImmediateOp(s, w, InstructionBytes) catch |err| {
-        //             log.err("{s}: DecodePayload could not be received. Continuing...", .{@errorName(err)});
-        //             continue;
-        //         };
-        //     },
-        //     .mov_source_regmem8_reg8,
-        //     .mov_source_regmem16_reg16,
-        //     .mov_dest_reg8_regmem8,
-        //     .mov_dest_reg16_regmem16,
-        //     .mov_immediate_to_regmem8,
-        //     .mov_immediate_to_regmem16,
-        //     .mov_seg_regmem,
-        //     .mov_regmem_seg,
-        //     => {
-        //         payload = decoder.decodeMovWithMod(mod, rm, InstructionBytes);
-        //     },
-        //     .mov_immediate_reg_al,
-        //     .mov_immediate_reg_ah,
-        //     .mov_immediate_reg_ax,
-        //     .mov_immediate_reg_bl,
-        //     .mov_immediate_reg_bh,
-        //     .mov_immediate_reg_bx,
-        //     .mov_immediate_reg_cl,
-        //     .mov_immediate_reg_ch,
-        //     .mov_immediate_reg_cx,
-        //     .mov_immediate_reg_dl,
-        //     .mov_immediate_reg_dh,
-        //     .mov_immediate_reg_dx,
-        //     .mov_immediate_reg_bp,
-        //     .mov_immediate_reg_sp,
-        //     .mov_immediate_reg_di,
-        //     .mov_immediate_reg_si,
-        //     .mov_acc8_mem8,
-        //     .mov_acc16_mem16,
-        //     .mov_mem8_acc8,
-        //     .mov_mem16_acc16,
-        //     => {
-        //         payload = decoder.decodeMovWithoutMod(w, InstructionBytes);
-        //     },
-        //     // else => {
-        //     //     log.debug("Instruction not yet implemented. Skipping...", .{});
-        //     // },
-        // }
 
         ////////////////////////////////////////////////////////////////////////
         // Instruction execution //
@@ -596,8 +514,7 @@ pub fn main() !void {
         disassembler.next(
             &EU,
             // &biu,
-            // OutputWriter,
-            // InstructionBytes,
+            OutputWriter,
             instruction_data,
         ) catch |err| {
             switch (err) {

@@ -91,7 +91,7 @@ pub const BusInterfaceUnit = struct {
     InstructionQueue: [6]u8,
 
     pub fn init(init_values: InitValues) BusInterfaceUnit {
-        return .{
+        return BusInterfaceUnit{
             ._CS = init_values._CS,
             ._DS = init_values._DS,
             ._ES = init_values._ES,
