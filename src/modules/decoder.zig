@@ -749,15 +749,15 @@ pub const RegisterMemoryToFromRegisterOp = struct {
 };
 
 /// Instruction with mod but no reg or sr
-pub const RegisterMemoryOp = struct {
-    opcode: BinaryInstructions,
-    mnemonic: []const u8,
-    mod: ModValue,
-    rm: RmValue,
-    w: ?WValue,
-    disp_lo: ?u8,
-    disp_hi: ?u8,
-};
+// pub const RegisterMemoryOp = struct {
+//     opcode: BinaryInstructions,
+//     mnemonic: []const u8,
+//     mod: ModValue,
+//     rm: RmValue,
+//     w: ?WValue,
+//     disp_lo: ?u8,
+//     disp_hi: ?u8,
+// };
 
 /// Instructions without mod but with reg and only containing two bytes
 pub const RegisterOp = struct {
@@ -917,7 +917,7 @@ const InstructionDataId = enum {
     accumulator_op,
     escape_op,
     register_memory_to_from_register_op,
-    register_memory_op,
+    // register_memory_op,
     register_op,
     immediate_to_register_op,
     immediate_op,
@@ -936,7 +936,7 @@ pub const InstructionData = union(InstructionDataId) {
     accumulator_op: AccumulatorOp,
     escape_op: EscapeOp,
     register_memory_to_from_register_op: RegisterMemoryToFromRegisterOp,
-    register_memory_op: RegisterMemoryOp,
+    // register_memory_op: RegisterMemoryOp,
     register_op: RegisterOp,
     immediate_to_register_op: ImmediateToRegisterOp,
     immediate_op: ImmediateOp,

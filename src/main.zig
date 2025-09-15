@@ -74,7 +74,7 @@ pub fn projectLog(
         .compareFiles,
         std.log.default_log_scope,
         => @tagName(scope),
-        .printer => "Print: ",
+        .printer => "",
         else => if (@intFromEnum(level) <= @intFromEnum(std.log.Level.err)) @tagName(scope) else return,
     } ++ "): ";
 

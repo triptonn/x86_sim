@@ -23,11 +23,11 @@ Using the information [provided by Intel](https://archive.org/details/bitsavers_
 Test data is available [here](https://github.com/cmuratori/computer_enhance).
 
 #### ASM-86 Implementation State
-[x] mov     
-[ ] add     
-[ ] sub     
-[ ] cmp     
-[ ] jnz
+[x] Register/memory to/from register instructions
+[x] Accumulator instructions
+[ ] Register/memory instructions     
+[ ] Register instructions
+[ ] Register to/from memory instructions
 
 
 

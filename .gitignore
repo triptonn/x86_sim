@@ -1,4 +1,5 @@
 # Directories
+/.VSCodeCounter
 /.zig-cache
 /doc
 /test_data
