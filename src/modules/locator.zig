@@ -219,6 +219,36 @@ pub fn getImmediateOpSourceAndDest(
     };
 }
 
+pub fn getImmediateToRegDest(
+    w: WValue,
+    reg: RegValue,
+    data_8: ?u8,
+    data_lo: ?u8,
+    data_hi: ?u8,
+) InstructionInfo {
+    const Address = AddressBook.RegisterNames;
+    return InstructionInfo{
+        .destination_info = DestinationInfo{
+            .address = switch (reg) {
+                .ALAX => if (w == WValue.byte) Address.al else Address.ax,
+                .CLCX => if (w == WValue.byte) Address.cl else Address.cx,
+                .DLDX => if (w == WValue.byte) Address.dl else Address.dx,
+                .BLBX => if (w == WValue.byte) Address.bl else Address.bx,
+                .AHSP => if (w == WValue.byte) Address.ah else Address.sp,
+                .CHBP => if (w == WValue.byte) Address.ch else Address.bp,
+                .DHSI => if (w == WValue.byte) Address.dh else Address.si,
+                .BHDI => if (w == WValue.byte) Address.bh else Address.di,
+            },
+        },
+        .source_info = SourceInfo{
+            .immediate = switch (w) {
+                WValue.byte => @intCast(data_8.?),
+                WValue.word => (@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?),
+            },
+        },
+    };
+}
+
 pub fn getImmediateToRegMovDest(w: WValue, reg: RegValue, data: u8, w_data: ?u8) InstructionInfo {
     const Address = AddressBook.RegisterNames;
     var dest: Address = undefined;

@@ -805,7 +805,32 @@ pub fn next(
         },
         .immediate_to_register_op => {
             const immediate_to_register_op: ImmediateToRegisterOp = instruction_data.immediate_to_register_op;
-            try OutputWriter.print("{s} ", .{immediate_to_register_op.mnemonic});
+
+            const opcode: BinaryInstructions = immediate_to_register_op.opcode;
+            const mnemonic: []const u8 = immediate_to_register_op.mnemonic;
+            const w: WValue = immediate_to_register_op.w;
+            const reg: RegValue = immediate_to_register_op.reg;
+            const data_8: ?u8 = immediate_to_register_op.data_8;
+            const data_lo: ?u8 = immediate_to_register_op.data_lo;
+            const data_hi: ?u8 = immediate_to_register_op.data_hi;
+
+            const instruction_info: InstructionInfo = locator.getImmediateToRegDest(
+                w,
+                reg,
+                data_8,
+                data_lo,
+                data_hi,
+            );
+            const instruction_line: []const u8 = prepareInstructionLine(
+                allocator,
+                opcode,
+                mnemonic,
+                instruction_info,
+            ) catch {
+                return InstructionDecodeError.NotYetImplemented;
+            };
+            defer allocator.free(instruction_line);
+            try OutputWriter.print("{s}\n", .{instruction_line});
         },
         .immediate_op => {
             const immediate_op: ImmediateOp = instruction_data.immediate_op;
