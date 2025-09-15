@@ -336,13 +336,16 @@ fn prepareInstructionLine(
     const source: SourceInfo = instruction_info.source_info;
 
     const dest: []const u8 = dest_switch: switch (destination) {
-        DestinationInfo.address => try std.fmt.allocPrint(
-            allocator,
-            " {t}",
-            .{
-                destination.address,
-            },
-        ),
+        DestinationInfo.address => {
+            const res = try std.fmt.allocPrint(
+                allocator,
+                " {t}",
+                .{
+                    destination.address,
+                },
+            );
+            break :dest_switch res;
+        },
         DestinationInfo.address_calculation => {
             const Address = AddressBook.RegisterNames;
 
@@ -356,15 +359,16 @@ fn prepareInstructionLine(
 
             if (no_index) {
                 if (no_displacement) {
-                    break :dest_switch try std.fmt.allocPrint(
+                    const res = try std.fmt.allocPrint(
                         allocator,
                         " [{t}]",
                         .{
                             base.?,
                         },
                     );
+                    break :dest_switch res;
                 } else if (!no_displacement and displacement_value.? == 0) {
-                    break :dest_switch try std.fmt.allocPrint(
+                    const res = try std.fmt.allocPrint(
                         allocator,
                         "[{t} + {d}], ",
                         .{
@@ -372,7 +376,7 @@ fn prepareInstructionLine(
                             displacement_value.?,
                         },
                     );
-                    // } else if (!no_displacement) {
+                    break :dest_switch res;
                 } else {
                     const disp_u16: u16 = @intCast(displacement_value.?);
                     const disp_signed: i16 = if (displacement == DisplacementFormat.d8) blk: {
@@ -385,7 +389,7 @@ fn prepareInstructionLine(
                     };
 
                     if (disp_signed < 0) {
-                        break :dest_switch try std.fmt.allocPrint(
+                        const res = try std.fmt.allocPrint(
                             allocator,
                             "[{t} - {d}], ",
                             .{
@@ -393,8 +397,9 @@ fn prepareInstructionLine(
                                 -disp_signed,
                             },
                         );
+                        break :dest_switch res;
                     } else {
-                        break :dest_switch try std.fmt.allocPrint(
+                        const res = try std.fmt.allocPrint(
                             allocator,
                             "[{t} + {d}], ",
                             .{
@@ -402,12 +407,12 @@ fn prepareInstructionLine(
                                 disp_signed,
                             },
                         );
+                        break :dest_switch res;
                     }
                 }
-                // } else if (index != Address.none) {
             } else {
                 if (displacement == DisplacementFormat.none) {
-                    break :dest_switch try std.fmt.allocPrint(
+                    const res = try std.fmt.allocPrint(
                         allocator,
                         " [{t} + {t}]",
                         .{
@@ -415,7 +420,7 @@ fn prepareInstructionLine(
                             index.?,
                         },
                     );
-                    // } else if (displacement != DisplacementFormat.none) {
+                    break :dest_switch res;
                 } else {
                     const disp_u16: u16 = @intCast(displacement_value.?);
                     const disp_signed: i16 = if (displacement == DisplacementFormat.d8) blk: {
@@ -427,7 +432,7 @@ fn prepareInstructionLine(
                         break :blk s16;
                     };
                     if (disp_signed < 0) {
-                        break :dest_switch try std.fmt.allocPrint(
+                        const res = try std.fmt.allocPrint(
                             allocator,
                             " [{t} + {t} - {d}]",
                             .{
@@ -436,8 +441,9 @@ fn prepareInstructionLine(
                                 -disp_signed,
                             },
                         );
+                        break :dest_switch res;
                     } else {
-                        break :dest_switch try std.fmt.allocPrint(
+                        const res = try std.fmt.allocPrint(
                             allocator,
                             " [{t} + {t} + {d}]",
                             .{
@@ -446,24 +452,29 @@ fn prepareInstructionLine(
                                 disp_signed,
                             },
                         );
+                        break :dest_switch res;
                     }
                 }
             }
         },
         DestinationInfo.mem_addr => {
-            break :dest_switch try std.fmt.allocPrint(
+            const res = try std.fmt.allocPrint(
                 allocator,
                 " [{d}]",
                 .{
                     destination.mem_addr,
                 },
             );
+            break :dest_switch res;
         },
         DestinationInfo.none => "",
     };
 
     const src: []const u8 = source_switch: switch (source) {
-        SourceInfo.address => try std.fmt.allocPrint(allocator, " {t}", .{source.address}),
+        SourceInfo.address => {
+            const res = try std.fmt.allocPrint(allocator, " {t}", .{source.address});
+            break :source_switch res;
+        },
         SourceInfo.address_calculation => {
             const Address = AddressBook.RegisterNames;
 
@@ -474,22 +485,23 @@ fn prepareInstructionLine(
 
             if (index == Address.none) {
                 if (displacement == DisplacementFormat.none) {
-                    break :source_switch try std.fmt.allocPrint(
+                    const res = try std.fmt.allocPrint(
                         allocator,
                         " [{t}]",
                         .{
                             base.?,
                         },
                     );
+                    break :source_switch res;
                 } else if (displacement != DisplacementFormat.none and displacement_value.? == 0) {
-                    break :source_switch try std.fmt.allocPrint(
+                    const res = try std.fmt.allocPrint(
                         allocator,
                         " [{t}]",
                         .{
                             base.?,
                         },
                     );
-                    // } else if (displacement != DisplacementFormat.none) {
+                    break :source_switch res;
                 } else {
                     const disp_u16: u16 = @intCast(displacement_value.?);
                     const disp_signed: i16 = if (displacement == DisplacementFormat.d8) blk: {
@@ -501,7 +513,7 @@ fn prepareInstructionLine(
                         break :blk s16;
                     };
                     if (disp_signed < 0) {
-                        break :source_switch try std.fmt.allocPrint(
+                        const res = try std.fmt.allocPrint(
                             allocator,
                             " [{t} - {d}]",
                             .{
@@ -509,8 +521,9 @@ fn prepareInstructionLine(
                                 -disp_signed,
                             },
                         );
+                        break :source_switch res;
                     } else {
-                        break :source_switch try std.fmt.allocPrint(
+                        const res = try std.fmt.allocPrint(
                             allocator,
                             " [{t} + {d}]",
                             .{
@@ -518,12 +531,12 @@ fn prepareInstructionLine(
                                 disp_signed,
                             },
                         );
+                        break :source_switch res;
                     }
                 }
-                // } else if (index != Address.none) {
             } else {
                 if (displacement == DisplacementFormat.none) {
-                    break :source_switch try std.fmt.allocPrint(
+                    const res = try std.fmt.allocPrint(
                         allocator,
                         " [{t} + {t}]",
                         .{
@@ -531,7 +544,7 @@ fn prepareInstructionLine(
                             index.?,
                         },
                     );
-                    // } else if (displacement != DisplacementFormat.none) {
+                    break :source_switch res;
                 } else {
                     const disp_u16: u16 = @intCast(displacement_value.?);
                     const disp_signed: i16 = if (displacement == DisplacementFormat.d8) blk: {
@@ -543,7 +556,7 @@ fn prepareInstructionLine(
                         break :blk s16;
                     };
                     if (disp_signed < 0) {
-                        break :source_switch try std.fmt.allocPrint(
+                        const res = try std.fmt.allocPrint(
                             allocator,
                             " [{t} + {t} - {d}]",
                             .{
@@ -552,8 +565,9 @@ fn prepareInstructionLine(
                                 -disp_signed,
                             },
                         );
+                        break :source_switch res;
                     } else {
-                        break :source_switch try std.fmt.allocPrint(
+                        const res = try std.fmt.allocPrint(
                             allocator,
                             " [{t} + {t} + {d}]",
                             .{
@@ -562,40 +576,53 @@ fn prepareInstructionLine(
                                 disp_signed,
                             },
                         );
+                        break :source_switch res;
                     }
                 }
             }
         },
         SourceInfo.immediate => switch (opcode) {
-            BinaryInstructions.mov_mem8_immed8 => try std.fmt.allocPrint(
-                allocator,
-                " byte {d}",
-                .{
-                    source.immediate,
-                },
-            ),
-            BinaryInstructions.mov_mem16_immed16 => try std.fmt.allocPrint(
-                allocator,
-                " word {d}",
-                .{
-                    source.immediate,
-                },
-            ),
-            else => try std.fmt.allocPrint(
-                allocator,
-                " {d}",
-                .{
-                    source.immediate,
-                },
-            ),
-        },
-        SourceInfo.mem_addr => try std.fmt.allocPrint(
-            allocator,
-            " [{d}]",
-            .{
-                source.mem_addr,
+            BinaryInstructions.mov_mem8_immed8 => {
+                const res = try std.fmt.allocPrint(
+                    allocator,
+                    " byte {d}",
+                    .{
+                        source.immediate,
+                    },
+                );
+                break :source_switch res;
             },
-        ),
+            BinaryInstructions.mov_mem16_immed16 => {
+                const res = try std.fmt.allocPrint(
+                    allocator,
+                    " word {d}",
+                    .{
+                        source.immediate,
+                    },
+                );
+                break :source_switch res;
+            },
+            else => {
+                const res = try std.fmt.allocPrint(
+                    allocator,
+                    " {d}",
+                    .{
+                        source.immediate,
+                    },
+                );
+                break :source_switch res;
+            },
+        },
+        SourceInfo.mem_addr => {
+            const res = try std.fmt.allocPrint(
+                allocator,
+                " [{d}]",
+                .{
+                    source.mem_addr,
+                },
+            );
+            break :source_switch res;
+        },
         SourceInfo.none => "",
     };
     const sep: []const u8 = if (src.len > 0) "," else "";
@@ -610,7 +637,6 @@ fn prepareInstructionLine(
             src,
         },
     );
-    defer allocator.free(result);
 
     return result;
 }
@@ -703,6 +729,7 @@ pub fn next(
             ) catch {
                 return InstructionDecodeError.NotYetImplemented;
             };
+            defer allocator.free(instruction_line);
             printer.debug("{s}", .{instruction_line});
             try OutputWriter.print("{s}\n", .{instruction_line});
         },
@@ -750,6 +777,7 @@ pub fn next(
             ) catch {
                 return InstructionDecodeError.NotYetImplemented;
             };
+            defer allocator.free(instruction_line);
             printer.debug("{s}", .{instruction_line});
             try OutputWriter.print("{s}\n", .{instruction_line});
         },
@@ -771,6 +799,7 @@ pub fn next(
             ) catch {
                 return InstructionDecodeError.NotYetImplemented;
             };
+            defer allocator.free(instruction_line);
             printer.debug("{s}", .{instruction_line});
             try OutputWriter.print("{s}\n", .{instruction_line});
         },
