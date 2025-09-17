@@ -1,25 +1,26 @@
 const std = @import("std");
 
 const locator = @import("locator.zig");
-const EffectiveAddressCalculation = locator.EffectiveAddressCalculation;
-const AddressBook = locator.AddressBook;
-const DisplacementFormat = locator.DisplacementFormat;
-const InstructionInfo = locator.InstructionInfo;
-const DestinationInfo = locator.DestinationInfo;
-const SourceInfo = locator.SourceInfo;
+const RegisterNames = locator.RegisterNames;
 
 const errors = @import("errors.zig");
 const InstructionDecodeError = errors.InstructionDecodeError;
 const DisassembleError = errors.DiassembleError;
 
 const types = @import("types.zig");
-const ModValue = types.instruction_field_names.ModValue;
-const RegValue = types.instruction_field_names.RegValue;
-const RmValue = types.instruction_field_names.RmValue;
-const DValue = types.instruction_field_names.DValue;
-const WValue = types.instruction_field_names.WValue;
-const SValue = types.instruction_field_names.SValue;
-const SrValue = types.instruction_field_names.SrValue;
+const ModValue = types.instruction_fields.MOD;
+const RegValue = types.instruction_fields.REG;
+const SrValue = types.instruction_fields.SR;
+const RmValue = types.instruction_fields.RM;
+const DValue = types.instruction_fields.Direction;
+const WValue = types.instruction_fields.Width;
+const SValue = types.instruction_fields.Sign;
+
+const EffectiveAddressCalculation = types.data_types.EffectiveAddressCalculation;
+const DisplacementFormat = types.data_types.DisplacementFormat;
+const InstructionInfo = types.data_types.InstructionInfo;
+const DestinationInfo = types.data_types.DestinationInfo;
+const SourceInfo = types.data_types.SourceInfo;
 
 const decoder = @import("decoder.zig");
 const BinaryInstructions = decoder.BinaryInstructions;
@@ -48,7 +49,7 @@ fn printEffectiveAddressCalculationDest(
     address_calculation: EffectiveAddressCalculation,
 ) void {
     const log = std.log.scoped(.printEffectiveAddressCalculationDest);
-    const Address = AddressBook.RegisterNames;
+    const Address = RegisterNames;
     if (address_calculation.index == Address.none) {
         if (address_calculation.displacement == DisplacementFormat.none) {
             log.info("[{t}], ", .{
@@ -181,7 +182,7 @@ fn printEffectiveAddressCalculationSource(
     address_calculation: EffectiveAddressCalculation,
 ) void {
     const log = std.log.scoped(.printEffectiveAddressCalculationSource);
-    const Address = AddressBook.RegisterNames;
+    const Address = RegisterNames;
     if (address_calculation.index == Address.none) {
         if (address_calculation.displacement == DisplacementFormat.none) {
             log.info("[{t}]", .{
@@ -347,7 +348,7 @@ fn prepareInstructionLine(
             break :dest_switch res;
         },
         DestinationInfo.address_calculation => {
-            const Address = AddressBook.RegisterNames;
+            const Address = RegisterNames;
 
             const base = destination.address_calculation.base;
             const index = destination.address_calculation.index;
@@ -476,7 +477,7 @@ fn prepareInstructionLine(
             break :source_switch res;
         },
         SourceInfo.address_calculation => {
-            const Address = AddressBook.RegisterNames;
+            const Address = RegisterNames;
 
             const base = source.address_calculation.base;
             const index = source.address_calculation.index;

@@ -9,7 +9,7 @@
 // ========================================================================
 
 const locator = @import("locator.zig");
-const AddressBook = locator.AddressBook;
+const RegisterNames = locator.RegisterNames;
 const DisplacementFormat = locator.DisplacementFormat;
 
 pub const instruction_fields = struct {
@@ -92,8 +92,8 @@ pub const data_types = struct {
     pub const DisplacementFormat = enum { d8, d16, none };
 
     pub const EffectiveAddressCalculation = struct {
-        base: ?AddressBook.RegisterNames,
-        index: ?AddressBook.RegisterNames,
+        base: ?RegisterNames,
+        index: ?RegisterNames,
         displacement: ?data_types.DisplacementFormat,
         displacement_value: ?u16,
         effective_address: ?u20,
@@ -114,7 +114,7 @@ pub const data_types = struct {
     };
 
     pub const DestinationInfo = union(DestinationInfoIdentifiers) {
-        address: AddressBook.RegisterNames,
+        address: RegisterNames,
         address_calculation: EffectiveAddressCalculation,
         mem_addr: u20,
         none: void,
@@ -129,7 +129,7 @@ pub const data_types = struct {
     };
 
     pub const SourceInfo = union(SourceInfoIdentifiers) {
-        address: AddressBook.RegisterNames,
+        address: RegisterNames,
         address_calculation: EffectiveAddressCalculation,
         immediate: u16,
         mem_addr: u20,

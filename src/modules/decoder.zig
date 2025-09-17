@@ -11,15 +11,15 @@
 const std = @import("std");
 
 const types = @import("types.zig");
-const ModValue = types.instruction_field_names.ModValue;
-const RegValue = types.instruction_field_names.RegValue;
-const RmValue = types.instruction_field_names.RmValue;
-const DValue = types.instruction_field_names.DValue;
-const VValue = types.instruction_field_names.VValue;
-const WValue = types.instruction_field_names.WValue;
-const ZValue = types.instruction_field_names.ZValue;
-const SValue = types.instruction_field_names.SValue;
-const SrValue = types.instruction_field_names.SrValue;
+const ModValue = types.instruction_fields.MOD;
+const RegValue = types.instruction_fields.REG;
+const SrValue = types.instruction_fields.SR;
+const RmValue = types.instruction_fields.RM;
+const DValue = types.instruction_fields.Direction;
+const VValue = types.instruction_fields.Variable;
+const WValue = types.instruction_fields.Width;
+const ZValue = types.instruction_fields.Zero;
+const SValue = types.instruction_fields.Sign;
 
 const errors = @import("errors.zig");
 const InstructionDecodeError = errors.InstructionDecodeError;

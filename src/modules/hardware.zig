@@ -16,16 +16,16 @@ const InstructionExecutionError = errors.InstructionExecutionError;
 const MemoryError = errors.MemoryError;
 
 const types = @import("types.zig");
-const ModValue = types.instruction_field_names.ModValue;
-const RmValue = types.instruction_field_names.RmValue;
-const RegValue = types.instruction_field_names.RegValue;
-const WValue = types.instruction_field_names.WValue;
+const ModValue = types.instruction_fields.MOD;
+const RmValue = types.instruction_fields.RM;
+const RegValue = types.instruction_fields.REG;
+const WValue = types.instruction_fields.Width;
 
 const locator = @import("locator.zig");
-const AddressBook = locator.AddressBook;
-const DisplacementFormat = locator.DisplacementFormat;
+const RegisterNames = locator.RegisterNames;
 
 const EffectiveAddressCalculation = types.data_types.EffectiveAddressCalculation;
+const DisplacementFormat = types.data_types.DisplacementFormat;
 
 const decoder = @import("decoder.zig");
 const InstructionData = decoder.InstructionData;
@@ -185,7 +185,7 @@ pub const BusInterfaceUnit = struct {
         disp_lo: ?u8,
         disp_hi: ?u8,
     ) EffectiveAddressCalculation {
-        const Address = AddressBook.RegisterNames;
+        const Address = RegisterNames;
         var disp_format: DisplacementFormat = undefined;
         var disp_value: u16 = undefined;
 

@@ -30,13 +30,13 @@ const DestinationInfo = locator.DestinationInfo;
 const SourceInfo = locator.SourceInfo;
 
 const types = @import("modules/types.zig");
-const ModValue = types.instruction_field_names.ModValue;
-const RegValue = types.instruction_field_names.RegValue;
-const RmValue = types.instruction_field_names.RmValue;
-const DValue = types.instruction_field_names.DValue;
-const WValue = types.instruction_field_names.WValue;
-const SValue = types.instruction_field_names.SValue;
-const SrValue = types.instruction_field_names.SrValue;
+const ModValue = types.instruction_fields.MOD;
+const RegValue = types.instruction_fields.REG;
+const SrValue = types.instruction_fields.SR;
+const RmValue = types.instruction_fields.RM;
+const DValue = types.instruction_fields.Direction;
+const WValue = types.instruction_fields.Width;
+const SValue = types.instruction_fields.Sign;
 
 const errors = @import("modules/errors.zig");
 const InstructionDecodeError = errors.InstructionDecodeError;

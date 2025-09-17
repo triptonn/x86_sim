@@ -24,7 +24,7 @@ const Sign = types.instruction_fields.Sign;
 
 const EffectiveAddressCalculation = types.data_types.EffectiveAddressCalculation;
 const InstructionInfo = types.data_types.InstructionInfo;
-const DestinationInfo = types.data_type.DestinationInfo;
+const DestinationInfo = types.data_types.DestinationInfo;
 const SourceInfo = types.data_types.SourceInfo;
 const DisplacementFormat = types.data_types.DisplacementFormat;
 
