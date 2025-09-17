@@ -370,7 +370,7 @@ fn prepareInstructionLine(
                 } else if (!no_displacement and displacement_value.? == 0) {
                     const res = try std.fmt.allocPrint(
                         allocator,
-                        "[{t} + {d}], ",
+                        " [{t} + {d}]",
                         .{
                             base.?,
                             displacement_value.?,
@@ -391,7 +391,7 @@ fn prepareInstructionLine(
                     if (disp_signed < 0) {
                         const res = try std.fmt.allocPrint(
                             allocator,
-                            "[{t} - {d}], ",
+                            " [{t} - {d}]",
                             .{
                                 base.?,
                                 -disp_signed,
@@ -401,7 +401,7 @@ fn prepareInstructionLine(
                     } else {
                         const res = try std.fmt.allocPrint(
                             allocator,
-                            "[{t} + {d}], ",
+                            " [{t} + {d}]",
                             .{
                                 base.?,
                                 disp_signed,
@@ -625,6 +625,7 @@ fn prepareInstructionLine(
         },
         SourceInfo.none => "",
     };
+
     const sep: []const u8 = if (src.len > 0) "," else "";
 
     const result: []const u8 = try std.fmt.allocPrint(

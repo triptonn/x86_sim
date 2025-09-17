@@ -12,24 +12,39 @@ const locator = @import("locator.zig");
 const AddressBook = locator.AddressBook;
 const DisplacementFormat = locator.DisplacementFormat;
 
-pub const instruction_field_names = struct {
+pub const instruction_fields = struct {
     /// 0 for no sign extension, 1 for extending 8-bit immediate data to 16 bits if W = 1
-    pub const SValue = enum(u1) { no_sign = 0b0, sign_extend = 0b1 };
+    pub const Sign = enum(u1) {
+        no_sign = 0b0,
+        sign_extend = 0b1,
+    };
 
     /// Defines if instructions operates on byte or word data
-    pub const WValue = enum(u1) { byte = 0b0, word = 0b1 };
+    pub const Width = enum(u1) {
+        byte = 0b0,
+        word = 0b1,
+    };
 
     /// If the Reg value holds the instruction source or destination
-    pub const DValue = enum(u1) { source = 0b0, destination = 0b1 };
+    pub const Direction = enum(u1) {
+        source = 0b0,
+        destination = 0b1,
+    };
 
     /// Shift/Rotate count is either one or is specified in the CL register
-    pub const VValue = enum(u1) { one = 0b0, in_CL = 0b1 };
+    pub const Variable = enum(u1) {
+        one = 0b0,
+        in_CL = 0b1,
+    };
     /// Repeat/Loop while zero flag is clear or set
-    pub const ZValue = enum(u1) { clear = 0b0, set = 0b1 };
+    pub const Zero = enum(u1) {
+        clear = 0b0,
+        set = 0b1,
+    };
 
     /// (* .memoryModeNoDisplacement has 16 Bit displacement if
     /// R/M = 110)
-    pub const ModValue = enum(u2) {
+    pub const MOD = enum(u2) {
         memoryModeNoDisplacement = 0b00,
         memoryMode8BitDisplacement = 0b01,
         memoryMode16BitDisplacement = 0b10,
@@ -38,7 +53,7 @@ pub const instruction_field_names = struct {
 
     /// Field names represent W = 0, W = 1, as in Reg 000 with w = 0 is AL,
     /// with w = 1 it's AX
-    pub const RegValue = enum(u3) {
+    pub const REG = enum(u3) {
         ALAX = 0b000,
         CLCX = 0b001,
         DLDX = 0b010,
@@ -50,7 +65,7 @@ pub const instruction_field_names = struct {
     };
 
     /// Segment Register values
-    pub const SrValue = enum(u2) {
+    pub const SR = enum(u2) {
         ES = 0b00,
         CS = 0b01,
         SS = 0b10,
@@ -61,7 +76,7 @@ pub const instruction_field_names = struct {
     /// The combinations are in the naming starting with mod=11_mod=00_mod=01_mod=10. In the
     /// case of mod=11, register mode, the first two letters of the name are used if W=0,
     /// while the 3rd and 4th letter are valid if W=1.
-    pub const RmValue = enum(u3) {
+    pub const RM = enum(u3) {
         ALAX_BXSI_BXSID8_BXSID16 = 0b000,
         CLCX_BXDI_BXDID8_BXDID16 = 0b001,
         DLDX_BPSI_BPSID8_BPSID16 = 0b010,
@@ -74,11 +89,50 @@ pub const instruction_field_names = struct {
 };
 
 pub const data_types = struct {
+    pub const DisplacementFormat = enum { d8, d16, none };
+
     pub const EffectiveAddressCalculation = struct {
         base: ?AddressBook.RegisterNames,
         index: ?AddressBook.RegisterNames,
-        displacement: ?DisplacementFormat,
+        displacement: ?data_types.DisplacementFormat,
         displacement_value: ?u16,
         effective_address: ?u20,
+    };
+
+    /// Contains the destination as DestinationInfo and source as SourceInfo
+    /// objects to rebuild the ASM-86 instruction from.
+    pub const InstructionInfo = struct {
+        destination_info: DestinationInfo,
+        source_info: SourceInfo,
+    };
+
+    const DestinationInfoIdentifiers = enum {
+        address,
+        address_calculation,
+        mem_addr,
+        none,
+    };
+
+    pub const DestinationInfo = union(DestinationInfoIdentifiers) {
+        address: AddressBook.RegisterNames,
+        address_calculation: EffectiveAddressCalculation,
+        mem_addr: u20,
+        none: void,
+    };
+
+    const SourceInfoIdentifiers = enum {
+        address,
+        address_calculation,
+        immediate,
+        mem_addr,
+        none,
+    };
+
+    pub const SourceInfo = union(SourceInfoIdentifiers) {
+        address: AddressBook.RegisterNames,
+        address_calculation: EffectiveAddressCalculation,
+        immediate: u16,
+        mem_addr: u20,
+        none: void,
     };
 };

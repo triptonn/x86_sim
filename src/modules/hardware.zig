@@ -156,11 +156,28 @@ pub const BusInterfaceUnit = struct {
     // 011 | BL |  BX  | 011 | (BP) + (DI)    | (BP) + (DI) + D8 | (BP) + (DI) + D16
     // 100 | AH |  SP  | 100 | (SI)           | (SI) + D8        | (SI) + D16
     // 101 | CH |  BP  | 101 | (DI)           | (DI) + D8        | (DI) + D16
-    // 110 | DH |  SI  | 110 | DIRECT ADDRESS | (BP) + D8        | (BP) + D16
+    // 110 | DH |  SI  | 110 | DIRECTADDRESS  | (BP) + D8        | (BP) + D16
     // 111 | BH |  DI  | 111 | (BX)           | (BX) + D8        | (BX) + D16
+    //
+    // Mod = 11 => Register name
+    // Mod = 00 + Rm = 110 => ?
+    // mod = 00 => ?
+    // Mod = 01 || 10 => EffectiveAddressCalculation
+    // DIRECTACCESS
+
+    // Effective Address Calculation
+    // Segment base: 0x1000, Index (offset): 0x0022,
+    // 1. Cast u16 to u20 and shift segment base left by four bits:
+    //      0x01000 << 4 = 0x10000
+    // 2. Add index to shifted segment base value:
+    //      0x10000 + 0x0022 = 0x10022 << Physical address
+    // 3. The same could be achieved by this formula:
+    //      Physical address = (Segment base * 16) + Index (offset)
 
     // TODO: DocString
 
+    /// Calculates physical memory address from the necessary instructions fields.
+    /// Returns a EffectiveAddressCalculation type.
     pub fn calculateEffectiveAddress(
         execution_unit: *ExecutionUnit,
         mod: ModValue,
@@ -171,6 +188,7 @@ pub const BusInterfaceUnit = struct {
         const Address = AddressBook.RegisterNames;
         var disp_format: DisplacementFormat = undefined;
         var disp_value: u16 = undefined;
+
         if (mod == ModValue.memoryMode16BitDisplacement) {
             disp_format = DisplacementFormat.d16;
             disp_value = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
@@ -184,6 +202,7 @@ pub const BusInterfaceUnit = struct {
 
         var base_value: u20 = undefined;
         var index_value: u20 = undefined;
+
         switch (rm) {
             .ALAX_BXSI_BXSID8_BXSID16 => {
                 base_value = @as(u20, execution_unit.getBX(WValue.word, null).value16);
@@ -247,7 +266,7 @@ pub const BusInterfaceUnit = struct {
             },
             .displacement = disp_format,
             .displacement_value = disp_value,
-            .effective_address = base_value + index_value + disp_value,
+            .effective_address = (base_value << 4) + index_value + disp_value,
         };
     }
 };
