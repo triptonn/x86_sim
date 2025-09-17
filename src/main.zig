@@ -224,7 +224,7 @@ pub fn main() !void {
         // Initialize Instruction Pointer
         ._IP = u16_init_value,
     };
-    var biu = BusInterfaceUnit.init(biu_init_values);
+    var BIU = BusInterfaceUnit.init(biu_init_values);
     log.debug("Bus Interface Unit initialization successful.", .{});
 
     var simulated_memory: [0xFFFFF]u1 = [_]u1{0} ** 0xFFFFF;
@@ -276,7 +276,7 @@ pub fn main() !void {
         var queue_index: u3 = 0;
         log.debug("---BIU-Instruction-Queue-----------------------------------------------------", .{});
         while (queue_index < queue_size) : (queue_index += 1) {
-            biu.setIndex(queue_index, if (activeByte + queue_index < file_contents.len) file_contents[activeByte + queue_index] else u8_init_value);
+            BIU.setIndex(queue_index, if (activeByte + queue_index < file_contents.len) file_contents[activeByte + queue_index] else u8_init_value);
             if (activeByte + queue_index > file_contents.len - 1) break;
             log.debug("{d}: {b:0>8}, active byte {d}, instruction 0x{x:0>2}", .{
                 queue_index,
@@ -287,7 +287,7 @@ pub fn main() !void {
             if (queue_index + 1 == 6) break;
         }
 
-        const instruction_binary: u8 = biu.getIndex(0);
+        const instruction_binary: u8 = BIU.getIndex(0);
         const instruction_name: BinaryInstructions = @enumFromInt(instruction_binary);
         log.debug("Read instruction: 0x{x:0>2}, {t}", .{ instruction_binary, instruction_name });
         const instruction: BinaryInstructions = @enumFromInt(instruction_binary);
@@ -303,8 +303,8 @@ pub fn main() !void {
             BinaryInstructions.add_reg16_regmem16,
             => {
                 // 0x00, 0x01, 0x02, 0x03
-                mod = @enumFromInt(biu.getIndex(1) >> 6);
-                rm = @enumFromInt((biu.getIndex(1) << 5) >> 5);
+                mod = @enumFromInt(BIU.getIndex(1) >> 6);
+                rm = @enumFromInt((BIU.getIndex(1) << 5) >> 5);
 
                 stepSize = decoder.addGetInstructionLength(instruction_name, mod, rm);
             },
@@ -319,8 +319,8 @@ pub fn main() !void {
             BinaryInstructions.sign_extend_regmem16_immed8,
             => {
                 // 0x80, 0x81, 0x82, 0x83
-                mod = @enumFromInt(biu.getIndex(1) >> 6);
-                rm = @enumFromInt((biu.getIndex(1) << 5) >> 5);
+                mod = @enumFromInt(BIU.getIndex(1) >> 6);
+                rm = @enumFromInt((BIU.getIndex(1) << 5) >> 5);
 
                 stepSize = decoder.immediateOpGetInstructionLength(instruction_name, mod, rm);
             },
@@ -330,9 +330,9 @@ pub fn main() !void {
             BinaryInstructions.mov_reg16_regmem16,
             => {
                 // 0x88, 0x89, 0x8A, 0x8B
-                w = @enumFromInt((biu.getIndex(0) << 7) >> 7);
-                mod = @enumFromInt(biu.getIndex(1) >> 6);
-                rm = @enumFromInt((biu.getIndex(1) << 5) >> 5);
+                w = @enumFromInt((BIU.getIndex(0) << 7) >> 7);
+                mod = @enumFromInt(BIU.getIndex(1) >> 6);
+                rm = @enumFromInt((BIU.getIndex(1) << 5) >> 5);
 
                 stepSize = decoder.movGetInstructionLength(instruction_name, w, mod, rm);
             },
@@ -340,8 +340,8 @@ pub fn main() !void {
             BinaryInstructions.mov_segreg_regmem16,
             => {
                 // 0x8c, 0x8e
-                mod = @enumFromInt(biu.getIndex(1) >> 6);
-                rm = @enumFromInt((biu.getIndex(1) << 5) >> 5);
+                mod = @enumFromInt(BIU.getIndex(1) >> 6);
+                rm = @enumFromInt((BIU.getIndex(1) << 5) >> 5);
 
                 stepSize = decoder.movGetInstructionLength(instruction_name, w, mod, rm);
             },
@@ -351,7 +351,7 @@ pub fn main() !void {
             BinaryInstructions.mov_mem16_ax,
             => {
                 // 0xA0, 0xA1, 0xA2, 0xA3
-                w = @enumFromInt((biu.getIndex(0) << 7) >> 7);
+                w = @enumFromInt((BIU.getIndex(0) << 7) >> 7);
                 stepSize = decoder.movGetInstructionLength(instruction_name, w, null, null);
             },
             BinaryInstructions.mov_al_immed8,
@@ -372,15 +372,15 @@ pub fn main() !void {
             BinaryInstructions.mov_di_immed16,
             => {
                 // 0xB0 - 0xBF
-                w = @enumFromInt((biu.getIndex(0) << 4) >> 7);
+                w = @enumFromInt((BIU.getIndex(0) << 4) >> 7);
                 stepSize = if (w == WValue.word) 3 else 2;
             },
             BinaryInstructions.mov_mem8_immed8,
             BinaryInstructions.mov_mem16_immed16,
             => {
                 // 0xC6, 0xC7
-                const second_byte = biu.getIndex(1);
-                w = @enumFromInt((biu.getIndex(0) << 7) >> 7);
+                const second_byte = BIU.getIndex(1);
+                w = @enumFromInt((BIU.getIndex(0) << 7) >> 7);
                 mod = @enumFromInt(second_byte >> 6);
                 rm = @enumFromInt((second_byte << 5) >> 5);
                 stepSize = decoder.movGetInstructionLength(instruction_name, w, mod, rm);
@@ -393,7 +393,7 @@ pub fn main() !void {
         switch (stepSize) {
             1 => {
                 InstructionBytes = [6]u8{
-                    biu.getIndex(0),
+                    BIU.getIndex(0),
                     0b0000_0000,
                     0b0000_0000,
                     0b0000_0000,
@@ -403,8 +403,8 @@ pub fn main() !void {
             },
             2 => {
                 InstructionBytes = [6]u8{
-                    biu.getIndex(0),
-                    biu.getIndex(1),
+                    BIU.getIndex(0),
+                    BIU.getIndex(1),
                     0b0000_0000,
                     0b0000_0000,
                     0b0000_0000,
@@ -413,9 +413,9 @@ pub fn main() !void {
             },
             3 => {
                 InstructionBytes = [6]u8{
-                    biu.getIndex(0),
-                    biu.getIndex(1),
-                    biu.getIndex(2),
+                    BIU.getIndex(0),
+                    BIU.getIndex(1),
+                    BIU.getIndex(2),
                     0b0000_0000,
                     0b0000_0000,
                     0b0000_0000,
@@ -423,32 +423,32 @@ pub fn main() !void {
             },
             4 => {
                 InstructionBytes = [6]u8{
-                    biu.getIndex(0),
-                    biu.getIndex(1),
-                    biu.getIndex(2),
-                    biu.getIndex(3),
+                    BIU.getIndex(0),
+                    BIU.getIndex(1),
+                    BIU.getIndex(2),
+                    BIU.getIndex(3),
                     0b0000_0000,
                     0b0000_0000,
                 };
             },
             5 => {
                 InstructionBytes = [6]u8{
-                    biu.getIndex(0),
-                    biu.getIndex(1),
-                    biu.getIndex(2),
-                    biu.getIndex(3),
-                    biu.getIndex(4),
+                    BIU.getIndex(0),
+                    BIU.getIndex(1),
+                    BIU.getIndex(2),
+                    BIU.getIndex(3),
+                    BIU.getIndex(4),
                     0b0000_0000,
                 };
             },
             6 => {
                 InstructionBytes = [6]u8{
-                    biu.getIndex(0),
-                    biu.getIndex(1),
-                    biu.getIndex(2),
-                    biu.getIndex(3),
-                    biu.getIndex(4),
-                    biu.getIndex(5),
+                    BIU.getIndex(0),
+                    BIU.getIndex(1),
+                    BIU.getIndex(2),
+                    BIU.getIndex(3),
+                    BIU.getIndex(4),
+                    BIU.getIndex(5),
                 };
             },
             else => {
@@ -507,7 +507,7 @@ pub fn main() !void {
 
         disassembler.next(
             &EU,
-            // &biu,
+            // &BIU,
             OutputWriter,
             instruction_data,
         ) catch |err| {

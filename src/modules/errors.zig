@@ -14,6 +14,7 @@ pub const SimulatorError = error{
     InstructionError,
     InstructionSizeError,
     InvalidInstruction,
+    InvalidOpcode,
     OutOfMemory,
     NotYetImplemented,
     WriteFailed,
@@ -35,6 +36,11 @@ pub const DiassembleError = error{
     NotYetImplemented,
     WriteFailed,
     OutOfMemory,
+};
+
+pub const LocatorError = error{
+    NotYetImplemented,
+    InvalidOpcode,
 };
 
 /// Errors for the bus interface unit of the 8086 Processor

@@ -30,7 +30,7 @@ const RegisterMemoryToFromRegisterOp = decoder.RegisterMemoryToFromRegisterOp;
 const RegisterMemoryOp = decoder.RegisterMemoryOp;
 const RegisterOp = decoder.RegisterOp;
 const ImmediateToRegisterOp = decoder.ImmediateToRegisterOp;
-const ImmediateOp = decoder.ImmediateOp;
+const ImmediateToMemoryOp = decoder.ImmediateToMemoryOp;
 const SegmentRegisterOp = decoder.SegmentRegisterOp;
 const IdentifierAddOp = decoder.IdentifierAddOp;
 const IdentifierRolOp = decoder.IdentifierRolOp;
@@ -781,6 +781,36 @@ pub fn next(
             printer.debug("{s}", .{instruction_line});
             try OutputWriter.print("{s}\n", .{instruction_line});
         },
+        .register_memory_op => {
+            const register_memory_op: RegisterMemoryOp = instruction_data.register_memory_op;
+            const opcode: BinaryInstructions = register_memory_op.opcode;
+            const mnemonic: []const u8 = register_memory_op.mnemonic;
+            // const w: ?WValue = register_memory_op.w;
+            const mod: ModValue = register_memory_op.mod;
+            const rm: RmValue = register_memory_op.rm;
+            const disp_lo: ?u8 = register_memory_op.disp_lo;
+            const disp_hi: ?u8 = register_memory_op.disp_hi;
+
+            const instruction_info: InstructionInfo = locator.getRegisterMemoryOpSourceAndDest(
+                EU,
+                // opcode,
+                mod,
+                rm,
+                disp_lo,
+                disp_hi,
+            );
+            const instruction_line: []const u8 = prepareInstructionLine(
+                allocator,
+                opcode,
+                mnemonic,
+                instruction_info,
+            ) catch {
+                return InstructionDecodeError.NotYetImplemented;
+            };
+            defer allocator.free(instruction_line);
+            printer.debug("{s}", .{instruction_line});
+            try OutputWriter.print("{s}\n", .{instruction_line});
+        },
         .register_op => {
             const register_op: RegisterOp = instruction_data.register_op;
             const opcode: BinaryInstructions = register_op.opcode;
@@ -832,9 +862,30 @@ pub fn next(
             defer allocator.free(instruction_line);
             try OutputWriter.print("{s}\n", .{instruction_line});
         },
-        .immediate_op => {
-            const immediate_op: ImmediateOp = instruction_data.immediate_op;
-            try OutputWriter.print("{s} ", .{immediate_op.mnemonic});
+        .immediate_to_memory_op => {
+            const immediate_to_memory_op: ImmediateToMemoryOp = instruction_data.immediate_to_memory_op;
+
+            const opcode = immediate_to_memory_op.opcode;
+            const mnemonic = immediate_to_memory_op.mnemonic;
+
+            const instruction_info: InstructionInfo = locator.getImmediateToMemoryOpSourceAndDest(
+                EU,
+                instruction_data,
+            ) catch {
+                return InstructionDecodeError.NotYetImplemented;
+            };
+
+            const instruction_line: []const u8 = prepareInstructionLine(
+                allocator,
+                opcode,
+                mnemonic,
+                instruction_info,
+            ) catch {
+                return InstructionDecodeError.NotYetImplemented;
+            };
+
+            defer allocator.free(instruction_line);
+            try OutputWriter.print("{s}\n", .{instruction_line});
         },
         .segment_register_op => {
             const segment_register_op: SegmentRegisterOp = instruction_data.segment_register_op;

@@ -749,15 +749,15 @@ pub const RegisterMemoryToFromRegisterOp = struct {
 };
 
 /// Instruction with mod but no reg or sr
-// pub const RegisterMemoryOp = struct {
-//     opcode: BinaryInstructions,
-//     mnemonic: []const u8,
-//     mod: ModValue,
-//     rm: RmValue,
-//     w: ?WValue,
-//     disp_lo: ?u8,
-//     disp_hi: ?u8,
-// };
+pub const RegisterMemoryOp = struct {
+    opcode: BinaryInstructions,
+    mnemonic: []const u8,
+    mod: ModValue,
+    rm: RmValue,
+    w: ?WValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+};
 
 /// Instructions without mod but with reg and only containing two bytes
 pub const RegisterOp = struct {
@@ -777,8 +777,8 @@ pub const ImmediateToRegisterOp = struct {
     data_hi: ?u8,
 };
 
-// Immediate to memory instructions
-pub const ImmediateOp = struct {
+/// Immediate to memory instructions
+pub const ImmediateToMemoryOp = struct {
     opcode: BinaryInstructions,
     mnemonic: []const u8,
     w: WValue,
@@ -866,8 +866,6 @@ pub const DirectOp = struct {
     data_8: ?u8,
     data_lo: ?u8,
     data_hi: ?u8,
-    // addr_lo: ?u8,
-    // addr_hi: ?u8,
     ip_lo: ?u8,
     ip_hi: ?u8,
     ip_inc_lo: ?u8,
@@ -917,10 +915,10 @@ const InstructionDataId = enum {
     accumulator_op,
     escape_op,
     register_memory_to_from_register_op,
-    // register_memory_op,
+    register_memory_op,
     register_op,
     immediate_to_register_op,
-    immediate_op,
+    immediate_to_memory_op,
     segment_register_op,
     identifier_add_op,
     identifier_rol_op,
@@ -936,10 +934,10 @@ pub const InstructionData = union(InstructionDataId) {
     accumulator_op: AccumulatorOp,
     escape_op: EscapeOp,
     register_memory_to_from_register_op: RegisterMemoryToFromRegisterOp,
-    // register_memory_op: RegisterMemoryOp,
+    register_memory_op: RegisterMemoryOp,
     register_op: RegisterOp,
     immediate_to_register_op: ImmediateToRegisterOp,
-    immediate_op: ImmediateOp,
+    immediate_to_memory_op: ImmediateToMemoryOp,
     segment_register_op: SegmentRegisterOp,
     identifier_add_op: IdentifierAddOp,
     identifier_rol_op: IdentifierRolOp,
@@ -1349,10 +1347,8 @@ pub fn decode(
         },
 
 
-        // Identifier instructions - with mod without reg
-        // min 3, max 6 bytes long with disp_lo, disp_hi,
-        // data_8 or data_lo and data_hi or data_sx
-        // Identifier.inc_set
+        // Register/memory Op - with w, mod, rm 
+        // min 2, max 4 bytes long with disp_lo, disp_hi,
         BinaryInstructions.pop_regmem16 => {
             const mod: ModValue = @enumFromInt(input[1] >> 6);
             const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
@@ -1370,11 +1366,10 @@ pub fn decode(
             };
 
             result = InstructionData{
-                .identifier_inc_op = IdentifierIncOp{
+                .register_memory_op = RegisterMemoryOp{
                     .opcode = opcode,
                     .mnemonic = "pop",
                     .mod = mod,
-                    .identifier = @enumFromInt(0b000),
                     .rm = rm,
                     .w = null,
                     .disp_lo = disp_lo,
@@ -1384,6 +1379,7 @@ pub fn decode(
             return result;
         },
 
+        // TODO: If this are Identifier instructions, they need to use the correct Op type.
         // Identifier instructions - with mod without reg
         // min 3, max 6 bytes long with disp_lo, disp_hi,
         // data_8 or data_lo and data_hi or data_sx
@@ -1402,7 +1398,7 @@ pub fn decode(
                         const disp_hi: u8 = input[3];
 
                         result = InstructionData{
-                            .immediate_op = ImmediateOp{
+                            .immediate_to_memory_op = ImmediateToMemoryOp{
                                 .opcode = opcode,
                                 .mnemonic = "mov",
                                 .mod = mod,
@@ -1418,7 +1414,7 @@ pub fn decode(
                         return result;
                     } else {
                         result = InstructionData{
-                            .immediate_op = ImmediateOp{
+                            .immediate_to_memory_op = ImmediateToMemoryOp{
                                 .opcode = opcode,
                                 .mnemonic = "mov",
                                 .mod = mod,
@@ -1438,7 +1434,7 @@ pub fn decode(
                     const disp_lo: u8 = input[2];
 
                     result = InstructionData{
-                        .immediate_op = ImmediateOp{
+                        .immediate_to_memory_op = ImmediateToMemoryOp{
                             .opcode = opcode,
                             .mnemonic = "mov",
                             .mod = mod,
@@ -1458,7 +1454,7 @@ pub fn decode(
                     const disp_hi: u8 = input[3];
 
                     result = InstructionData{
-                        .immediate_op = ImmediateOp{
+                        .immediate_to_memory_op = ImmediateToMemoryOp{
                             .opcode = opcode,
                             .mnemonic = "mov",
                             .mod = mod,
@@ -1475,7 +1471,7 @@ pub fn decode(
                 },
                 .registerModeNoDisplacement => {
                     result = InstructionData{
-                        .immediate_op = ImmediateOp{
+                        .immediate_to_memory_op = ImmediateToMemoryOp{
                             .opcode = opcode,
                             .mnemonic = "mov",
                             .w = w,
@@ -3012,7 +3008,7 @@ test "Identifier instructions - inc set" {
         0b0000_0000,
     };
     const output_payload_0xC6_memory_mode_no_displacement = InstructionData{
-        .immediate_op = ImmediateOp{
+        .immediate_to_memory_op = ImmediateToMemoryOp{
             .opcode = BinaryInstructions.mov_mem8_immed8,
             .mnemonic = "mov",
             .w = WValue.byte,
@@ -3043,7 +3039,7 @@ test "Identifier instructions - inc set" {
         0b0010_0100, // 0x24
     };
     const output_payload_0xC7_memory_mode_16_bit_displacement = InstructionData{
-        .immediate_op = ImmediateOp{
+        .immediate_to_memory_op = ImmediateToMemoryOp{
             .opcode = BinaryInstructions.mov_mem16_immed16,
             .mnemonic = "mov",
             .w = WValue.word,

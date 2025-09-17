@@ -10,6 +10,9 @@
 
 const std = @import("std");
 
+const errors = @import("errors.zig");
+const LocatorError = errors.LocatorError;
+
 const types = @import("types.zig");
 const ModValue = types.instruction_field_names.ModValue;
 const RegValue = types.instruction_field_names.RegValue;
@@ -107,117 +110,125 @@ pub const SourceInfo = union(SourceInfoIdentifiers) {
 
 // TODO: DocString
 
-pub fn getImmediateOpSourceAndDest(
-    execution_unit: *ExecutionUnit,
-    bus_interface_unit: *BusInterfaceUnit,
+pub fn getImmediateToMemoryOpSourceAndDest(
+    EU: *ExecutionUnit,
     instruction_data: InstructionData,
-) InstructionInfo {
-    const log = std.log.scoped(.getImmediateOpSourceAndDest);
+) LocatorError!InstructionInfo {
+    // const log = std.log.scoped(.getImmediateToMemoryOpSourceAndDest);
     const Address = AddressBook.RegisterNames;
-    var dest_info: DestinationInfo = undefined;
-    var immediate_8: u8 = undefined;
-    var immediate_16: u16 = undefined;
-    var source_info: SourceInfo = undefined;
-    var sign_extended_immediate: i16 = undefined;
-    var signed_immediate: i16 = undefined;
-    const instruction: BinaryInstructions = instruction_data.immediate_op_instruction.opcode;
-    const mod: ModValue = instruction_data.immediate_op_instruction.mod;
-    const rm: RmValue = instruction_data.immediate_op_instruction.rm;
-    const w: WValue = instruction_data.immediate_op_instruction.w;
 
-    switch (mod) {
-        .memoryModeNoDisplacement => {
-            if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
-                dest_info = DestinationInfo{
-                    .address_calculation = bus_interface_unit.calculateEffectiveAddress(
-                        execution_unit,
-                        mod,
-                        rm,
-                        null,
-                        null,
-                    ),
-                };
-            } else {
-                const disp_lo = @as(u16, instruction_data.immediate_op_instruction.disp_lo.?);
-                const disp_hi = (@as(u16, instruction_data.immediate_op_instruction.disp_hi.?) << 8);
-                dest_info = DestinationInfo{
-                    .mem_addr = @as(u20, disp_hi + disp_lo),
-                };
-            }
-        },
-        .memoryMode8BitDisplacement => {
-            dest_info = DestinationInfo{
-                .address_calculation = bus_interface_unit.calculateEffectiveAddress(
-                    execution_unit,
-                    mod,
-                    rm,
-                    instruction_data.immediate_op_instruction.data_lo.?,
-                    null,
-                ),
-            };
-        },
-        .memoryMode16BitDisplacement => {
-            dest_info = DestinationInfo{
-                .address_calculation = bus_interface_unit.calculateEffectiveAddress(
-                    execution_unit,
-                    mod,
-                    rm,
-                    instruction_data.immediate_op_instruction.disp_lo.?,
-                    instruction_data.immediate_op_instruction.disp_hi.?,
-                ),
-            };
-        },
-        .registerModeNoDisplacement => {
-            dest_info = DestinationInfo{
-                .address = switch (rm) {
-                    .ALAX_BXSI_BXSID8_BXSID16 => if (w == WValue.word) Address.ax else Address.al,
-                    .CLCX_BXDI_BXDID8_BXDID16 => if (w == WValue.word) Address.cx else Address.cl,
-                    .DLDX_BPSI_BPSID8_BPSID16 => if (w == WValue.word) Address.dx else Address.dl,
-                    .BLBX_BPDI_BPDID8_BPDID16 => if (w == WValue.word) Address.bx else Address.bl,
-                    .AHSP_SI_SID8_SID16 => if (w == WValue.word) Address.sp else Address.ah,
-                    .CHBP_DI_DID8_DID16 => if (w == WValue.word) Address.bp else Address.ch,
-                    .DHSI_DIRECTACCESS_BPD8_BPD16 => if (w == WValue.word) Address.si else Address.dh,
-                    .BHDI_BX_BXD8_BXD16 => if (w == WValue.word) Address.di else Address.bh,
-                },
-            };
-        },
-    }
-
-    switch (instruction) {
-        .immediate8_to_regmem8 => {
-            immediate_8 = instruction_data.immediate_op_instruction.data_8.?;
-            source_info = SourceInfo{
-                .immediate = @intCast(immediate_8),
-            };
-        },
-        .immediate16_to_regmem16 => {
-            immediate_16 = (@as(u16, instruction_data.immediate_op_instruction.data_hi.?) << 8) + instruction_data.immediate_op_instruction.data_lo.?;
-            source_info = SourceInfo{
-                .immediate = immediate_16,
-            };
-        },
-        .s_immediate8_to_regmem8 => {
-            sign_extended_immediate = @intCast(instruction_data.immediate_op_instruction.signed_data_8.?);
-            source_info = SourceInfo{
-                .immediate = @bitCast(sign_extended_immediate),
-            };
-        },
-        .immediate8_to_regmem16 => {
-            signed_immediate = instruction_data.immediate_op_instruction.data_sx.?;
-            source_info = SourceInfo{
-                .immediate = @bitCast(signed_immediate),
-            };
-        },
-        else => {
-            log.err("Not a valid opcode for this function: {t}", .{instruction});
-        },
-    }
+    const opcode: BinaryInstructions = instruction_data.immediate_to_memory_op.opcode;
+    const mod: ModValue = instruction_data.immediate_to_memory_op.mod;
+    const rm: RmValue = instruction_data.immediate_to_memory_op.rm;
+    // const w: WValue = instruction_data.immediate_to_memory_op.w;
+    const disp_lo: ?u8 = instruction_data.immediate_to_memory_op.disp_lo;
+    const disp_hi: ?u8 = instruction_data.immediate_to_memory_op.disp_hi;
+    const data_8: ?u8 = instruction_data.immediate_to_memory_op.data_8;
+    const data_lo: ?u8 = instruction_data.immediate_to_memory_op.data_lo;
+    const data_hi: ?u8 = instruction_data.immediate_to_memory_op.data_hi;
 
     return InstructionInfo{
-        .destination_info = dest_info,
-        .source_info = source_info,
+        .destination_info = destination_switch: switch (mod) {
+            .memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
+                break :destination_switch DestinationInfo{
+                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(EU, mod, rm, disp_lo, disp_hi),
+                };
+            } else {
+                break :destination_switch DestinationInfo{
+                    .address = switch (rm) {
+                        .ALAX_BXSI_BXSID8_BXSID16 => Address.ax,
+                        .CLCX_BXDI_BXDID8_BXDID16 => Address.cx,
+                        .DLDX_BPSI_BPSID8_BPSID16 => Address.dx,
+                        .BLBX_BPDI_BPDID8_BPDID16 => Address.bx,
+                        .AHSP_SI_SID8_SID16 => Address.sp,
+                        .CHBP_DI_DID8_DID16 => Address.bp,
+                        .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.si,
+                        .BHDI_BX_BXD8_BXD16 => Address.di,
+                    },
+                };
+            },
+            .memoryMode8BitDisplacement,
+            .memoryMode16BitDisplacement,
+            => DestinationInfo{
+                .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                    EU,
+                    mod,
+                    rm,
+                    disp_lo,
+                    disp_hi,
+                ),
+            },
+            .registerModeNoDisplacement => {
+                break :destination_switch DestinationInfo{
+                    .address = switch (rm) {
+                        .ALAX_BXSI_BXSID8_BXSID16 => Address.ax,
+                        .CLCX_BXDI_BXDID8_BXDID16 => Address.cx,
+                        .DLDX_BPSI_BPSID8_BPSID16 => Address.dx,
+                        .BLBX_BPDI_BPDID8_BPDID16 => Address.bx,
+                        .AHSP_SI_SID8_SID16 => Address.sp,
+                        .CHBP_DI_DID8_DID16 => Address.bp,
+                        .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.si,
+                        .BHDI_BX_BXD8_BXD16 => Address.di,
+                    },
+                };
+            },
+        },
+        .source_info = SourceInfo{ .immediate = switch (opcode) {
+            BinaryInstructions.mov_mem8_immed8 => @as(u16, data_8.?),
+            BinaryInstructions.mov_mem16_immed16 => (@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?),
+            else => return LocatorError.InvalidOpcode,
+        } },
     };
 }
+
+// pub fn getIdentifierAddOppSourceAndDest() InstructionInfo {
+//     // ??? is this even relevant?
+//     // TODO: Figure out how to properly sign the immediate value either here or where the InstructionInfo
+//     // is worked on.
+//     switch (instruction) {
+//         .regmem8_immed8 => {
+//             immediate_8 = instruction_data.immediate_to_memory_op.data_8.?;
+//             source_info = SourceInfo{
+//                 .immediate = @intCast(immediate_8),
+//             };
+//         },
+//         .regmem16_immed16 => {
+//             immediate_16 = (@as(u16, instruction_data.immediate_to_memory_op.data_hi.?) << 8) + instruction_data.immediate_to_memory_op.data_lo.?;
+//             source_info = SourceInfo{
+//                 .immediate = immediate_16,
+//             };
+//         },
+//         .signed_regmem8_immed8 => {
+//             sign_extended_immediate = @intCast(instruction_data.immediate_to_memory_op.signed_data_8.?);
+//             source_info = SourceInfo{
+//                 .immediate = @bitCast(sign_extended_immediate),
+//             };
+//         },
+//         .sign_extend_regmem16_immed8 => {
+//             signed_immediate = instruction_data.immediate_to_memory_op.data_sx.?;
+//             source_info = SourceInfo{
+//                 .immediate = @bitCast(signed_immediate),
+//             };
+//         },
+//         else => {
+//             log.err("Not a valid opcode for this function: {t}", .{instruction});
+//         },
+//     }
+//     return InstructionInfo{
+//         .destination_info = DestinationInfo{
+//             // TODO: Put destination in here
+//         },
+//         .source_info = SourceInfo{
+//             .immediate = switch (opcode) {
+//                 .regmem8_immed8 => ,
+//                 .regmem16_immed16 => ,
+//                 .signed_regmem8_immed8 => ,
+//                 .sign_extend_regmem16_immed8 => ,
+//                 else => ,
+//             }
+//         },
+//     };
+// }
 
 pub fn getImmediateToRegDest(
     w: WValue,
@@ -1749,6 +1760,32 @@ pub fn getSegToRegMemMovSourceAndDest(
     return InstructionInfo{
         .destination_info = destination_payload,
         .source_info = source_payload,
+    };
+}
+
+pub fn getRegisterMemoryOpSourceAndDest(
+    EU: *ExecutionUnit,
+    // opcode: BinaryInstructions,
+    mod: ModValue,
+    rm: RmValue,
+    disp_lo: ?u8,
+    disp_hi: ?u8,
+) InstructionInfo {
+    // const log = std.log.scoped(.getRegisterMemoryOpSourceAndDest);
+    const Address = AddressBook.RegisterNames;
+    return InstructionInfo{
+        .destination_info = DestinationInfo{
+            .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                EU,
+                mod,
+                rm,
+                disp_lo,
+                disp_hi,
+            ),
+        },
+        .source_info = SourceInfo{
+            .address = Address.sp,
+        },
     };
 }
 
