@@ -424,7 +424,7 @@ pub fn getRegMemToFromRegSourceAndDest(
                     ),
                 },
                 .registerModeNoDisplacement => DestinationInfo{
-                    .address = registerNameFromRm(Width.word, rm),
+                    .address = registerNameFromRm(w, rm),
                 },
             },
             .source_info = SourceInfo{
