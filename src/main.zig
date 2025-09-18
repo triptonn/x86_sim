@@ -44,8 +44,8 @@ const InstructionExecutionError = errors.InstructionExecutionError;
 const SimulatorError = errors.SimulatorError;
 
 /// global log level
-const LogLevel: std.log.Level = .debug;
-// const LogLevel: std.log.Level = .info;
+// const LogLevel: std.log.Level = .debug;
+const LogLevel: std.log.Level = .info;
 
 /// Checks if a displacement value fits inside a 8 bit signed integer
 /// or if a 16 bit signed integer is needed. Returns true if a 8 bit integer
@@ -78,7 +78,10 @@ pub fn projectLog(
         else => if (@intFromEnum(level) <= @intFromEnum(std.log.Level.err)) @tagName(scope) else return,
     } ++ "): ";
 
-    const prefix = "[" ++ comptime level.asText() ++ "]" ++ scope_prefix;
+    const prefix = switch (scope) {
+        .printer => "",
+        else => "[" ++ comptime level.asText() ++ "]" ++ scope_prefix,
+    };
 
     std.debug.lockStdErr();
     defer std.debug.unlockStdErr();
@@ -87,10 +90,7 @@ pub fn projectLog(
 }
 
 pub fn main() !void {
-    const print = std.log.scoped(.printer);
-
-    print.debug("Printer test...", .{});
-
+    const printer = std.log.scoped(.printer);
     const log = std.log.scoped(.x86sim);
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -261,7 +261,7 @@ pub fn main() !void {
     log.debug("Instruction byte count: {d}", .{file_contents.len});
     log.info("+++Start+active+byte+{d}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{activeByte});
 
-    log.info("bits 16\n", .{});
+    printer.info("bits 16", .{});
     try OutputWriter.writeAll("bits 16\n\n");
 
     var depleted: bool = false;
@@ -507,7 +507,6 @@ pub fn main() !void {
 
         disassembler.next(
             &EU,
-            // &BIU,
             OutputWriter,
             instruction_data,
         ) catch |err| {

@@ -1,7 +1,7 @@
 .{
-    .name = .x86_sim,
+    .name = .x86sim,
     .version = "0.0.1",
     .minimum_zig_version = "0.15.1",
     .paths = .{""},
-    .fingerprint = 0xc6468d224e4431ac,
+    .fingerprint = 0xc32961370b4545d8,
 }

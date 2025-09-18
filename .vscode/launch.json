@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations":[
+        {
+            "name": "(gdb) Launch",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/zig-out/bin/x86sim.exe",
+            "args": [
+                "${workspaceFolder}/test_data/part1/listing_0040_challenge_movs"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            // "externalConsole": false,
+            // "MIMode": "gdb",
+            "preLaunchTask": "build",
+            // "setupCommands": [
+            //     {
+            //         "description": "Enable pretty-printing for gdb",
+            //         "text": "-enable-pretty-printing",
+            //         "ignoreFailures": true
+            //     }
+            // ]
+        }
+    ]
+}

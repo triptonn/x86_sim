@@ -256,9 +256,9 @@ pub const BusInterfaceUnit = struct {
                 .registerModeNoDisplacement => DisplacementFormat.none,
             },
             .displacement_value = switch (mod) {
-                .memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?) else null,
+                .memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) (@as(u16, disp_hi.?) << 8) + disp_lo.? else null,
                 .memoryMode8BitDisplacement => @as(u16, disp_lo.?),
-                .memoryMode16BitDisplacement => (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?),
+                .memoryMode16BitDisplacement => (@as(u16, disp_hi.?) << 8) + disp_lo.?,
                 .registerModeNoDisplacement => null,
             },
             .effective_address = ea: switch (rm) {
