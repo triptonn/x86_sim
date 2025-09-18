@@ -180,94 +180,337 @@ pub const BusInterfaceUnit = struct {
     /// Returns a EffectiveAddressCalculation type.
     pub fn calculateEffectiveAddress(
         execution_unit: *ExecutionUnit,
+        w: WValue,
         mod: ModValue,
         rm: RmValue,
         disp_lo: ?u8,
         disp_hi: ?u8,
     ) EffectiveAddressCalculation {
         const Address = RegisterNames;
-        var disp_format: DisplacementFormat = undefined;
-        var disp_value: u16 = undefined;
-
-        if (mod == ModValue.memoryMode16BitDisplacement) {
-            disp_format = DisplacementFormat.d16;
-            disp_value = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
-        } else if (mod == ModValue.memoryMode8BitDisplacement) {
-            disp_format = DisplacementFormat.d8;
-            disp_value = @as(u16, disp_lo.?);
-        } else {
-            disp_format = DisplacementFormat.none;
-            disp_value = 0;
-        }
-
-        var base_value: u20 = undefined;
-        var index_value: u20 = undefined;
-
-        switch (rm) {
-            .ALAX_BXSI_BXSID8_BXSID16 => {
-                base_value = @as(u20, execution_unit.getBX(WValue.word, null).value16);
-                index_value = @as(u20, execution_unit.getSI());
-            },
-            .DLDX_BPSI_BPSID8_BPSID16 => {
-                base_value = @as(u20, execution_unit.getBP());
-                index_value = @as(u20, execution_unit.getSI());
-            },
-            .CLCX_BXDI_BXDID8_BXDID16 => {
-                base_value = @as(u20, execution_unit.getBX(WValue.word, null).value16);
-                index_value = @as(u20, execution_unit.getDI());
-            },
-            .BLBX_BPDI_BPDID8_BPDID16 => {
-                base_value = @as(u20, execution_unit.getBP());
-                index_value = @as(u20, execution_unit.getDI());
-            },
-            .AHSP_SI_SID8_SID16 => {
-                base_value = @as(u20, execution_unit.getSI());
-                index_value = 0;
-            },
-            .CHBP_DI_DID8_DID16 => {
-                base_value = @as(u20, execution_unit.getDI());
-                index_value = 0;
-            },
-            .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                base_value = @as(u20, execution_unit.getBP());
-                index_value = 0;
-            },
-            .BHDI_BX_BXD8_BXD16 => {
-                base_value = @as(u20, execution_unit.getBX(WValue.word, null).value16);
-                index_value = 0;
-            },
-        }
 
         return EffectiveAddressCalculation{
-            .base = switch (rm) {
-                .ALAX_BXSI_BXSID8_BXSID16,
-                .CLCX_BXDI_BXDID8_BXDID16,
-                => Address.bx,
-                .DLDX_BPSI_BPSID8_BPSID16,
-                .BLBX_BPDI_BPDID8_BPDID16,
-                => Address.bp,
-                .AHSP_SI_SID8_SID16 => Address.si,
-                .CHBP_DI_DID8_DID16 => Address.di,
-                .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.bp,
-                .BHDI_BX_BXD8_BXD16 => Address.bx,
+            .base = base: switch (mod) {
+                .memoryModeNoDisplacement => switch (rm) {
+                    .ALAX_BXSI_BXSID8_BXSID16,
+                    .CLCX_BXDI_BXDID8_BXDID16,
+                    .BHDI_BX_BXD8_BXD16,
+                    => break :base Address.bx,
+                    .DLDX_BPSI_BPSID8_BPSID16,
+                    .BLBX_BPDI_BPDID8_BPDID16,
+                    => break :base Address.bp,
+                    .AHSP_SI_SID8_SID16 => break :base Address.si,
+                    .CHBP_DI_DID8_DID16 => break :base Address.di,
+                    .DHSI_DIRECTACCESS_BPD8_BPD16 => break :base Address.none,
+                },
+                .memoryMode8BitDisplacement,
+                .memoryMode16BitDisplacement,
+                => switch (rm) {
+                    .ALAX_BXSI_BXSID8_BXSID16,
+                    .CLCX_BXDI_BXDID8_BXDID16,
+                    => break :base Address.bx,
+                    .DLDX_BPSI_BPSID8_BPSID16,
+                    .BLBX_BPDI_BPDID8_BPDID16,
+                    => break :base Address.bp,
+                    .AHSP_SI_SID8_SID16 => break :base Address.si,
+                    .CHBP_DI_DID8_DID16 => break :base Address.di,
+                    .DHSI_DIRECTACCESS_BPD8_BPD16 => break :base Address.bp,
+                    .BHDI_BX_BXD8_BXD16 => break :base Address.bx,
+                },
+
+                // zig fmt: off
+                .registerModeNoDisplacement => switch (rm) {
+                    .ALAX_BXSI_BXSID8_BXSID16     => break :base if (w == WValue.word) Address.ax else Address.al,
+                    .CLCX_BXDI_BXDID8_BXDID16     => break :base if (w == WValue.word) Address.cx else Address.cl,
+                    .DLDX_BPSI_BPSID8_BPSID16     => break :base if (w == WValue.word) Address.dx else Address.dl,
+                    .BLBX_BPDI_BPDID8_BPDID16     => break :base if (w == WValue.word) Address.bx else Address.bl,
+                    .AHSP_SI_SID8_SID16           => break :base if (w == WValue.word) Address.sp else Address.ah,
+                    .CHBP_DI_DID8_DID16           => break :base if (w == WValue.word) Address.bp else Address.ch,
+                    .DHSI_DIRECTACCESS_BPD8_BPD16 => break :base if (w == WValue.word) Address.si else Address.dh,
+                    .BHDI_BX_BXD8_BXD16           => break :base if (w == WValue.word) Address.bx else Address.bh,
+                },
+                // zig fmt: on
             },
-            .index = switch (rm) {
-                .ALAX_BXSI_BXSID8_BXSID16,
-                .DLDX_BPSI_BPSID8_BPSID16,
-                => Address.si,
-                .CLCX_BXDI_BXDID8_BXDID16,
-                .BLBX_BPDI_BPDID8_BPDID16,
-                => Address.di,
-                .AHSP_SI_SID8_SID16,
-                .CHBP_DI_DID8_DID16,
-                .DHSI_DIRECTACCESS_BPD8_BPD16,
-                .BHDI_BX_BXD8_BXD16,
-                => Address.none,
+            .index = index: switch (mod) {
+                .memoryModeNoDisplacement,
+                .memoryMode8BitDisplacement,
+                .memoryMode16BitDisplacement,
+                => switch (rm) {
+                    .ALAX_BXSI_BXSID8_BXSID16,
+                    .DLDX_BPSI_BPSID8_BPSID16,
+                    => break :index Address.si,
+                    .CLCX_BXDI_BXDID8_BXDID16,
+                    .BLBX_BPDI_BPDID8_BPDID16,
+                    => break :index Address.di,
+                    .AHSP_SI_SID8_SID16,
+                    .CHBP_DI_DID8_DID16,
+                    .BHDI_BX_BXD8_BXD16,
+                    .DHSI_DIRECTACCESS_BPD8_BPD16,
+                    => break :index Address.none,
+                },
+                .registerModeNoDisplacement => Address.none,
             },
-            .displacement = disp_format,
-            .displacement_value = disp_value,
-            .effective_address = (base_value << 4) + index_value + disp_value,
+            .displacement = switch (mod) {
+                .memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) DisplacementFormat.d16 else DisplacementFormat.none,
+                .memoryMode8BitDisplacement => DisplacementFormat.d8,
+                .memoryMode16BitDisplacement => DisplacementFormat.d16,
+                .registerModeNoDisplacement => DisplacementFormat.none,
+            },
+            .displacement_value = switch (mod) {
+                .memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?) else null,
+                .memoryMode8BitDisplacement => @as(u16, disp_lo.?),
+                .memoryMode16BitDisplacement => (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?),
+                .registerModeNoDisplacement => null,
+            },
+            .effective_address = ea: switch (rm) {
+                .ALAX_BXSI_BXSID8_BXSID16 => switch (mod) {
+                    .memoryModeNoDisplacement => {
+                        const bx_value = execution_unit.getBX(WValue.word, null).value16;
+                        const si_value = execution_unit.getSI();
+                        break :ea (@as(u20, bx_value) << 4) + @as(u20, si_value);
+                    },
+                    .memoryMode8BitDisplacement => {
+                        const bx_value = execution_unit.getBX(WValue.word, null).value16;
+                        const si_value = execution_unit.getSI();
+                        const displacement = (@as(u16, disp_lo.?));
+                        break :ea (@as(u20, bx_value) << 4) + @as(u20, si_value) + displacement;
+                    },
+                    .memoryMode16BitDisplacement => {
+                        const bx_value = execution_unit.getBX(WValue.word, null).value16;
+                        const si_value = execution_unit.getSI();
+                        const displacement = (@as(u16, disp_hi.?) << 4) + (@as(u16, disp_lo.?));
+                        break :ea (@as(u20, bx_value) << 4) + @as(u20, si_value) + displacement;
+                    },
+                    .registerModeNoDisplacement => {
+                        break :ea null;
+                    },
+                },
+                .CLCX_BXDI_BXDID8_BXDID16 => switch (mod) {
+                    .memoryModeNoDisplacement => {
+                        const bx_value = execution_unit.getBX(WValue.word, null).value16;
+                        const di_value = execution_unit.getDI();
+                        break :ea (@as(u20, bx_value) << 4) + @as(u20, di_value);
+                    },
+                    .memoryMode8BitDisplacement => {
+                        const bx_value = execution_unit.getBX(WValue.word, null).value16;
+                        const di_value = execution_unit.getDI();
+                        const displacement = (@as(u16, disp_lo.?));
+                        break :ea (@as(u20, bx_value) << 4) + @as(u20, di_value) + displacement;
+                    },
+                    .memoryMode16BitDisplacement => {
+                        const bx_value = execution_unit.getBX(WValue.word, null).value16;
+                        const di_value = execution_unit.getDI();
+                        const displacement = (@as(u16, disp_hi.?) << 4) + (@as(u16, disp_lo.?));
+                        break :ea (@as(u20, bx_value) << 4) + @as(u20, di_value) + displacement;
+                    },
+                    .registerModeNoDisplacement => {
+                        break :ea null;
+                    },
+                },
+                .DLDX_BPSI_BPSID8_BPSID16 => switch (mod) {
+                    .memoryModeNoDisplacement => {
+                        const bp_value = execution_unit.getBP();
+                        const si_value = execution_unit.getSI();
+                        break :ea (@as(u20, bp_value) << 4) + @as(u20, si_value);
+                    },
+                    .memoryMode8BitDisplacement => {
+                        const bp_value = execution_unit.getBP();
+                        const si_value = execution_unit.getSI();
+                        const displacement = (@as(u16, disp_lo.?));
+                        break :ea (@as(u20, bp_value) << 4) + @as(u20, si_value) + displacement;
+                    },
+                    .memoryMode16BitDisplacement => {
+                        const bp_value = execution_unit.getBP();
+                        const si_value = execution_unit.getSI();
+                        const displacement = (@as(u16, disp_hi.?) << 4) + (@as(u16, disp_lo.?));
+                        break :ea (@as(u20, bp_value) << 4) + @as(u20, si_value) + displacement;
+                    },
+                    .registerModeNoDisplacement => {
+                        break :ea null;
+                    },
+                },
+                .BLBX_BPDI_BPDID8_BPDID16 => switch (mod) {
+                    .memoryModeNoDisplacement => {
+                        const bp_value = execution_unit.getBP();
+                        const di_value = execution_unit.getDI();
+                        break :ea (@as(u20, bp_value) << 4) + @as(u20, di_value);
+                    },
+                    .memoryMode8BitDisplacement => {
+                        const bp_value = execution_unit.getBP();
+                        const di_value = execution_unit.getDI();
+                        const displacement = (@as(u16, disp_lo.?));
+                        break :ea (@as(u20, bp_value) << 4) + @as(u20, di_value) + displacement;
+                    },
+                    .memoryMode16BitDisplacement => {
+                        const bp_value = execution_unit.getBP();
+                        const di_value = execution_unit.getDI();
+                        const displacement = (@as(u16, disp_hi.?) << 4) + (@as(u16, disp_lo.?));
+                        break :ea (@as(u20, bp_value) << 4) + @as(u20, di_value) + displacement;
+                    },
+                    .registerModeNoDisplacement => {
+                        break :ea null;
+                    },
+                },
+                .AHSP_SI_SID8_SID16 => switch (mod) {
+                    .memoryModeNoDisplacement => {
+                        const si_value = execution_unit.getSI();
+                        break :ea @as(u20, si_value) << 4;
+                    },
+                    .memoryMode8BitDisplacement => {
+                        const si_value = execution_unit.getSI();
+                        const displacement = (@as(u16, disp_lo.?));
+                        break :ea (@as(u20, si_value) << 4) + displacement;
+                    },
+                    .memoryMode16BitDisplacement => {
+                        const si_value = execution_unit.getSI();
+                        const displacement = (@as(u16, disp_hi.?) << 4) + (@as(u16, disp_lo.?));
+                        break :ea (@as(u20, si_value) << 4) + displacement;
+                    },
+                    .registerModeNoDisplacement => {
+                        break :ea null;
+                    },
+                },
+                .CHBP_DI_DID8_DID16 => switch (mod) {
+                    .memoryModeNoDisplacement => {
+                        const di_value = execution_unit.getDI();
+                        break :ea @as(u20, di_value) << 4;
+                    },
+                    .memoryMode8BitDisplacement => {
+                        const di_value = execution_unit.getDI();
+                        const displacement = (@as(u16, disp_lo.?));
+                        break :ea (@as(u20, di_value) << 4) + displacement;
+                    },
+                    .memoryMode16BitDisplacement => {
+                        const di_value = execution_unit.getDI();
+                        const displacement = (@as(u16, disp_hi.?) << 4) + (@as(u16, disp_lo.?));
+                        break :ea (@as(u20, di_value) << 4) + displacement;
+                    },
+                    .registerModeNoDisplacement => {
+                        break :ea null;
+                    },
+                },
+                .DHSI_DIRECTACCESS_BPD8_BPD16 => switch (mod) {
+                    .memoryModeNoDisplacement => {
+                        const displacement = (@as(u16, disp_hi.?) << 8) + (@as(u16, disp_lo.?));
+                        break :ea @as(u20, displacement);
+                    },
+                    .memoryMode8BitDisplacement => {
+                        const bp_value = execution_unit.getBP();
+                        const displacement = (@as(u16, disp_lo.?));
+                        break :ea (@as(u20, bp_value) << 4) + displacement;
+                    },
+                    .memoryMode16BitDisplacement => {
+                        const bp_value = execution_unit.getBP();
+                        const displacement = (@as(u16, disp_hi.?) << 8) + (@as(u16, disp_lo.?));
+                        break :ea (@as(u20, bp_value) << 4) + displacement;
+                    },
+                    .registerModeNoDisplacement => {
+                        break :ea null;
+                    },
+                },
+                .BHDI_BX_BXD8_BXD16 => switch (mod) {
+                    .memoryModeNoDisplacement => {
+                        const bx_value = execution_unit.getBX(WValue.word, null).value16;
+                        break :ea @as(u20, bx_value) << 4;
+                    },
+                    .memoryMode8BitDisplacement => {
+                        const bx_value = execution_unit.getBX(WValue.word, null).value16;
+                        const displacement = (@as(u16, disp_lo.?));
+                        break :ea (@as(u20, bx_value) << 4) + displacement;
+                    },
+                    .memoryMode16BitDisplacement => {
+                        const bx_value = execution_unit.getBX(WValue.word, null).value16;
+                        const displacement = (@as(u16, disp_hi.?) << 8) + (@as(u16, disp_lo.?));
+                        break :ea (@as(u20, bx_value) << 4) + displacement;
+                    },
+                    .registerModeNoDisplacement => {
+                        break :ea null;
+                    },
+                },
+            },
         };
+
+        // var disp_format: DisplacementFormat = undefined;
+        // var disp_value: u16 = undefined;
+
+        // if (mod == ModValue.memoryMode16BitDisplacement) {
+        //     disp_format = DisplacementFormat.d16;
+        //     disp_value = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
+        // } else if (mod == ModValue.memoryMode8BitDisplacement) {
+        //     disp_format = DisplacementFormat.d8;
+        //     disp_value = @as(u16, disp_lo.?);
+        // } else {
+        //     disp_format = DisplacementFormat.none;
+        //     disp_value = 0;
+        // }
+
+        // var base_value: u20 = undefined;
+        // var index_value: u20 = undefined;
+
+        // switch (rm) {
+        //     .ALAX_BXSI_BXSID8_BXSID16 => {
+        //         base_value = @as(u20, execution_unit.getBX(WValue.word, null).value16);
+        //         index_value = @as(u20, execution_unit.getSI());
+        //     },
+        //     .DLDX_BPSI_BPSID8_BPSID16 => {
+        //         base_value = @as(u20, execution_unit.getBP());
+        //         index_value = @as(u20, execution_unit.getSI());
+        //     },
+        //     .CLCX_BXDI_BXDID8_BXDID16 => {
+        //         base_value = @as(u20, execution_unit.getBX(WValue.word, null).value16);
+        //         index_value = @as(u20, execution_unit.getDI());
+        //     },
+        //     .BLBX_BPDI_BPDID8_BPDID16 => {
+        //         base_value = @as(u20, execution_unit.getBP());
+        //         index_value = @as(u20, execution_unit.getDI());
+        //     },
+        //     .AHSP_SI_SID8_SID16 => {
+        //         base_value = @as(u20, execution_unit.getSI());
+        //         index_value = 0;
+        //     },
+        //     .CHBP_DI_DID8_DID16 => {
+        //         base_value = @as(u20, execution_unit.getDI());
+        //         index_value = 0;
+        //     },
+        //     .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+        //         base_value = @as(u20, execution_unit.getBP());
+        //         index_value = 0;
+        //     },
+        //     .BHDI_BX_BXD8_BXD16 => {
+        //         base_value = @as(u20, execution_unit.getBX(WValue.word, null).value16);
+        //         index_value = 0;
+        //     },
+        // }
+
+        // return EffectiveAddressCalculation{
+        //     .base = switch (rm) {
+        //         .ALAX_BXSI_BXSID8_BXSID16,
+        //         .CLCX_BXDI_BXDID8_BXDID16,
+        //         => Address.bx,
+        //         .DLDX_BPSI_BPSID8_BPSID16,
+        //         .BLBX_BPDI_BPDID8_BPDID16,
+        //         => Address.bp,
+        //         .AHSP_SI_SID8_SID16 => Address.si,
+        //         .CHBP_DI_DID8_DID16 => Address.di,
+        //         .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.bp,
+        //         .BHDI_BX_BXD8_BXD16 => Address.bx,
+        //     },
+        //     .index = switch (rm) {
+        //         .ALAX_BXSI_BXSID8_BXSID16,
+        //         .DLDX_BPSI_BPSID8_BPSID16,
+        //         => Address.si,
+        //         .CLCX_BXDI_BXDID8_BXDID16,
+        //         .BLBX_BPDI_BPDID8_BPDID16,
+        //         => Address.di,
+        //         .AHSP_SI_SID8_SID16,
+        //         .CHBP_DI_DID8_DID16,
+        //         .DHSI_DIRECTACCESS_BPD8_BPD16,
+        //         .BHDI_BX_BXD8_BXD16,
+        //         => Address.none,
+        //     },
+        //     .displacement = disp_format,
+        //     .displacement_value = disp_value,
+        //     .effective_address = (base_value << 4) + index_value + disp_value,
+        // };
     }
 };
 
@@ -771,3 +1014,47 @@ pub const ExecutionUnit = struct {
         return self._DI;
     }
 };
+
+test "BusInterfaceUnit - calculateEffectiveAddress" {
+    const u16_init_value: u16 = 0b0000_0000_0000_0000;
+
+    const eu_init_values: ExecutionUnit.InitValues = .{
+        ._AF = false,
+        ._CF = false,
+        ._OF = false,
+        ._SF = false,
+        ._PF = false,
+        ._ZF = false,
+        ._DF = false,
+        ._IF = false,
+        ._TF = false,
+        ._AX = u16_init_value,
+        ._BX = u16_init_value,
+        ._CX = u16_init_value,
+        ._DX = u16_init_value,
+        ._SP = u16_init_value,
+        ._BP = u16_init_value,
+        ._SI = u16_init_value,
+        ._DI = u16_init_value,
+    };
+    var EU = ExecutionUnit.init(eu_init_values);
+
+    const Address = locator.RegisterNames;
+    try std.testing.expectEqual(
+        EffectiveAddressCalculation{
+            .base = Address.none,
+            .index = Address.none,
+            .displacement = DisplacementFormat.d16,
+            .displacement_value = (@as(u16, 0b00001101) << 8) + 0b10000010,
+            .effective_address = @as(u20, (@as(u16, 0b00001101) << 8) + 0b10000010),
+        },
+        BusInterfaceUnit.calculateEffectiveAddress(
+            &EU,
+            WValue.word,
+            ModValue.memoryModeNoDisplacement,
+            RmValue.DHSI_DIRECTACCESS_BPD8_BPD16,
+            0b10000010,
+            0b00001101,
+        ),
+    );
+}

@@ -105,6 +105,7 @@ pub fn getImmediateToMemoryOpSourceAndDest(
     const Address = RegisterNames;
 
     const opcode: BinaryInstructions = instruction_data.immediate_to_memory_op.opcode;
+    const w: Width = instruction_data.immediate_to_memory_op.w;
     const mod: MOD = instruction_data.immediate_to_memory_op.mod;
     const rm: RM = instruction_data.immediate_to_memory_op.rm;
     const disp_lo: ?u8 = instruction_data.immediate_to_memory_op.disp_lo;
@@ -115,29 +116,13 @@ pub fn getImmediateToMemoryOpSourceAndDest(
 
     return InstructionInfo{
         .destination_info = destination_switch: switch (mod) {
-            .memoryModeNoDisplacement => if (rm == RM.DHSI_DIRECTACCESS_BPD8_BPD16) {
-                break :destination_switch DestinationInfo{
-                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(EU, mod, rm, disp_lo, disp_hi),
-                };
-            } else {
-                break :destination_switch DestinationInfo{
-                    .address = switch (rm) {
-                        .ALAX_BXSI_BXSID8_BXSID16 => Address.ax,
-                        .CLCX_BXDI_BXDID8_BXDID16 => Address.cx,
-                        .DLDX_BPSI_BPSID8_BPSID16 => Address.dx,
-                        .BLBX_BPDI_BPDID8_BPDID16 => Address.bx,
-                        .AHSP_SI_SID8_SID16 => Address.sp,
-                        .CHBP_DI_DID8_DID16 => Address.bp,
-                        .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.si,
-                        .BHDI_BX_BXD8_BXD16 => Address.di,
-                    },
-                };
-            },
+            .memoryModeNoDisplacement,
             .memoryMode8BitDisplacement,
             .memoryMode16BitDisplacement,
             => DestinationInfo{
                 .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
                     EU,
+                    w,
                     mod,
                     rm,
                     disp_lo,
@@ -414,15 +399,31 @@ pub fn getRegMemToFromRegSourceAndDest(
         true => InstructionInfo{
             .destination_info = switch (mod) {
                 .memoryModeNoDisplacement => if (rm == RM.DHSI_DIRECTACCESS_BPD8_BPD16) DestinationInfo{
-                    .mem_addr = (@as(u20, disp_hi.?) << 4) + @as(u20, disp_lo.?),
+                    .mem_addr = (@as(u20, disp_hi.?) << 8) + @as(u20, disp_lo.?),
+                    // .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                    //     EU,
+                    //     w,
+                    //     mod,
+                    //     rm,
+                    //     disp_lo,
+                    //     disp_hi,
+                    // ),
                 } else DestinationInfo{
-                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(EU, mod, rm, disp_lo, disp_hi),
+                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                        EU,
+                        w,
+                        mod,
+                        rm,
+                        disp_lo,
+                        disp_hi,
+                    ),
                 },
                 .memoryMode8BitDisplacement,
                 .memoryMode16BitDisplacement,
                 => DestinationInfo{
                     .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
                         EU,
+                        w,
                         mod,
                         rm,
                         disp_lo,
@@ -454,13 +455,14 @@ pub fn getRegMemToFromRegSourceAndDest(
                 .memoryModeNoDisplacement => if (rm == RM.DHSI_DIRECTACCESS_BPD8_BPD16) SourceInfo{
                     .mem_addr = (@as(u20, disp_hi.?) << 4) + @as(u20, disp_lo.?),
                 } else SourceInfo{
-                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(EU, mod, rm, disp_lo, disp_hi),
+                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(EU, w, mod, rm, disp_lo, disp_hi),
                 },
                 .memoryMode8BitDisplacement,
                 .memoryMode16BitDisplacement,
                 => SourceInfo{
                     .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
                         EU,
+                        w,
                         mod,
                         rm,
                         disp_lo,
@@ -1847,6 +1849,7 @@ pub fn getRegisterMemoryOpSourceAndDest(
         .destination_info = DestinationInfo{
             .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
                 EU,
+                Width.word,
                 mod,
                 rm,
                 disp_lo,
