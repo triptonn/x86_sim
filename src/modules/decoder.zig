@@ -670,7 +670,7 @@ pub const BinaryInstructions = enum(u8) {
 };
 
 /// Identifier action codes - rol set
-const RolSet = enum(u3) {
+pub const RolSet = enum(u3) {
     rol     = 0b000,
     ror     = 0b001,
     rcl     = 0b010,
@@ -682,7 +682,7 @@ const RolSet = enum(u3) {
 
 /// Identifier action codes - add set
 /// When using @tagName() don't forget to make the mnemonics lower case.
-const AddSet = enum(u3) {
+pub const AddSet = enum(u3) {
     ADD     = 0b000,
     OR      = 0b001,
     ADC     = 0b010,
@@ -695,7 +695,7 @@ const AddSet = enum(u3) {
 
 /// Identifier action codes - test set
 /// When using @tagName() don't forget to make the mnemonics lower case.
-const TestSet = enum(u3) {
+pub const TestSet = enum(u3) {
     TEST    = 0b000,
     NOT     = 0b010,
     NEG     = 0b011,
@@ -706,7 +706,7 @@ const TestSet = enum(u3) {
 };
 
 /// Identifier action codes - inc set
-const IncSet = enum(u3) {
+pub const IncSet = enum(u3) {
     inc                 = 0b000,
     dec                 = 0b001,
     call_within         = 0b010,

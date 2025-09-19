@@ -13,6 +13,7 @@ const RegValue = types.instruction_fields.REG;
 const SrValue = types.instruction_fields.SR;
 const RmValue = types.instruction_fields.RM;
 const DValue = types.instruction_fields.Direction;
+const VValue = types.instruction_fields.Variable;
 const WValue = types.instruction_fields.Width;
 const SValue = types.instruction_fields.Sign;
 
@@ -33,9 +34,13 @@ const RegisterOp = decoder.RegisterOp;
 const ImmediateToRegisterOp = decoder.ImmediateToRegisterOp;
 const ImmediateToMemoryOp = decoder.ImmediateToMemoryOp;
 const SegmentRegisterOp = decoder.SegmentRegisterOp;
+const AddSet = decoder.AddSet;
 const IdentifierAddOp = decoder.IdentifierAddOp;
+const RolSet = decoder.RolSet;
 const IdentifierRolOp = decoder.IdentifierRolOp;
+const TestSet = decoder.TestSet;
 const IdentifierTestOp = decoder.IdentifierTestOp;
+const IncSet = decoder.IncSet;
 const IdentifierIncOp = decoder.IdentifierIncOp;
 const DirectOp = decoder.DirectOp;
 const SingleByteOp = decoder.SingleByteOp;
@@ -372,7 +377,6 @@ fn prepareInstructionLine(
 
 pub fn next(
     EU: *ExecutionUnit,
-    // BIU: *BusInterfaceUnit,
     OutputWriter: *std.io.Writer,
     instruction_data: InstructionData,
 ) InstructionDecodeError!void {
@@ -624,10 +628,52 @@ pub fn next(
         },
         .identifier_add_op => {
             const identifier_add_op: IdentifierAddOp = instruction_data.identifier_add_op;
-            try OutputWriter.print("{s} ", .{identifier_add_op.mnemonic});
+
+            const opcode: BinaryInstructions = identifier_add_op.opcode;
+            const mnemonic: []const u8 = identifier_add_op.mnemonic;
+
+            const instruction_info: InstructionInfo = locator.getIdentifierAddOpSourceAndDest(
+                EU,
+                opcode,
+                instruction_data,
+            ) catch {
+                return InstructionDecodeError.NotYetImplemented;
+            };
+
+            const instruction_line: []const u8 = prepareInstructionLine(
+                allocator,
+                opcode,
+                mnemonic,
+                instruction_info,
+            ) catch {
+                return InstructionDecodeError.NotYetImplemented;
+            };
+            defer allocator.free(instruction_line);
+            try OutputWriter.print("{s}\n", .{instruction_line});
         },
         .identifier_rol_op => {
             const identifier_rol_op: IdentifierRolOp = instruction_data.identifier_rol_op;
+
+            const opcode: BinaryInstructions = identifier_rol_op.opcode;
+            const mnemonic: []const u8 = identifier_rol_op.mnemonic;
+
+            const instruction_info: InstructionInfo = locator.getIdentifierRolOpSourceAndDest(
+                EU,
+                opcode,
+                instruction_data,
+            ) catch {
+                return InstructionDecodeError.NotYetImplemented;
+            };
+
+            const instruction_line: []const u8 = prepareInstructionLine(
+                allocator,
+                opcode,
+                mnemonic,
+                instruction_info,
+            ) catch {
+                return InstructionDecodeError.NotYetImplemented;
+            };
+            defer allocator.free(instruction_line);
             try OutputWriter.print("{s} ", .{identifier_rol_op.mnemonic});
         },
         .identifier_test_op => {
