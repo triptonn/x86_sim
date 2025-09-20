@@ -1,4 +1,4 @@
-//! Hello
+//! Enter doc string
 
 const std = @import("std");
 
@@ -15,189 +15,6 @@ const SValue = types.instruction_fields.Sign;
 
 const errors = @import("errors.zig");
 const InstructionDecodeError = errors.InstructionDecodeError;
-
-/// Given the Mod and R/M value of an add register/memory with register to either
-/// instruction, this function returns the number of bytes this instruction consists
-/// of as a u3 value. Returns 1 if the instruction_name is not known to skip this instruction.
-pub fn addGetInstructionLength(
-    instruction_name: BinaryInstructions,
-    mod: ?ModValue,
-    rm: ?RmValue,
-) u3 {
-    const log = std.log.scoped(.addGetInstructionLength);
-    switch (instruction_name) {
-        .add_regmem8_reg8,
-        .add_regmem16_reg16,
-        .add_reg8_regmem8,
-        .add_reg16_regmem16,
-        => switch (mod.?) {
-            .memoryModeNoDisplacement => if (rm.? != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) return 2 else return 4,
-            .memoryMode8BitDisplacement => return 3,
-            .memoryMode16BitDisplacement => return 4,
-            .registerModeNoDisplacement => return 2,
-        },
-        else => {
-            log.debug("Instruction not yet implemented. Skipping...", .{});
-            return 1;
-        },
-    }
-}
-
-/// Given the InstructionBinaries value, SValue and WValue of a immediate value operation
-/// this function returns the number of bytes it consists of as a u3 value. Returns 1 if
-/// the instruction_name is not known to skip this instruction.
-pub fn immediateOpGetInstructionLength(
-    instruction_name: BinaryInstructions,
-    mod: ModValue,
-    rm: RmValue,
-) u3 {
-    const log = std.log.scoped(.immediateOpGetInstructionLength);
-    switch (instruction_name) {
-        .regmem8_immed8 => switch (mod) {
-            .memoryModeNoDisplacement => if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) return 3 else return 5,
-            .memoryMode8BitDisplacement => return 4,
-            .memoryMode16BitDisplacement => return 5,
-            .registerModeNoDisplacement => return 3,
-        },
-        .regmem16_immed16 => switch (mod) {
-            .memoryModeNoDisplacement => if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) return 4 else return 6,
-            .memoryMode8BitDisplacement => return 5,
-            .memoryMode16BitDisplacement => return 6,
-            .registerModeNoDisplacement => return 4,
-        },
-        .signed_regmem8_immed8 => switch (mod) {
-            .memoryModeNoDisplacement => if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) return 3 else return 5,
-            .memoryMode8BitDisplacement => return 4,
-            .memoryMode16BitDisplacement => return 5,
-            .registerModeNoDisplacement => return 3,
-        },
-        .sign_extend_regmem16_immed8 => switch (mod) {
-            .memoryModeNoDisplacement => if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) return 3 else return 5,
-            .memoryMode8BitDisplacement => return 4,
-            .memoryMode16BitDisplacement => return 5,
-            .registerModeNoDisplacement => return 3,
-        },
-        else => {
-            log.debug("Instruction not yet implemented. Skipping...", .{});
-            return 1;
-        },
-    }
-}
-
-/// Given the Mod and R/M value of a mov register/memory to/from register
-/// instruction, this function returns the number of bytes this instruction
-/// consists of as a u3 value. Returns 1 if the instruction_name is not known
-/// to skip this instruction.
-pub fn movGetInstructionLength(
-    instruction_name: BinaryInstructions,
-    w: WValue,
-    mod: ?ModValue,
-    rm: ?RmValue,
-) u3 {
-    const log = std.log.scoped(.movGetInstructionLength);
-    switch (instruction_name) {
-        .mov_regmem8_reg8,
-        .mov_regmem16_reg16,
-        .mov_reg8_regmem8,
-        .mov_reg16_regmem16,
-        => {
-            const _mod = mod.?;
-            const _rm = rm.?;
-            switch (_mod) {
-                .memoryModeNoDisplacement => {
-                    if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) return 4 else return 2;
-                },
-                .memoryMode16BitDisplacement => {
-                    return 4;
-                },
-                .memoryMode8BitDisplacement => {
-                    return 3;
-                },
-                .registerModeNoDisplacement => {
-                    return 2;
-                },
-            }
-        },
-        .mov_al_immed8,
-        .mov_cl_immed8,
-        .mov_dl_immed8,
-        .mov_bl_immed8,
-        .mov_ah_immed8,
-        .mov_ch_immed8,
-        .mov_dh_immed8,
-        .mov_bh_immed8,
-        .mov_ax_immed16,
-        .mov_cx_immed16,
-        .mov_dx_immed16,
-        .mov_bx_immed16,
-        .mov_sp_immed16,
-        .mov_bp_immed16,
-        .mov_si_immed16,
-        .mov_di_immed16,
-        => {
-            if (w == WValue.word) return 3 else return 2;
-        },
-        .mov_regmem16_segreg,
-        .mov_segreg_regmem16,
-        => {
-            const _mod = mod.?;
-            const _rm = rm.?;
-            switch (_mod) {
-                .memoryModeNoDisplacement => {
-                    if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) return 4 else return 2;
-                },
-                .memoryMode16BitDisplacement => {
-                    return 4;
-                },
-                .memoryMode8BitDisplacement => {
-                    return 3;
-                },
-                .registerModeNoDisplacement => {
-                    return 2;
-                },
-            }
-        },
-        .mov_al_mem8,
-        .mov_ax_mem16,
-        .mov_mem8_al,
-        .mov_mem16_ax,
-        => {
-            return 3;
-        },
-        .mov_mem8_immed8,
-        .mov_mem16_immed16,
-        => {
-            const _mod = mod.?;
-            const _rm = rm.?;
-            switch (_mod) {
-                .memoryModeNoDisplacement => {
-                    if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16 and w == WValue.word) {
-                        return 6;
-                    } else if (_rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) {
-                        return 5;
-                    } else if (_rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16 and w == WValue.word) {
-                        return 4;
-                    } else {
-                        return 3;
-                    }
-                },
-                .memoryMode16BitDisplacement => {
-                    if (w == WValue.word) return 6 else return 5;
-                },
-                .memoryMode8BitDisplacement => {
-                    if (w == WValue.word) return 5 else return 4;
-                },
-                .registerModeNoDisplacement => {
-                    if (w == WValue.word) return 4 else return 3;
-                },
-            }
-        },
-        else => {
-            log.debug("Instruction not yet implemented. Skipping...", .{});
-            return 1;
-        },
-    }
-}
 
 /// Categorizing the x86 instruction set into subsets with similar
 /// encoding.
@@ -1126,7 +943,7 @@ const IdentifierId = enum {
 
 /// Opcode identifier sometimes occuring in the second instruction byte
 /// and decoding different sets of data.
-const Identifier = union(IdentifierId) {
+pub const Identifier = union(IdentifierId) {
     rol_set: RolSet,
     add_set: AddSet,
     test_set: TestSet,
@@ -1355,7 +1172,7 @@ pub fn getInstructionLength(
     opcode: BinaryInstructions,
     mod: ?ModValue,
     rm: ?RmValue,
-    identifier: ?Identifier,
+    identifier: ?TestSet,
 ) u3 {
     return inst_len: switch (opcode) {
 
@@ -1629,7 +1446,7 @@ pub fn getInstructionLength(
         // Identifer test opcodes
         /////////////////////////////////////////////////////////////
 
-        BinaryInstructions.logical_regmem8_immed8 => switch (identifier.?.test_set) {
+        BinaryInstructions.logical_regmem8_immed8 => switch (identifier.?) {
             TestSet.TEST => switch (mod.?) {
                 .memoryModeNoDisplacement => break :inst_len if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) 5 else 3,
                 .memoryMode8BitDisplacement => break :inst_len 4,
@@ -1649,7 +1466,7 @@ pub fn getInstructionLength(
                 .registerModeNoDisplacement => break :inst_len 2,
             }
         }, // opcode + 2nd byte + (disp_lo) + (disp_hi) + (data_8)
-        BinaryInstructions.logical_regmem16_immed16 => switch (identifier.?.test_set) {
+        BinaryInstructions.logical_regmem16_immed16 => switch (identifier.?) {
             TestSet.TEST => switch (mod.?) {
                 .memoryModeNoDisplacement => break :inst_len if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) 6 else 4,
                 .memoryMode8BitDisplacement => break :inst_len 5,

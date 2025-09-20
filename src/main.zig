@@ -18,6 +18,8 @@ const Memory = hardware.Memory;
 const decoder = @import("modules/decoder.zig");
 const BinaryInstructions = decoder.BinaryInstructions;
 const InstructionData = decoder.InstructionData;
+const InstructionScope = decoder.InstructionScope;
+const TestSet = decoder.TestSet;
 
 const disassembler = @import("modules/disassembler.zig");
 
@@ -291,103 +293,35 @@ pub fn main() !void {
         const opcode: BinaryInstructions = @enumFromInt(instruction_binary);
         log.debug("Read instruction: 0x{x:0>2}, {t}", .{ instruction_binary, opcode });
 
-        // var s: SValue = undefined;
-        var w: WValue = undefined;
-        var mod: ModValue = undefined;
-        var rm: RmValue = undefined;
-
-        switch (opcode) {
-            BinaryInstructions.add_regmem8_reg8,
-            BinaryInstructions.add_regmem16_reg16,
-            BinaryInstructions.add_reg8_regmem8,
-            BinaryInstructions.add_reg16_regmem16,
+        const scope = decoder.instructionScope(opcode);
+        switch (scope) {
+            .AccumulatorOp,
+            .RegisterMemoryOp,
+            .RegisterOp,
+            .SegmentRegisterOp,
+            .SingleByteOp,
             => {
-                // 0x00, 0x01, 0x02, 0x03
-                mod = @enumFromInt(BIU.getIndex(1) >> 6);
-                rm = @enumFromInt((BIU.getIndex(1) << 5) >> 5);
-
-                // stepSize = decoder.addGetInstructionLength(opcode, mod, rm);
+                stepSize = decoder.getInstructionLength(opcode, null, null, null);
+            },
+            .DirectOp,
+            .EscapeOp,
+            .IdentifierAddOp,
+            .IdentifierIncOp,
+            .IdentifierRolOp,
+            .ImmediateToMemoryOp,
+            .ImmediateToRegisterOp,
+            .RegisterMemoryToFromRegisterOp,
+            => {
+                const mod: ModValue = @enumFromInt(BIU.getIndex(1) >> 6);
+                const rm: RmValue = @enumFromInt((BIU.getIndex(1) << 5) >> 5);
                 stepSize = decoder.getInstructionLength(opcode, mod, rm, null);
             },
-            BinaryInstructions.add_al_immed8,
-            BinaryInstructions.add_ax_immed16,
+            .IdentifierTestOp,
             => {
-                log.err("Instruction '{t}' not yet implemented.", .{opcode});
-            },
-            BinaryInstructions.regmem8_immed8,
-            BinaryInstructions.regmem16_immed16,
-            BinaryInstructions.signed_regmem8_immed8,
-            BinaryInstructions.sign_extend_regmem16_immed8,
-            => {
-                // 0x80, 0x81, 0x82, 0x83
-                mod = @enumFromInt(BIU.getIndex(1) >> 6);
-                rm = @enumFromInt((BIU.getIndex(1) << 5) >> 5);
-
-                stepSize = decoder.immediateOpGetInstructionLength(opcode, mod, rm);
-            },
-            BinaryInstructions.mov_regmem8_reg8,
-            BinaryInstructions.mov_regmem16_reg16,
-            BinaryInstructions.mov_reg8_regmem8,
-            BinaryInstructions.mov_reg16_regmem16,
-            => {
-                // 0x88, 0x89, 0x8A, 0x8B
-                w = @enumFromInt((BIU.getIndex(0) << 7) >> 7);
-                mod = @enumFromInt(BIU.getIndex(1) >> 6);
-                rm = @enumFromInt((BIU.getIndex(1) << 5) >> 5);
-
-                stepSize = decoder.movGetInstructionLength(opcode, w, mod, rm);
-            },
-            BinaryInstructions.mov_regmem16_segreg,
-            BinaryInstructions.mov_segreg_regmem16,
-            => {
-                // 0x8c, 0x8e
-                mod = @enumFromInt(BIU.getIndex(1) >> 6);
-                rm = @enumFromInt((BIU.getIndex(1) << 5) >> 5);
-
-                stepSize = decoder.movGetInstructionLength(opcode, w, mod, rm);
-            },
-            BinaryInstructions.mov_al_mem8,
-            BinaryInstructions.mov_ax_mem16,
-            BinaryInstructions.mov_mem8_al,
-            BinaryInstructions.mov_mem16_ax,
-            => {
-                // 0xA0, 0xA1, 0xA2, 0xA3
-                w = @enumFromInt((BIU.getIndex(0) << 7) >> 7);
-                stepSize = decoder.movGetInstructionLength(opcode, w, null, null);
-            },
-            BinaryInstructions.mov_al_immed8,
-            BinaryInstructions.mov_cl_immed8,
-            BinaryInstructions.mov_dl_immed8,
-            BinaryInstructions.mov_bl_immed8,
-            BinaryInstructions.mov_ah_immed8,
-            BinaryInstructions.mov_ch_immed8,
-            BinaryInstructions.mov_dh_immed8,
-            BinaryInstructions.mov_bh_immed8,
-            BinaryInstructions.mov_ax_immed16,
-            BinaryInstructions.mov_cx_immed16,
-            BinaryInstructions.mov_dx_immed16,
-            BinaryInstructions.mov_bx_immed16,
-            BinaryInstructions.mov_sp_immed16,
-            BinaryInstructions.mov_bp_immed16,
-            BinaryInstructions.mov_si_immed16,
-            BinaryInstructions.mov_di_immed16,
-            => {
-                // 0xB0 - 0xBF
-                w = @enumFromInt((BIU.getIndex(0) << 4) >> 7);
-                stepSize = if (w == WValue.word) 3 else 2;
-            },
-            BinaryInstructions.mov_mem8_immed8,
-            BinaryInstructions.mov_mem16_immed16,
-            => {
-                // 0xC6, 0xC7
-                const second_byte = BIU.getIndex(1);
-                w = @enumFromInt((BIU.getIndex(0) << 7) >> 7);
-                mod = @enumFromInt(second_byte >> 6);
-                rm = @enumFromInt((second_byte << 5) >> 5);
-                stepSize = decoder.movGetInstructionLength(opcode, w, mod, rm);
-            },
-            else => {
-                log.debug("This instruction is not yet implemented. Skipping...", .{});
+                const identifier: TestSet = @enumFromInt((BIU.getIndex(1) << 2) >> 5);
+                const mod: ModValue = @enumFromInt(BIU.getIndex(1) >> 6);
+                const rm: RmValue = @enumFromInt((BIU.getIndex(1) << 5) >> 5);
+                stepSize = decoder.getInstructionLength(opcode, mod, rm, identifier);
             },
         }
 
