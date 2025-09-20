@@ -518,7 +518,6 @@ pub fn next(
             const register_memory_op: RegisterMemoryOp = instruction_data.register_memory_op;
             const opcode: BinaryInstructions = register_memory_op.opcode;
             const mnemonic: []const u8 = register_memory_op.mnemonic;
-            // const w: ?WValue = register_memory_op.w;
             const mod: ModValue = register_memory_op.mod;
             const rm: RmValue = register_memory_op.rm;
             const disp_lo: ?u8 = register_memory_op.disp_lo;
@@ -526,20 +525,18 @@ pub fn next(
 
             const instruction_info: InstructionInfo = locator.getRegisterMemoryOpSourceAndDest(
                 EU,
-                // opcode,
                 mod,
                 rm,
                 disp_lo,
                 disp_hi,
             );
+
             const instruction_line: []const u8 = prepareInstructionLine(
                 allocator,
                 opcode,
                 mnemonic,
                 instruction_info,
-            ) catch {
-                return InstructionDecodeError.NotYetImplemented;
-            };
+            ) catch return InstructionDecodeError.NotYetImplemented;
             defer allocator.free(instruction_line);
             printer.info("{s}", .{instruction_line});
             try OutputWriter.print("{s}\n", .{instruction_line});
@@ -624,7 +621,63 @@ pub fn next(
         },
         .segment_register_op => {
             const segment_register_op: SegmentRegisterOp = instruction_data.segment_register_op;
-            try OutputWriter.print("{s} ", .{segment_register_op.mnemonic});
+
+            const opcode: BinaryInstructions = segment_register_op.opcode;
+            const mnemonic: []const u8 = segment_register_op.mnemonic;
+            const mod: ?ModValue = segment_register_op.mod;
+            const sr: SrValue = segment_register_op.sr;
+            const rm: ?RmValue = segment_register_op.rm;
+            const disp_lo: ?u8 = segment_register_op.disp_lo;
+            const disp_hi: ?u8 = segment_register_op.disp_hi;
+
+            switch (opcode) {
+                BinaryInstructions.segment_override_prefix_es,
+                BinaryInstructions.segment_override_prefix_cs,
+                BinaryInstructions.segment_override_prefix_ss,
+                BinaryInstructions.segment_override_prefix_ds,
+                => {
+                    // TODO: Segment override prefixes need to be implemented.
+                },
+                BinaryInstructions.mov_segreg_regmem16 => {
+                    const instruction_info: InstructionInfo = locator.getRegMemToSegMovSourceAndDest(
+                        EU,
+                        mod.?,
+                        sr,
+                        rm.?,
+                        disp_lo,
+                        disp_hi,
+                    );
+                    const instruction_line: []const u8 = prepareInstructionLine(
+                        allocator,
+                        opcode,
+                        mnemonic,
+                        instruction_info,
+                    ) catch {
+                        return InstructionDecodeError.NotYetImplemented;
+                    };
+                    try OutputWriter.print("{s} ", .{instruction_line});
+                },
+                BinaryInstructions.mov_regmem16_segreg => {
+                    const instruction_info: InstructionInfo = locator.getSegToRegMemMovSourceAndDest(
+                        EU,
+                        mod.?,
+                        sr,
+                        rm.?,
+                        disp_lo,
+                        disp_hi,
+                    );
+                    const instruction_line: []const u8 = prepareInstructionLine(
+                        allocator,
+                        opcode,
+                        mnemonic,
+                        instruction_info,
+                    ) catch {
+                        return InstructionDecodeError.NotYetImplemented;
+                    };
+                    try OutputWriter.print("{s} ", .{instruction_line});
+                },
+                else => return InstructionDecodeError.NotYetImplemented,
+            }
         },
         .identifier_add_op => {
             const identifier_add_op: IdentifierAddOp = instruction_data.identifier_add_op;
@@ -678,7 +731,28 @@ pub fn next(
         },
         .identifier_test_op => {
             const identifier_test_op: IdentifierTestOp = instruction_data.identifier_test_op;
-            try OutputWriter.print("{s} ", .{identifier_test_op.mnemonic});
+
+            const opcode: BinaryInstructions = identifier_test_op.opcode;
+            const mnemonic: []const u8 = identifier_test_op.mnemonic;
+
+            const instruction_info: InstructionInfo = locator.getIdentifierTestOpSourceAndDest(
+                EU,
+                opcode,
+                instruction_data,
+            ) catch {
+                return InstructionDecodeError.NotYetImplemented;
+            };
+
+            const instruction_line: []const u8 = prepareInstructionLine(
+                allocator,
+                opcode,
+                mnemonic,
+                instruction_info,
+            ) catch {
+                return InstructionDecodeError.NotYetImplemented;
+            };
+            defer allocator.free(instruction_line);
+            try OutputWriter.print("{s} ", .{instruction_line});
         },
         .identifier_inc_op => {
             const identifier_inc_op: IdentifierIncOp = instruction_data.identifier_inc_op;

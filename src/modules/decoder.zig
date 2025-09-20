@@ -1,12 +1,4 @@
-// ========================================================================
-//
-// (C) Copyright 2025, Nicolas Selig, All Rights Reserved.
-//
-// This software is provided 'as-is', without any express or implied
-// warranty. In no event will the authors be held liable for any damages
-// arising from the use of this software.
-//
-// ========================================================================
+//! Hello
 
 const std = @import("std");
 
@@ -23,8 +15,6 @@ const SValue = types.instruction_fields.Sign;
 
 const errors = @import("errors.zig");
 const InstructionDecodeError = errors.InstructionDecodeError;
-
-// zig fmt: off
 
 /// Given the Mod and R/M value of an add register/memory with register to either
 /// instruction, this function returns the number of bytes this instruction consists
@@ -93,8 +83,6 @@ pub fn immediateOpGetInstructionLength(
         },
     }
 }
-
-// zig fmt: on
 
 /// Given the Mod and R/M value of a mov register/memory to/from register
 /// instruction, this function returns the number of bytes this instruction
@@ -209,6 +197,323 @@ pub fn movGetInstructionLength(
             return 1;
         },
     }
+}
+
+/// Categorizing the x86 instruction set into subsets with similar
+/// encoding.
+pub const InstructionScope = enum {
+    AccumulatorOp,
+    EscapeOp,
+    RegisterMemoryToFromRegisterOp,
+    RegisterMemoryOp,
+    RegisterOp,
+    ImmediateToRegisterOp,
+    ImmediateToMemoryOp,
+    SegmentRegisterOp,
+    IdentifierAddOp,
+    IdentifierRolOp,
+    IdentifierTestOp,
+    IdentifierIncOp,
+    DirectOp,
+    SingleByteOp,
+};
+
+/// Provided an x86 instruction opcode this function returns the
+/// InstructionsScope this opcode belongs to.
+pub fn instructionScope(opcode: BinaryInstructions) InstructionScope {
+    return switch (opcode) {
+        // Accumulator opcodes
+        BinaryInstructions.add_al_immed8,
+        BinaryInstructions.add_ax_immed16,
+        BinaryInstructions.or_al_immed8,
+        BinaryInstructions.or_ax_immed16,
+        BinaryInstructions.adc_al_immed8,
+        BinaryInstructions.adc_ax_immed16,
+        BinaryInstructions.sbb_al_immed8,
+        BinaryInstructions.sbb_ax_immed16,
+        BinaryInstructions.and_al_immed8,
+        BinaryInstructions.and_ax_immed16,
+        BinaryInstructions.sub_al_immed8,
+        BinaryInstructions.sub_ax_immed16,
+        BinaryInstructions.xor_al_immed8,
+        BinaryInstructions.xor_ax_immed16,
+        BinaryInstructions.cmp_al_immed8,
+        BinaryInstructions.cmp_ax_immed16,
+        BinaryInstructions.test_al_immed8,
+        BinaryInstructions.test_ax_immed16,
+        BinaryInstructions.in_al_dx,
+        BinaryInstructions.in_ax_dx,
+        BinaryInstructions.out_al_dx,
+        BinaryInstructions.out_ax_dx,
+        BinaryInstructions.mov_al_mem8,
+        BinaryInstructions.mov_ax_mem16,
+        BinaryInstructions.mov_mem8_al,
+        BinaryInstructions.mov_mem16_ax,
+        => InstructionScope.AccumulatorOp,
+
+        // Escape opcodes
+        BinaryInstructions.esc_external_opcode_000_yyy_source,
+        BinaryInstructions.esc_external_opcode_001_yyy_source,
+        BinaryInstructions.esc_external_opcode_010_yyy_source,
+        BinaryInstructions.esc_external_opcode_011_yyy_source,
+        BinaryInstructions.esc_external_opcode_100_yyy_source,
+        BinaryInstructions.esc_external_opcode_101_yyy_source,
+        BinaryInstructions.esc_external_opcode_110_yyy_source,
+        BinaryInstructions.esc_external_opcode_111_yyy_source,
+        => InstructionScope.EscapeOp,
+
+        // Register/memory to/from register opcodes
+        BinaryInstructions.add_regmem8_reg8,
+        BinaryInstructions.add_regmem16_reg16,
+        BinaryInstructions.add_reg16_regmem16,
+        BinaryInstructions.or_regmem8_reg8,
+        BinaryInstructions.or_regmem16_reg16,
+        BinaryInstructions.or_reg8_regmem8,
+        BinaryInstructions.or_reg16_regmem16,
+        BinaryInstructions.adc_regmem8_reg8,
+        BinaryInstructions.adc_regmem16_reg16,
+        BinaryInstructions.adc_reg8_regmem8,
+        BinaryInstructions.adc_reg16_regmem16,
+        BinaryInstructions.sbb_regmem8_reg8,
+        BinaryInstructions.sbb_regmem16_reg16,
+        BinaryInstructions.sbb_reg8_regmem8,
+        BinaryInstructions.sbb_reg16_regmem16,
+        BinaryInstructions.and_regmem8_reg8,
+        BinaryInstructions.and_regmem16_reg16,
+        BinaryInstructions.and_reg8_regmem8,
+        BinaryInstructions.and_reg16_regmem16,
+        BinaryInstructions.sub_regmem8_reg8,
+        BinaryInstructions.sub_regmem16_reg16,
+        BinaryInstructions.sub_reg8_regmem8,
+        BinaryInstructions.sub_reg16_regmem16,
+        BinaryInstructions.xor_regmem8_reg8,
+        BinaryInstructions.xor_regmem16_reg16,
+        BinaryInstructions.xor_reg8_regmem8,
+        BinaryInstructions.xor_reg16_regmem16,
+        BinaryInstructions.cmp_regmem8_reg8,
+        BinaryInstructions.cmp_regmem16_reg16,
+        BinaryInstructions.cmp_reg8_regmem8,
+        BinaryInstructions.cmp_reg16_regmem16,
+        BinaryInstructions.test_regmem8_reg8,
+        BinaryInstructions.test_regmem16_reg16,
+        BinaryInstructions.xchg_reg8_regmem8,
+        BinaryInstructions.xchg_reg16_regmem16,
+        BinaryInstructions.mov_regmem8_reg8,
+        BinaryInstructions.mov_regmem16_reg16,
+        BinaryInstructions.mov_reg8_regmem8,
+        BinaryInstructions.mov_reg16_regmem16,
+        BinaryInstructions.lea_reg16_mem16,
+        BinaryInstructions.load_es_regmem16,
+        BinaryInstructions.load_ds_regmem16,
+        => InstructionScope.RegisterMemoryToFromRegisterOp,
+
+        // Register/memory opcodes
+        BinaryInstructions.pop_regmem16,
+        => InstructionScope.RegisterMemoryOp,
+
+        // Register opcodes
+        BinaryInstructions.inc_ax,
+        BinaryInstructions.inc_cx,
+        BinaryInstructions.inc_dx,
+        BinaryInstructions.inc_bx,
+        BinaryInstructions.inc_sp,
+        BinaryInstructions.inc_bp,
+        BinaryInstructions.inc_si,
+        BinaryInstructions.inc_di,
+        BinaryInstructions.dec_ax,
+        BinaryInstructions.dec_cx,
+        BinaryInstructions.dec_dx,
+        BinaryInstructions.dec_bx,
+        BinaryInstructions.dec_sp,
+        BinaryInstructions.dec_bp,
+        BinaryInstructions.dec_si,
+        BinaryInstructions.dec_di,
+        BinaryInstructions.push_ax,
+        BinaryInstructions.push_cx,
+        BinaryInstructions.push_dx,
+        BinaryInstructions.push_bx,
+        BinaryInstructions.push_sp,
+        BinaryInstructions.push_bp,
+        BinaryInstructions.push_si,
+        BinaryInstructions.push_di,
+        BinaryInstructions.pop_ax,
+        BinaryInstructions.pop_cx,
+        BinaryInstructions.pop_dx,
+        BinaryInstructions.pop_bx,
+        BinaryInstructions.pop_sp,
+        BinaryInstructions.pop_bp,
+        BinaryInstructions.pop_si,
+        BinaryInstructions.pop_di,
+        BinaryInstructions.nop_xchg_ax_ax,
+        BinaryInstructions.xchg_ax_cx,
+        BinaryInstructions.xchg_ax_dx,
+        BinaryInstructions.xchg_ax_bx,
+        BinaryInstructions.xchg_ax_sp,
+        BinaryInstructions.xchg_ax_bp,
+        BinaryInstructions.xchg_ax_si,
+        BinaryInstructions.xchg_ax_di,
+        => InstructionScope.RegisterOp,
+
+        // Immediate to register opcodes
+        BinaryInstructions.mov_al_immed8,
+        BinaryInstructions.mov_cl_immed8,
+        BinaryInstructions.mov_dl_immed8,
+        BinaryInstructions.mov_bl_immed8,
+        BinaryInstructions.mov_ah_immed8,
+        BinaryInstructions.mov_ch_immed8,
+        BinaryInstructions.mov_dh_immed8,
+        BinaryInstructions.mov_bh_immed8,
+        BinaryInstructions.mov_ax_immed16,
+        BinaryInstructions.mov_cx_immed16,
+        BinaryInstructions.mov_dx_immed16,
+        BinaryInstructions.mov_bx_immed16,
+        BinaryInstructions.mov_sp_immed16,
+        BinaryInstructions.mov_bp_immed16,
+        BinaryInstructions.mov_si_immed16,
+        BinaryInstructions.mov_di_immed16,
+        => InstructionScope.ImmediateToRegisterOp,
+
+        // Immediate to memory opcodes
+        BinaryInstructions.regmem8_immed8,
+        BinaryInstructions.regmem16_immed16,
+        => InstructionScope.ImmediateToMemoryOp,
+
+        // Segment register opcodes
+        BinaryInstructions.segment_override_prefix_es,
+        BinaryInstructions.segment_override_prefix_cs,
+        BinaryInstructions.segment_override_prefix_ss,
+        BinaryInstructions.segment_override_prefix_ds,
+        BinaryInstructions.mov_regmem16_segreg,
+        BinaryInstructions.mov_segreg_regmem16,
+        => InstructionScope.SegmentRegisterOp,
+
+        // Identifier add opcodes
+        BinaryInstructions.regmem8_immed8,
+        BinaryInstructions.regmem16_immed16,
+        BinaryInstructions.signed_regmem8_immed8,
+        BinaryInstructions.sign_extend_regmem16_immed8,
+        => InstructionScope.IdentifierAddOp,
+
+        // Identifier rol opcodes
+        BinaryInstructions.logical_regmem8,
+        BinaryInstructions.logical_regmem8_cl,
+        BinaryInstructions.logical_regmem16,
+        BinaryInstructions.logical_regmem16_cl,
+        => InstructionScope.IdentifierRolOp,
+
+        // Identifier test opcodes
+        BinaryInstructions.logical_regmem8_immed8,
+        BinaryInstructions.logical_regmem16_immed16,
+        => InstructionScope.IdentifierTestOp,
+
+        // Identifier inc opcodes
+        BinaryInstructions.regmem8,
+        BinaryInstructions.regmem16,
+        => InstructionScope.IdentifierIncOp,
+
+        // Direct opcodes
+        BinaryInstructions.jo_jump_on_overflow,
+        BinaryInstructions.jno_jump_on_not_overflow,
+        BinaryInstructions.jb_jnae_jump_on_below_not_above_or_equal,
+        BinaryInstructions.jnb_jae_jump_on_not_below_above_or_equal,
+        BinaryInstructions.je_jz_jump_on_equal_zero,
+        BinaryInstructions.jne_jnz_jumb_on_not_equal_not_zero,
+        BinaryInstructions.jbe_jna_jump_on_below_or_equal_above,
+        BinaryInstructions.jnbe_ja_jump_on_not_below_or_equal_above,
+        BinaryInstructions.js_jump_on_sign,
+        BinaryInstructions.jns_jump_on_not_sign,
+        BinaryInstructions.jp_jpe_jump_on_parity_parity_even,
+        BinaryInstructions.jnp_jpo_jump_on_not_parity_parity_odd,
+        BinaryInstructions.jl_jnge_jump_on_less_not_greater_or_equal,
+        BinaryInstructions.jnl_jge_jump_on_not_less_greater_or_equal,
+        BinaryInstructions.jle_jng_jump_on_less_or_equal_not_greater,
+        BinaryInstructions.jnle_jg_jump_on_not_less_or_equal_greater,
+        BinaryInstructions.int_interrupt_type_specified,
+        BinaryInstructions.aam_ASCII_adjust_multiply,
+        BinaryInstructions.aad_ASCII_adjust_divide,
+        BinaryInstructions.loopne_loopnz_loop_while_not_zero_equal,
+        BinaryInstructions.loope_loopz_loop_while_zero_equal,
+        BinaryInstructions.loop_loop_cx_times,
+        BinaryInstructions.jcxz_jump_on_cx_zero,
+        BinaryInstructions.call_direct_intersegment,
+        BinaryInstructions.call_direct_within_segment,
+        BinaryInstructions.ret_within_seg_adding_immed16_to_sp,
+        BinaryInstructions.ret_intersegment_adding_immed16_to_sp,
+        BinaryInstructions.jmp_direct_within_segment,
+        BinaryInstructions.jmp_direct_intersegment,
+        BinaryInstructions.jmp_direct_within_segment_short,
+        => InstructionScope.DirectOp,
+
+        // Single byte opcodes
+        BinaryInstructions.daa_decimal_adjust_add,
+        BinaryInstructions.das_decimal_adjust_sub,
+        BinaryInstructions.aaa_ASCII_adjust_add,
+        BinaryInstructions.aas_ASCII_adjust_sub,
+        BinaryInstructions.cbw_byte_to_word,
+        BinaryInstructions.cwd_word_to_double_word,
+        BinaryInstructions.wait,
+        BinaryInstructions.pushf,
+        BinaryInstructions.popf,
+        BinaryInstructions.sahf,
+        BinaryInstructions.lahf,
+        BinaryInstructions.ret_within_segment,
+        BinaryInstructions.ret_intersegment,
+        BinaryInstructions.int_interrupt_type_3,
+        BinaryInstructions.into_interrupt_on_overflow,
+        BinaryInstructions.iret_interrupt_return,
+        BinaryInstructions.xlat_translate_byte_to_al,
+        BinaryInstructions.lock_bus_lock_prefix,
+        BinaryInstructions.halt,
+        BinaryInstructions.cmc_complement_carry,
+        BinaryInstructions.clc_clear_carry,
+        BinaryInstructions.stc_set_carry,
+        BinaryInstructions.cli_clear_interrupt,
+        BinaryInstructions.sti_set_interrupt,
+        BinaryInstructions.cld_clear_direction,
+        BinaryInstructions.std_set_direction,
+        BinaryInstructions.movs_byte,
+        BinaryInstructions.movs_word,
+        BinaryInstructions.cmps_byte,
+        BinaryInstructions.cmps_word,
+        BinaryInstructions.stos_byte,
+        BinaryInstructions.stos_word,
+        BinaryInstructions.lods_byte,
+        BinaryInstructions.lods_word,
+        BinaryInstructions.scas_byte,
+        BinaryInstructions.scas_word,
+        BinaryInstructions.in_al_immed8,
+        BinaryInstructions.in_ax_immed8,
+        BinaryInstructions.out_al_immed8,
+        BinaryInstructions.out_ax_immed8,
+        BinaryInstructions.repne_repnz_not_equal_zero,
+        BinaryInstructions.rep_repe_repz_equal_zero,
+        => InstructionScope.SingleByteOp,
+    };
+}
+
+/// Provided a InstructionScope, this function returns an enum containing
+/// all x86 opcodes belonging to this InstructionScope.
+pub fn ScopedInstruction(comptime scope: InstructionScope) type {
+    const all_instructions = @typeInfo(BinaryInstructions).@"enum";
+    var i: usize = 0;
+    var instructions: [all_instructions.len]std.builtin.Type.EnumField = undefined;
+    for (all_instructions) |instruction| {
+        if (instructionScope(instruction) == scope) {
+            instructions[i] = instruction;
+            i += 1;
+        }
+    }
+
+    return @Type(
+        .{
+            .@"enum" = .{
+                .is_exhaustive = true,
+                .tag_type = null,
+                .fields = instructions[0..i],
+                .decls = &.{},
+            },
+        },
+    );
 }
 
 // zig fmt: off
@@ -639,11 +944,53 @@ pub const BinaryInstructions = enum(u8) {
 
     // TODO: Implement complement carry
     cmc_complement_carry                        = 0xF5,
-
-    // TODO: Implement test
+    /// Carries an identifier in the second byte to distinguish between:
+    /// - TEST  0b000: Logical 'and' on two byte sized operands. Updates flags
+    /// but neither operand is changed. If followed by 'jnz' the
+    /// jump is taken if there are any 1-bits present in both
+    /// operands.
+    /// - NOT   0b010: Inverts the bits of the byte sized operand.
+    /// - NEG   0b011: Subtracts the byte sized operand from 0 and returns the
+    /// result to the destination. Effectively reversing the sign of an integer.
+    /// If the operand is 0, its sign is not changed.
+    /// - MUL   0b100: Performs an unsigned multiplication of the byte sized
+    /// source operand and the accumulator al and the double length result is
+    /// returned in ah and al.
+    /// - IMUL  0b101: Performes a signed multiplication of the byte sized
+    /// source operand the the accumulator al and the double length result is
+    /// returned in ah and al.
+    /// - DIV   0b110: Performs an unsigned division of the accumulator
+    /// (and its extension) by the byte sized source operand. The dividend is
+    /// assumed in al and ah, while the single-length quotient is returned in
+    /// al and the single-length remainder is returned in ah.
+    /// - IDIV  0b111: Performs a sigend division of the accumulator
+    /// (and its extension) by the byte sized source operand. The dividend is
+    /// assumed in al and ah, while the single-length quotient is returned in
+    /// al and the single-length remainder is returned in ah.
     logical_regmem8_immed8                      = 0xF6,
-
-    // TODO: Implement invert
+    /// Carries an identifier in the second byte to distinguish between:
+    /// - TEST  0b000: Logical 'and' on two word sized operands. Updates flags
+    /// but neither operand is changed. If followed by 'jnz' the
+    /// jump is taken if there are any 1-bits present in both
+    /// operands.
+    /// - NOT   0b010: Inverts the bits of the word sized operand.
+    /// - NEG   0b011: Subtracts the word sized operand from 0 and returns the
+    /// result to the destination. Effectively reversing the sign of an integer.
+    /// If the operand is 0, its sign is not changed.
+    /// - MUL   0b100: Performs an unsigned multiplication of the word sized
+    /// source operand and the accumulator ax and the double length result is
+    /// returned in dx and ax.
+    /// - IMUL  0b101: Performes a signed multiplication of the word sized
+    /// source operand the the accumulator ax and the double length result is
+    /// returned in dx and ax.
+    /// - DIV   0b110: Performs an unsigned division of the accumulator
+    /// (and its extension) by the word sized source operand. The dividend is
+    /// assumed in ax and dx, while the single-length quotient is returned in
+    /// ax and the single-length remainder is returned in dx.
+    /// - IDIV  0b111: Performs a sigend division of the accumulator
+    /// (and its extension) by the word sized source operand. The dividend is
+    /// assumed in ax and dx, while the single-length quotient is returned in
+    /// ax and the single-length remainder is returned in dx.
     logical_regmem16_immed16                    = 0xF7,
 
     // TODO: Implement clc - clear carry
@@ -716,7 +1063,7 @@ pub const IncSet = enum(u3) {
     push                = 0b110,
 };
 
-// zig fmt: off
+// zig fmt: on
 
 /// Id enum for the Identifier union
 const IdentifierId = enum {
@@ -837,6 +1184,8 @@ pub const IdentifierTestOp = struct {
     mnemonic: []const u8,
     identifier: TestSet,
     w: WValue,
+    mod: ModValue,
+    rm: RmValue,
     disp_lo: ?u8,
     disp_hi: ?u8,
     data_lo: ?u8,
@@ -947,6 +1296,436 @@ pub const InstructionData = union(InstructionDataId) {
     single_byte_op: SingleByteOp,
 };
 
+// zig fmt: off
+
+/// Provided a x86 opcode and if available the mod and rm fields of this opcode
+/// this function returns the length in bytes of this instruction as an integer value.
+pub fn getInstructionLength(
+    opcode: BinaryInstructions,
+    mod: ?ModValue,
+    rm: ?RmValue,
+    identifier: ?Identifier,
+) u3 {
+    return inst_len: switch (opcode) {
+
+        /////////////////////////////////////////////////////////////
+        // Accumulator opcodes
+        /////////////////////////////////////////////////////////////
+
+        BinaryInstructions.add_al_immed8,
+        BinaryInstructions.or_al_immed8,
+        BinaryInstructions.adc_al_immed8,
+        BinaryInstructions.sbb_al_immed8,
+        BinaryInstructions.and_al_immed8,
+        BinaryInstructions.sub_al_immed8,
+        BinaryInstructions.xor_al_immed8,
+        BinaryInstructions.cmp_al_immed8,
+        BinaryInstructions.test_al_immed8,
+        BinaryInstructions.in_al_dx,
+        BinaryInstructions.out_al_dx,
+        => 2, // opcode + data_8
+        BinaryInstructions.add_ax_immed16,
+        BinaryInstructions.or_ax_immed16,
+        BinaryInstructions.adc_ax_immed16,
+        BinaryInstructions.sbb_ax_immed16,
+        BinaryInstructions.and_ax_immed16,
+        BinaryInstructions.sub_ax_immed16,
+        BinaryInstructions.xor_ax_immed16,
+        BinaryInstructions.cmp_ax_immed16,
+        BinaryInstructions.test_ax_immed16,
+        BinaryInstructions.in_ax_dx,
+        BinaryInstructions.out_ax_dx,
+        => 3, // opcode + data_lo + data_hi
+        BinaryInstructions.mov_al_mem8,
+        BinaryInstructions.mov_ax_mem16,
+        BinaryInstructions.mov_mem8_al,
+        BinaryInstructions.mov_mem16_ax,
+        => 3, // opcode + addr_lo + addr_hi
+
+        /////////////////////////////////////////////////////////////
+        // Escape opcodes
+        /////////////////////////////////////////////////////////////
+
+        BinaryInstructions.esc_external_opcode_000_yyy_source,
+        BinaryInstructions.esc_external_opcode_001_yyy_source,
+        BinaryInstructions.esc_external_opcode_010_yyy_source,
+        BinaryInstructions.esc_external_opcode_011_yyy_source,
+        BinaryInstructions.esc_external_opcode_100_yyy_source,
+        BinaryInstructions.esc_external_opcode_101_yyy_source,
+        BinaryInstructions.esc_external_opcode_110_yyy_source,
+        BinaryInstructions.esc_external_opcode_111_yyy_source,
+        =>  switch (mod.?) {
+            .memoryModeNoDisplacement => break :inst_len if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) 4 else 2,
+            .memoryMode8BitDisplacement => break :inst_len 3,
+            .memoryMode16BitDisplacement => break :inst_len 4,
+            .registerModeNoDisplacement => break :inst_len 2,
+        }, // opcode + 2nd byte + (disp_lo) + (disp_hi)
+
+        /////////////////////////////////////////////////////////////
+        // Register/memory to/from register opcodes
+        /////////////////////////////////////////////////////////////
+
+        BinaryInstructions.add_regmem8_reg8,
+        BinaryInstructions.add_regmem16_reg16,
+        BinaryInstructions.add_reg8_regmem8,
+        BinaryInstructions.add_reg16_regmem16,
+        BinaryInstructions.or_regmem8_reg8,
+        BinaryInstructions.or_regmem16_reg16,
+        BinaryInstructions.or_reg8_regmem8,
+        BinaryInstructions.or_reg16_regmem16,
+        BinaryInstructions.adc_regmem8_reg8,
+        BinaryInstructions.adc_regmem16_reg16,
+        BinaryInstructions.adc_reg8_regmem8,
+        BinaryInstructions.adc_reg16_regmem16,
+        BinaryInstructions.sbb_regmem8_reg8,
+        BinaryInstructions.sbb_regmem16_reg16,
+        BinaryInstructions.sbb_reg8_regmem8,
+        BinaryInstructions.sbb_reg16_regmem16,
+        BinaryInstructions.and_regmem8_reg8,
+        BinaryInstructions.and_regmem16_reg16,
+        BinaryInstructions.and_reg8_regmem8,
+        BinaryInstructions.and_reg16_regmem16,
+        BinaryInstructions.sub_regmem8_reg8,
+        BinaryInstructions.sub_regmem16_reg16,
+        BinaryInstructions.sub_reg8_regmem8,
+        BinaryInstructions.sub_reg16_regmem16,
+        BinaryInstructions.xor_regmem8_reg8,
+        BinaryInstructions.xor_regmem16_reg16,
+        BinaryInstructions.xor_reg8_regmem8,
+        BinaryInstructions.xor_reg16_regmem16,
+        BinaryInstructions.cmp_regmem8_reg8,
+        BinaryInstructions.cmp_regmem16_reg16,
+        BinaryInstructions.cmp_reg8_regmem8,
+        BinaryInstructions.cmp_reg16_regmem16,
+        BinaryInstructions.test_regmem8_reg8,
+        BinaryInstructions.test_regmem16_reg16,
+        BinaryInstructions.xchg_reg8_regmem8,
+        BinaryInstructions.xchg_reg16_regmem16,
+        BinaryInstructions.mov_regmem8_reg8,
+        BinaryInstructions.mov_regmem16_reg16,
+        BinaryInstructions.mov_reg8_regmem8,
+        BinaryInstructions.mov_reg16_regmem16,
+        BinaryInstructions.lea_reg16_mem16,
+        BinaryInstructions.load_es_regmem16,
+        BinaryInstructions.load_ds_regmem16,
+        => switch (mod.?) {
+            .memoryModeNoDisplacement => break :inst_len if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) 4 else 2,
+            .memoryMode8BitDisplacement => break :inst_len 3,
+            .memoryMode16BitDisplacement => break :inst_len 4,
+            .registerModeNoDisplacement => break :inst_len 2,
+        }, // opcode + 2nd byte + (disp_lo) + (disp_hi)
+
+        /////////////////////////////////////////////////////////////
+        // Register/memory opcodes
+        /////////////////////////////////////////////////////////////
+
+        BinaryInstructions.pop_regmem16 => switch (mod.?) {
+            .memoryModeNoDisplacement => break :inst_len if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) 4 else 2,
+            .memoryMode8BitDisplacement => break :inst_len 3,
+            .memoryMode16BitDisplacement => break :inst_len 4,
+            .registerModeNoDisplacement => break :inst_len 2,
+        },
+
+        /////////////////////////////////////////////////////////////
+        // Register opcodes
+        /////////////////////////////////////////////////////////////
+
+        BinaryInstructions.inc_ax,
+        BinaryInstructions.inc_cx,
+        BinaryInstructions.inc_dx,
+        BinaryInstructions.inc_bx,
+        BinaryInstructions.inc_sp,
+        BinaryInstructions.inc_bp,
+        BinaryInstructions.inc_si,
+        BinaryInstructions.inc_di,
+        BinaryInstructions.dec_ax,
+        BinaryInstructions.dec_cx,
+        BinaryInstructions.dec_dx,
+        BinaryInstructions.dec_bx,
+        BinaryInstructions.dec_sp,
+        BinaryInstructions.dec_bp,
+        BinaryInstructions.dec_si,
+        BinaryInstructions.dec_di,
+        BinaryInstructions.push_ax,
+        BinaryInstructions.push_cx,
+        BinaryInstructions.push_dx,
+        BinaryInstructions.push_bx,
+        BinaryInstructions.push_sp,
+        BinaryInstructions.push_bp,
+        BinaryInstructions.push_si,
+        BinaryInstructions.push_di,
+        BinaryInstructions.pop_ax,
+        BinaryInstructions.pop_cx,
+        BinaryInstructions.pop_dx,
+        BinaryInstructions.pop_bx,
+        BinaryInstructions.pop_sp,
+        BinaryInstructions.pop_bp,
+        BinaryInstructions.pop_si,
+        BinaryInstructions.pop_di,
+        BinaryInstructions.nop_xchg_ax_ax,
+        BinaryInstructions.xchg_ax_cx,
+        BinaryInstructions.xchg_ax_dx,
+        BinaryInstructions.xchg_ax_bx,
+        BinaryInstructions.xchg_ax_sp,
+        BinaryInstructions.xchg_ax_bp,
+        BinaryInstructions.xchg_ax_si,
+        BinaryInstructions.xchg_ax_di,
+        => 1, // opcode
+
+        /////////////////////////////////////////////////////////////
+        // Immediate to register opcodes
+        /////////////////////////////////////////////////////////////
+
+        BinaryInstructions.mov_al_immed8,
+        BinaryInstructions.mov_cl_immed8,
+        BinaryInstructions.mov_dl_immed8,
+        BinaryInstructions.mov_bl_immed8,
+        BinaryInstructions.mov_ah_immed8,
+        BinaryInstructions.mov_ch_immed8,
+        BinaryInstructions.mov_dh_immed8,
+        BinaryInstructions.mov_bh_immed8,
+        => 2, // opcode + data_8
+        BinaryInstructions.mov_ax_immed16,
+        BinaryInstructions.mov_cx_immed16,
+        BinaryInstructions.mov_dx_immed16,
+        BinaryInstructions.mov_bx_immed16,
+        BinaryInstructions.mov_sp_immed16,
+        BinaryInstructions.mov_bp_immed16,
+        BinaryInstructions.mov_si_immed16,
+        BinaryInstructions.mov_di_immed16,
+        => 3, // opcode + data_lo + data_hi
+
+        /////////////////////////////////////////////////////////////
+        // Immediate to memory opcodes
+        /////////////////////////////////////////////////////////////
+        
+        BinaryInstructions.mov_mem8_immed8 => switch (mod.?) {
+            .memoryModeNoDisplacement => break :inst_len if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) 5 else 3,
+            .memoryMode8BitDisplacement => break :inst_len 4,
+            .memoryMode16BitDisplacement => break :inst_len 5,
+            .registerModeNoDisplacement => break :inst_len 3,
+        }, // opcode + 2nd byte + (disp_lo) + (disp_hi) + data_8
+        BinaryInstructions.mov_mem16_immed16 => switch (mod.?) {
+            .memoryModeNoDisplacement => break :inst_len if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) 6 else 4,
+            .memoryMode8BitDisplacement => break :inst_len 5,
+            .memoryMode16BitDisplacement => break :inst_len 6,
+            .registerModeNoDisplacement => break :inst_len 4,
+        }, // opcode + 2nd byte + (disp_lo) + (disp_hi) + data_lo + data_hi
+    
+
+        /////////////////////////////////////////////////////////////
+        // Segment register opcodes
+        /////////////////////////////////////////////////////////////
+
+        BinaryInstructions.push_es,
+        BinaryInstructions.pop_es,
+        BinaryInstructions.push_cs,
+        BinaryInstructions.push_ss,
+        BinaryInstructions.pop_ss,
+        BinaryInstructions.push_ds,
+        BinaryInstructions.pop_ds,
+        => 1, // opcode
+        BinaryInstructions.segment_override_prefix_es,
+        BinaryInstructions.segment_override_prefix_cs,
+        BinaryInstructions.segment_override_prefix_ss,
+        BinaryInstructions.segment_override_prefix_ds,
+        => 1, // opcode
+        BinaryInstructions.mov_regmem16_segreg,
+        BinaryInstructions.mov_segreg_regmem16,
+        => switch (mod.?) {
+            .memoryModeNoDisplacement => break :inst_len if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) 4 else 2,
+            .memoryMode8BitDisplacement => break :inst_len 3,
+            .memoryMode16BitDisplacement => break :inst_len 4,
+            .registerModeNoDisplacement => break :inst_len 2,
+        }, // opcode + 2nd byte + (disp_lo) + (disp_hi)
+
+        /////////////////////////////////////////////////////////////
+        // Identifer add opcodes
+        /////////////////////////////////////////////////////////////
+
+        BinaryInstructions.regmem8_immed8,
+        BinaryInstructions.signed_regmem8_immed8,
+        BinaryInstructions.sign_extend_regmem16_immed8,
+        => switch (mod.?) {
+            .memoryModeNoDisplacement => break :inst_len if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) 5 else 3,
+            .memoryMode8BitDisplacement => break :inst_len 4,
+            .memoryMode16BitDisplacement => break :inst_len 5,
+            .registerModeNoDisplacement => break :inst_len 3,
+        }, // opcode + 2nd byte + (disp_lo) + (disp_hi) + data_8 / data_sx
+        BinaryInstructions.regmem16_immed16 => switch (mod.?) {
+            .memoryModeNoDisplacement => break :inst_len if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) 6 else 4,
+            .memoryMode8BitDisplacement => break :inst_len 5,
+            .memoryMode16BitDisplacement => break :inst_len 6,
+            .registerModeNoDisplacement => break :inst_len 4,
+        }, // opcode + 2nd byte + (disp_lo) + (disp_hi) + data_lo + data_hi
+
+        /////////////////////////////////////////////////////////////
+        // Identifer rol opcodes
+        /////////////////////////////////////////////////////////////
+
+        BinaryInstructions.logical_regmem8,
+        BinaryInstructions.logical_regmem8_cl,
+        BinaryInstructions.logical_regmem16,
+        BinaryInstructions.logical_regmem16_cl,
+        => switch (mod.?) {
+            .memoryModeNoDisplacement => break :inst_len if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) 4 else 2,
+            .memoryMode8BitDisplacement => break :inst_len 3,
+            .memoryMode16BitDisplacement => break :inst_len 4,
+            .registerModeNoDisplacement => break :inst_len 2,
+        }, // opcode + 2nd byte + (disp_lo) + (disp_hi)
+
+        /////////////////////////////////////////////////////////////
+        // Identifer test opcodes
+        /////////////////////////////////////////////////////////////
+
+        BinaryInstructions.logical_regmem8_immed8 => switch (identifier.?.test_set) {
+            TestSet.TEST => switch (mod.?) {
+                .memoryModeNoDisplacement => break :inst_len if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) 5 else 3,
+                .memoryMode8BitDisplacement => break :inst_len 4,
+                .memoryMode16BitDisplacement => break :inst_len 5,
+                .registerModeNoDisplacement => break :inst_len 3,
+            },
+            TestSet.NEG,
+            TestSet.NOT,
+            TestSet.MUL,
+            TestSet.IMUL,
+            TestSet.DIV,
+            TestSet.IDIV,
+            => switch (mod.?) {
+                .memoryModeNoDisplacement => break :inst_len if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) 4 else 2,
+                .memoryMode8BitDisplacement => break :inst_len 3,
+                .memoryMode16BitDisplacement => break :inst_len 4,
+                .registerModeNoDisplacement => break :inst_len 2,
+            }
+        }, // opcode + 2nd byte + (disp_lo) + (disp_hi) + (data_8)
+        BinaryInstructions.logical_regmem16_immed16 => switch (identifier.?.test_set) {
+            TestSet.TEST => switch (mod.?) {
+                .memoryModeNoDisplacement => break :inst_len if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) 6 else 4,
+                .memoryMode8BitDisplacement => break :inst_len 5,
+                .memoryMode16BitDisplacement => break :inst_len 6,
+                .registerModeNoDisplacement => break :inst_len 4,
+            },
+            TestSet.NEG,
+            TestSet.NOT,
+            TestSet.MUL,
+            TestSet.IMUL,
+            TestSet.DIV,
+            TestSet.IDIV,
+            => switch (mod.?) {
+                .memoryModeNoDisplacement => break :inst_len if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) 4 else 2,
+                .memoryMode8BitDisplacement => break :inst_len 3,
+                .memoryMode16BitDisplacement => break :inst_len 4,
+                .registerModeNoDisplacement => break :inst_len 2,
+            }
+        }, // opcode + 2nd byte + (disp_lo) + (disp_hi) + (data_lo) + (data_hi)
+
+        /////////////////////////////////////////////////////////////
+        // Identifer inc opcodes
+        /////////////////////////////////////////////////////////////
+
+        BinaryInstructions.regmem8,
+        BinaryInstructions.regmem16,
+        => switch (mod.?) {
+            .memoryModeNoDisplacement => break :inst_len if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) 4 else 2,
+            .memoryMode8BitDisplacement => break :inst_len 3,
+            .memoryMode16BitDisplacement => break :inst_len 4,
+            .registerModeNoDisplacement => break :inst_len 2,
+        }, // opcode + 2nd byte + (disp_lo) + (disp_hi)
+
+        /////////////////////////////////////////////////////////////
+        // Direct opcodes
+        /////////////////////////////////////////////////////////////
+
+        BinaryInstructions.jo_jump_on_overflow,
+        BinaryInstructions.jno_jump_on_not_overflow,
+        BinaryInstructions.jb_jnae_jump_on_below_not_above_or_equal,
+        BinaryInstructions.jnb_jae_jump_on_not_below_above_or_equal,
+        BinaryInstructions.je_jz_jump_on_equal_zero,
+        BinaryInstructions.jne_jnz_jumb_on_not_equal_not_zero,
+        BinaryInstructions.jbe_jna_jump_on_below_or_equal_above,
+        BinaryInstructions.jnbe_ja_jump_on_not_below_or_equal_above,
+        BinaryInstructions.js_jump_on_sign,
+        BinaryInstructions.jns_jump_on_not_sign,
+        BinaryInstructions.jp_jpe_jump_on_parity_parity_even,
+        BinaryInstructions.jnp_jpo_jump_on_not_parity_parity_odd,
+        BinaryInstructions.jl_jnge_jump_on_less_not_greater_or_equal,
+        BinaryInstructions.jnl_jge_jump_on_not_less_greater_or_equal,
+        BinaryInstructions.jle_jng_jump_on_less_or_equal_not_greater,
+        BinaryInstructions.jnle_jg_jump_on_not_less_or_equal_greater,
+        BinaryInstructions.loopne_loopnz_loop_while_not_zero_equal,
+        BinaryInstructions.loope_loopz_loop_while_zero_equal,
+        BinaryInstructions.loop_loop_cx_times,
+        BinaryInstructions.jcxz_jump_on_cx_zero,
+        BinaryInstructions.jmp_direct_within_segment_short,
+        => 2, // opcode + ip_inc_8
+        BinaryInstructions.int_interrupt_type_specified,
+        => 2, // opcode + data_8
+        BinaryInstructions.ret_within_seg_adding_immed16_to_sp,
+        BinaryInstructions.ret_intersegment_adding_immed16_to_sp,
+        => 3, // opcode + data_lo + data_hi
+        BinaryInstructions.aam_ASCII_adjust_multiply,
+        BinaryInstructions.aad_ASCII_adjust_divide,
+        => 2, // opcode + 2nd byte
+        BinaryInstructions.call_direct_intersegment,
+        => 5, // opcode + disp_lo + disp_hi + seg_lo + seg_hi
+        BinaryInstructions.call_direct_within_segment,
+        BinaryInstructions.jmp_direct_within_segment,
+        => 3, // opcode + ip_inc_lo + ip_inc_hi
+        BinaryInstructions.jmp_direct_intersegment,
+        => 5, // opcode + ip_lo + ip_hi + cs_lo + cs_hi
+        
+        /////////////////////////////////////////////////////////////
+        // Single byte opcodes
+        /////////////////////////////////////////////////////////////
+
+        BinaryInstructions.daa_decimal_adjust_add,
+        BinaryInstructions.das_decimal_adjust_sub,
+        BinaryInstructions.aaa_ASCII_adjust_add,
+        BinaryInstructions.aas_ASCII_adjust_sub,
+        BinaryInstructions.cbw_byte_to_word,
+        BinaryInstructions.cwd_word_to_double_word,
+        BinaryInstructions.wait,
+        BinaryInstructions.pushf,
+        BinaryInstructions.popf,
+        BinaryInstructions.sahf,
+        BinaryInstructions.lahf,
+        BinaryInstructions.ret_within_segment,
+        BinaryInstructions.ret_intersegment,
+        BinaryInstructions.int_interrupt_type_3,
+        BinaryInstructions.into_interrupt_on_overflow,
+        BinaryInstructions.iret_interrupt_return,
+        BinaryInstructions.xlat_translate_byte_to_al,
+        BinaryInstructions.lock_bus_lock_prefix,
+        BinaryInstructions.halt,
+        BinaryInstructions.cmc_complement_carry,
+        BinaryInstructions.clc_clear_carry,
+        BinaryInstructions.stc_set_carry,
+        BinaryInstructions.cli_clear_interrupt,
+        BinaryInstructions.sti_set_interrupt,
+        BinaryInstructions.cld_clear_direction,
+        BinaryInstructions.std_set_direction,
+        BinaryInstructions.movs_byte,
+        BinaryInstructions.movs_word,
+        BinaryInstructions.cmps_byte,
+        BinaryInstructions.cmps_word,
+        BinaryInstructions.stos_byte,
+        BinaryInstructions.stos_word,
+        BinaryInstructions.lods_byte,
+        BinaryInstructions.lods_word,
+        BinaryInstructions.scas_byte,
+        BinaryInstructions.scas_word,
+        BinaryInstructions.in_al_immed8,
+        BinaryInstructions.in_ax_immed8,
+        BinaryInstructions.out_al_immed8,
+        BinaryInstructions.out_ax_immed8,
+        BinaryInstructions.repne_repnz_not_equal_zero,
+        BinaryInstructions.rep_repe_repz_equal_zero,
+        => 1, // opcode
+    };
+}
+
+// zig fmt: on
+
 /// Provided a valid opcode and the input bytes as parameters this function
 /// returns a InstructionData object containing all extracted instruction data.
 pub fn decode(
@@ -955,7 +1734,7 @@ pub fn decode(
 ) InstructionDecodeError!InstructionData {
     var result: InstructionData = undefined;
     const log = std.log.scoped(.decode);
-    defer log.info("{t} returned a {t} object.", .{opcode, result});
+    defer log.info("{t} returned a {t} object.", .{ opcode, result });
 
     switch (opcode) {
         // Register/Memory to/from Register instructions - with mod and reg
@@ -1067,7 +1846,7 @@ pub fn decode(
                 => "lds",
                 else => {
                     return InstructionDecodeError.InstructionError;
-                }
+                },
             };
             const d: ?DValue = switch (opcode) {
                 .test_regmem8_reg8,
@@ -1125,7 +1904,7 @@ pub fn decode(
         BinaryInstructions.signed_regmem8_immed8,
         BinaryInstructions.sign_extend_regmem16_immed8,
         => {
-            const s: SValue =  @enumFromInt((input[0] << 6) >> 7);
+            const s: SValue = @enumFromInt((input[0] << 6) >> 7);
             const w: WValue = @enumFromInt((input[0] << 7) >> 7);
             const mod: ModValue = @enumFromInt(input[1] >> 6);
             const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
@@ -1282,7 +2061,7 @@ pub fn decode(
                     };
                     const data_sx: ?u8 = switch (opcode) {
                         .sign_extend_regmem16_immed8 => input[4],
-                        else => null, 
+                        else => null,
                     };
 
                     result = InstructionData{
@@ -1346,8 +2125,7 @@ pub fn decode(
             }
         },
 
-
-        // Register/memory Op - with w, mod, rm 
+        // Register/memory Op - with w, mod, rm
         // min 2, max 4 bytes long with disp_lo, disp_hi,
         BinaryInstructions.pop_regmem16 => {
             const mod: ModValue = @enumFromInt(input[1] >> 6);
@@ -1597,6 +2375,7 @@ pub fn decode(
         // data_8 or data_lo and data_hi or data_sx
         // Identifier.test_set
         BinaryInstructions.logical_regmem8_immed8,
+        BinaryInstructions.logical_regmem16_immed16,
         => {
             const mod: ModValue = @enumFromInt(input[1] >> 6);
             const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
@@ -1624,6 +2403,8 @@ pub fn decode(
                                 .mnemonic = mnemonic,
                                 .identifier = identifier,
                                 .w = w,
+                                .mod = mod,
+                                .rm = rm,
                                 .disp_lo = disp_lo,
                                 .disp_hi = disp_hi,
                                 .data_8 = if (w == WValue.byte) input[4] else null,
@@ -1639,6 +2420,8 @@ pub fn decode(
                                 .mnemonic = mnemonic,
                                 .identifier = identifier,
                                 .w = w,
+                                .mod = mod,
+                                .rm = rm,
                                 .disp_lo = null,
                                 .disp_hi = null,
                                 .data_8 = if (w == WValue.byte) input[2] else null,
@@ -1658,6 +2441,8 @@ pub fn decode(
                             .mnemonic = mnemonic,
                             .identifier = identifier,
                             .w = w,
+                            .mod = mod,
+                            .rm = rm,
                             .disp_lo = disp_lo,
                             .disp_hi = null,
                             .data_8 = if (w == WValue.byte) input[3] else null,
@@ -1677,6 +2462,8 @@ pub fn decode(
                             .mnemonic = mnemonic,
                             .identifier = identifier,
                             .w = w,
+                            .mod = mod,
+                            .rm = rm,
                             .disp_lo = disp_lo,
                             .disp_hi = disp_hi,
                             .data_8 = if (w == WValue.byte) input[4] else null,
@@ -1692,6 +2479,8 @@ pub fn decode(
                             .mnemonic = mnemonic,
                             .identifier = identifier,
                             .w = w,
+                            .mod = mod,
+                            .rm = rm,
                             .disp_lo = null,
                             .disp_hi = null,
                             .data_8 = if (w == WValue.byte) input[2] else null,
@@ -2033,7 +2822,7 @@ pub fn decode(
             return result;
         },
 
-        // no mod no reg with w
+        // Accumulator instructions
         BinaryInstructions.add_al_immed8,
         BinaryInstructions.add_ax_immed16,
         BinaryInstructions.or_al_immed8,
@@ -2109,7 +2898,7 @@ pub fn decode(
             return result;
         },
 
-        // Direct address (offset) addr-lo, addr-hi
+        // Accumulator instructions - Direct address (offset) addr-lo, addr-hi
         BinaryInstructions.mov_al_mem8,
         BinaryInstructions.mov_ax_mem16,
         BinaryInstructions.mov_mem8_al,
@@ -2292,7 +3081,7 @@ pub fn decode(
                 => input[1],
                 else => null,
             };
-            
+
             result = InstructionData{
                 .direct_op = DirectOp{
                     .opcode = opcode,
@@ -2536,7 +3325,6 @@ pub fn decode(
             };
             return result;
         },
-        else => return InstructionDecodeError.DecodeError,
     }
 }
 
@@ -2851,7 +3639,6 @@ test "Register/memory to/from register instructions" {
             input_0x8B_memory_mode_16_bit_displacement,
         ),
     );
-
 }
 
 test "Identifier instructions - add set" {
@@ -2959,7 +3746,6 @@ test "Identifier instructions - add set" {
             input_0x81_immediate16_to_regmem16_memory_mode_no_displacement,
         ),
     );
-
 
     const input_0x81_immediate16_to_regmem16: [6]u8 = [_]u8{
         0b1000_0001, // S = 0, W = 1
@@ -3166,5 +3952,14 @@ test "Immediate to register mov" {
 // test "Single byte instructions" {}
 // test "Escape instructions" {}
 
-
 // TODO: Add test cases for different instruction sizes
+
+// ========================================================================
+//
+// (C) Copyright 2025, Nicolas Selig, All Rights Reserved.
+//
+// This software is provided 'as-is', without any express or implied
+// warranty. In no event will the authors be held liable for any damages
+// arising from the use of this software.
+//
+// ========================================================================

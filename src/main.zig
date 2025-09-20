@@ -44,8 +44,8 @@ const InstructionExecutionError = errors.InstructionExecutionError;
 const SimulatorError = errors.SimulatorError;
 
 /// global log level
-// const LogLevel: std.log.Level = .debug;
-const LogLevel: std.log.Level = .info;
+const LogLevel: std.log.Level = .debug;
+// const LogLevel: std.log.Level = .info;
 
 /// Checks if a displacement value fits inside a 8 bit signed integer
 /// or if a 16 bit signed integer is needed. Returns true if a 8 bit integer
@@ -288,15 +288,15 @@ pub fn main() !void {
         }
 
         const instruction_binary: u8 = BIU.getIndex(0);
-        const instruction_name: BinaryInstructions = @enumFromInt(instruction_binary);
-        log.debug("Read instruction: 0x{x:0>2}, {t}", .{ instruction_binary, instruction_name });
-        const instruction: BinaryInstructions = @enumFromInt(instruction_binary);
+        const opcode: BinaryInstructions = @enumFromInt(instruction_binary);
+        log.debug("Read instruction: 0x{x:0>2}, {t}", .{ instruction_binary, opcode });
 
         // var s: SValue = undefined;
         var w: WValue = undefined;
         var mod: ModValue = undefined;
         var rm: RmValue = undefined;
-        switch (instruction) {
+
+        switch (opcode) {
             BinaryInstructions.add_regmem8_reg8,
             BinaryInstructions.add_regmem16_reg16,
             BinaryInstructions.add_reg8_regmem8,
@@ -306,12 +306,13 @@ pub fn main() !void {
                 mod = @enumFromInt(BIU.getIndex(1) >> 6);
                 rm = @enumFromInt((BIU.getIndex(1) << 5) >> 5);
 
-                stepSize = decoder.addGetInstructionLength(instruction_name, mod, rm);
+                // stepSize = decoder.addGetInstructionLength(opcode, mod, rm);
+                stepSize = decoder.getInstructionLength(opcode, mod, rm, null);
             },
             BinaryInstructions.add_al_immed8,
             BinaryInstructions.add_ax_immed16,
             => {
-                log.err("Instruction '{t}' not yet implemented.", .{instruction});
+                log.err("Instruction '{t}' not yet implemented.", .{opcode});
             },
             BinaryInstructions.regmem8_immed8,
             BinaryInstructions.regmem16_immed16,
@@ -322,7 +323,7 @@ pub fn main() !void {
                 mod = @enumFromInt(BIU.getIndex(1) >> 6);
                 rm = @enumFromInt((BIU.getIndex(1) << 5) >> 5);
 
-                stepSize = decoder.immediateOpGetInstructionLength(instruction_name, mod, rm);
+                stepSize = decoder.immediateOpGetInstructionLength(opcode, mod, rm);
             },
             BinaryInstructions.mov_regmem8_reg8,
             BinaryInstructions.mov_regmem16_reg16,
@@ -334,7 +335,7 @@ pub fn main() !void {
                 mod = @enumFromInt(BIU.getIndex(1) >> 6);
                 rm = @enumFromInt((BIU.getIndex(1) << 5) >> 5);
 
-                stepSize = decoder.movGetInstructionLength(instruction_name, w, mod, rm);
+                stepSize = decoder.movGetInstructionLength(opcode, w, mod, rm);
             },
             BinaryInstructions.mov_regmem16_segreg,
             BinaryInstructions.mov_segreg_regmem16,
@@ -343,7 +344,7 @@ pub fn main() !void {
                 mod = @enumFromInt(BIU.getIndex(1) >> 6);
                 rm = @enumFromInt((BIU.getIndex(1) << 5) >> 5);
 
-                stepSize = decoder.movGetInstructionLength(instruction_name, w, mod, rm);
+                stepSize = decoder.movGetInstructionLength(opcode, w, mod, rm);
             },
             BinaryInstructions.mov_al_mem8,
             BinaryInstructions.mov_ax_mem16,
@@ -352,7 +353,7 @@ pub fn main() !void {
             => {
                 // 0xA0, 0xA1, 0xA2, 0xA3
                 w = @enumFromInt((BIU.getIndex(0) << 7) >> 7);
-                stepSize = decoder.movGetInstructionLength(instruction_name, w, null, null);
+                stepSize = decoder.movGetInstructionLength(opcode, w, null, null);
             },
             BinaryInstructions.mov_al_immed8,
             BinaryInstructions.mov_cl_immed8,
@@ -383,7 +384,7 @@ pub fn main() !void {
                 w = @enumFromInt((BIU.getIndex(0) << 7) >> 7);
                 mod = @enumFromInt(second_byte >> 6);
                 rm = @enumFromInt((second_byte << 5) >> 5);
-                stepSize = decoder.movGetInstructionLength(instruction_name, w, mod, rm);
+                stepSize = decoder.movGetInstructionLength(opcode, w, mod, rm);
             },
             else => {
                 log.debug("This instruction is not yet implemented. Skipping...", .{});
@@ -480,7 +481,7 @@ pub fn main() !void {
         }
 
         const instruction_data: InstructionData = try decoder.decode(
-            instruction,
+            opcode,
             InstructionBytes,
         );
 
@@ -527,14 +528,14 @@ pub fn main() !void {
                     log.err("{s}: 0x{x:0>2} ({s}) not implemented yet.\ncontinue...", .{
                         @errorName(instruction_data.err),
                         InstructionBytes[0],
-                        @tagName(instruction),
+                        @tagName(opcode),
                     });
                 },
                 InstructionDecodeError.WriteFailed => {
                     log.err("{s}: Failed to write instruction 0x{x:0>2} ({s}) to .asm file.\ncontinue...", .{
                         @errorName(instruction_data.err),
                         InstructionBytes[0],
-                        @tagName(instruction),
+                        @tagName(opcode),
                     });
                 },
             }

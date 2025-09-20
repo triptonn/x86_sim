@@ -36,7 +36,10 @@ const BusInterfaceUnit = hw.BusInterfaceUnit;
 const decoder = @import("decoder.zig");
 const BinaryInstructions = decoder.BinaryInstructions;
 const InstructionData = decoder.InstructionData;
+const AddSet = decoder.AddSet;
 const RolSet = decoder.RolSet;
+const TestSet = decoder.TestSet;
+const IncSet = decoder.IncSet;
 
 /// Identifiers of the Internal Communication execution_unit as well as
 /// the General execution_unit of the Intel 8086 CPU plus an identifier for
@@ -313,6 +316,81 @@ pub fn getIdentifierRolOpSourceAndDest(
             },
             .in_CL => SourceInfo{
                 .address = Address.cl,
+            },
+        },
+    };
+}
+
+pub fn getIdentifierTestOpSourceAndDest(
+    EU: *ExecutionUnit,
+    opcode: BinaryInstructions,
+    instruction_data: InstructionData,
+) LocatorError!InstructionInfo {
+    const mod: ?MOD = instruction_data.identifier_test_op.mod;
+    const identifier: TestSet = instruction_data.identifier_test_op.identifier;
+    const rm: ?RM = instruction_data.identifier_test_op.rm;
+    const disp_lo: ?u8 = instruction_data.identifier_test_op.disp_lo;
+    const disp_hi: ?u8 = instruction_data.identifier_test_op.disp_hi;
+
+    const data_8: ?u8 = instruction_data.identifier_test_op.data_8;
+    const data_lo: ?u8 = instruction_data.identifier_test_op.data_lo;
+    const data_hi: ?u8 = instruction_data.identifier_test_op.data_hi;
+
+    return InstructionInfo{
+        .destination_info = dest: switch (identifier) {
+            .TEST,
+            .NOT,
+            .NEG,
+            => switch (opcode) {
+                .regmem8_immed8 => break :dest DestinationInfo{
+                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                        EU,
+                        Width.byte,
+                        mod.?,
+                        rm.?,
+                        disp_lo,
+                        disp_hi,
+                    ),
+                },
+                .regmem16_immed16 => break :dest DestinationInfo{
+                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                        EU,
+                        Width.word,
+                        mod.?,
+                        rm.?,
+                        disp_lo,
+                        disp_hi,
+                    ),
+                },
+                else => return LocatorError.NotYetImplemented,
+            },
+            .MUL,
+            .IMUL,
+            .DIV,
+            .IDIV,
+            => DestinationInfo{
+                .none = {},
+            },
+        },
+        .source_info = src: switch (identifier) {
+            .NOT,
+            .NEG,
+            => SourceInfo{
+                .none = {},
+            },
+            .TEST,
+            .MUL,
+            .IMUL,
+            .DIV,
+            .IDIV,
+            => switch (opcode) {
+                .regmem8_immed8 => break :src SourceInfo{
+                    .immediate = @as(u16, data_8.?),
+                },
+                .regmem16_immed16 => break :src SourceInfo{
+                    .immediate = (@as(u16, data_hi.?) << 8) + data_lo.?,
+                },
+                else => return LocatorError.NotYetImplemented,
             },
         },
     };
