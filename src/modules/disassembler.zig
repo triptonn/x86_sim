@@ -79,107 +79,64 @@ fn prepareInstructionLine(
             const index = destination.address_calculation.index;
             const displacement = destination.address_calculation.displacement;
             const displacement_value = destination.address_calculation.displacement_value;
+            const signed_displacement_value = destination.address_calculation.signed_displacement_value;
 
+            const only_displacement = base == Address.none;
             const no_index: bool = index == Address.none;
             const no_displacement: bool = displacement == DisplacementFormat.none;
 
-            if (no_index) {
-                if (no_displacement) {
+            if (no_displacement) {
+                if (no_index) {
                     const res = try std.fmt.allocPrint(
                         allocator,
                         " [{t}]",
-                        .{
-                            base.?,
-                        },
-                    );
-                    break :dest_switch res;
-                } else if (!no_displacement and displacement_value.? == 0) {
-                    const res = try std.fmt.allocPrint(
-                        allocator,
-                        " [{t} + {d}]",
-                        .{
-                            base.?,
-                            displacement_value.?,
-                        },
+                        .{base.?},
                     );
                     break :dest_switch res;
                 } else {
-                    const disp_u16: u16 = @intCast(displacement_value.?);
-                    const disp_signed: i16 = if (displacement == DisplacementFormat.d8) blk: {
-                        const u8val: u8 = @intCast(disp_u16 & 0xFF);
-                        const s8: i8 = @bitCast(u8val);
-                        break :blk @as(i16, s8);
-                    } else blk: {
-                        const s16: i16 = @bitCast(disp_u16);
-                        break :blk s16;
-                    };
-
-                    if (disp_signed < 0) {
-                        const res = try std.fmt.allocPrint(
-                            allocator,
-                            " [{t} - {d}]",
-                            .{
-                                base.?,
-                                -disp_signed,
-                            },
-                        );
-                        break :dest_switch res;
-                    } else {
-                        const res = try std.fmt.allocPrint(
-                            allocator,
-                            " [{t} + {d}]",
-                            .{
-                                base.?,
-                                disp_signed,
-                            },
-                        );
-                        break :dest_switch res;
-                    }
-                }
-            } else {
-                if (displacement == DisplacementFormat.none) {
                     const res = try std.fmt.allocPrint(
                         allocator,
                         " [{t} + {t}]",
-                        .{
-                            base.?,
-                            index.?,
-                        },
+                        .{ base.?, index.? },
+                    );
+                    break :dest_switch res;
+                }
+            } else {
+                if (only_displacement) {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " [{d}]",
+                        .{displacement_value.?},
+                    );
+                    break :dest_switch res;
+                } else if (no_index and signed_displacement_value.? >= 0) {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " [{t} + {d}]",
+                        .{ base.?, signed_displacement_value.? },
+                    );
+                    break :dest_switch res;
+                } else if (no_index) {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " [{t} - {d}]",
+                        .{ base.?, signed_displacement_value.? },
+                    );
+                    break :dest_switch res;
+                } else if (signed_displacement_value.? >= 0) {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " [{t} + {t} + {d}]",
+                        .{ base.?, index.?, signed_displacement_value.? },
                     );
                     break :dest_switch res;
                 } else {
-                    const disp_u16: u16 = @intCast(displacement_value.?);
-                    const disp_signed: i16 = if (displacement == DisplacementFormat.d8) blk: {
-                        const u8val: u8 = @intCast(disp_u16 & 0xFF);
-                        const s8: i8 = @bitCast(u8val);
-                        break :blk @as(i16, s8);
-                    } else blk: {
-                        const s16: i16 = @bitCast(disp_u16);
-                        break :blk s16;
-                    };
-                    if (disp_signed < 0) {
-                        const res = try std.fmt.allocPrint(
-                            allocator,
-                            " [{t} + {t} - {d}]",
-                            .{
-                                base.?,
-                                index.?,
-                                -disp_signed,
-                            },
-                        );
-                        break :dest_switch res;
-                    } else {
-                        const res = try std.fmt.allocPrint(
-                            allocator,
-                            " [{t} + {t} + {d}]",
-                            .{
-                                base.?,
-                                index.?,
-                                disp_signed,
-                            },
-                        );
-                        break :dest_switch res;
-                    }
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " [{t} + {t} - {d}]",
+                        .{ base.?, index.?, signed_displacement_value.? },
+                    );
+                    break :dest_switch res;
                 }
             }
         },
@@ -208,111 +165,172 @@ fn prepareInstructionLine(
             const index = source.address_calculation.index;
             const displacement = source.address_calculation.displacement;
             const displacement_value = source.address_calculation.displacement_value;
-            if (base == Address.none) {
-                const res = try std.fmt.allocPrint(
-                    allocator,
-                    " [{d}]",
-                    .{displacement_value.?},
-                );
+            const signed_displacement_value = source.address_calculation.signed_displacement_value;
 
-                break :source_switch res;
-            } else if (index == Address.none) {
-                if (displacement == DisplacementFormat.none) {
+            const only_displacement = base == Address.none;
+            const no_index: bool = index == Address.none;
+            const no_displacement: bool = displacement == DisplacementFormat.none;
+
+            if (no_displacement) {
+                if (no_index) {
                     const res = try std.fmt.allocPrint(
                         allocator,
                         " [{t}]",
-                        .{
-                            base.?,
-                        },
-                    );
-                    break :source_switch res;
-                } else if (displacement != DisplacementFormat.none and displacement_value.? == 0) {
-                    const res = try std.fmt.allocPrint(
-                        allocator,
-                        " [{t}]",
-                        .{
-                            base.?,
-                        },
+                        .{base.?},
                     );
                     break :source_switch res;
                 } else {
-                    const disp_u16: u16 = @intCast(displacement_value.?);
-                    const disp_signed: i16 = if (displacement == DisplacementFormat.d8) blk: {
-                        const u8val: u8 = @intCast(disp_u16 & 0xFF);
-                        const s8: i8 = @bitCast(u8val);
-                        break :blk @as(i16, s8);
-                    } else blk: {
-                        const s16: i16 = @bitCast(disp_u16);
-                        break :blk s16;
-                    };
-                    if (disp_signed < 0) {
-                        const res = try std.fmt.allocPrint(
-                            allocator,
-                            " [{t} - {d}]",
-                            .{
-                                base.?,
-                                -disp_signed,
-                            },
-                        );
-                        break :source_switch res;
-                    } else {
-                        const res = try std.fmt.allocPrint(
-                            allocator,
-                            " [{t} + {d}]",
-                            .{
-                                base.?,
-                                disp_signed,
-                            },
-                        );
-                        break :source_switch res;
-                    }
-                }
-            } else {
-                if (displacement == DisplacementFormat.none) {
                     const res = try std.fmt.allocPrint(
                         allocator,
                         " [{t} + {t}]",
-                        .{
-                            base.?,
-                            index.?,
-                        },
+                        .{ base.?, index.? },
+                    );
+                    break :source_switch res;
+                }
+            } else {
+                if (only_displacement) {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " [{d}]",
+                        .{displacement_value.?},
+                    );
+                    break :source_switch res;
+                } else if (no_index and signed_displacement_value.? >= 0) {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " [{t} + {d}]",
+                        .{ base.?, signed_displacement_value.? },
+                    );
+                    break :source_switch res;
+                } else if (no_index) {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " [{t} - {d}]",
+                        .{ base.?, signed_displacement_value.? },
+                    );
+                    break :source_switch res;
+                } else if (signed_displacement_value.? >= 0) {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " [{t} + {t} + {d}]",
+                        .{ base.?, index.?, signed_displacement_value.? },
                     );
                     break :source_switch res;
                 } else {
-                    const disp_u16: u16 = @intCast(displacement_value.?);
-                    const disp_signed: i16 = if (displacement == DisplacementFormat.d8) blk: {
-                        const u8val: u8 = @intCast(disp_u16 & 0xFF);
-                        const s8: i8 = @bitCast(u8val);
-                        break :blk @as(i16, s8);
-                    } else blk: {
-                        const s16: i16 = @bitCast(disp_u16);
-                        break :blk s16;
-                    };
-                    if (disp_signed < 0) {
-                        const res = try std.fmt.allocPrint(
-                            allocator,
-                            " [{t} + {t} - {d}]",
-                            .{
-                                base.?,
-                                index.?,
-                                -disp_signed,
-                            },
-                        );
-                        break :source_switch res;
-                    } else {
-                        const res = try std.fmt.allocPrint(
-                            allocator,
-                            " [{t} + {t} + {d}]",
-                            .{
-                                base.?,
-                                index.?,
-                                disp_signed,
-                            },
-                        );
-                        break :source_switch res;
-                    }
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " [{t} + {t} - {d}]",
+                        .{ base.?, index.?, signed_displacement_value.? },
+                    );
+                    break :source_switch res;
                 }
             }
+
+            // if (base == Address.none) {
+            //     const res = try std.fmt.allocPrint(
+            //         allocator,
+            //         " [{d}]",
+            //         .{displacement_value.?},
+            //     );
+
+            //     break :source_switch res;
+            // } else if (index == Address.none) {
+            //     if (displacement == DisplacementFormat.none) {
+            //         const res = try std.fmt.allocPrint(
+            //             allocator,
+            //             " [{t}]",
+            //             .{
+            //                 base.?,
+            //             },
+            //         );
+            //         break :source_switch res;
+            //     } else if (displacement != DisplacementFormat.none and displacement_value.? == 0) {
+            //         const res = try std.fmt.allocPrint(
+            //             allocator,
+            //             " [{t}]",
+            //             .{
+            //                 base.?,
+            //             },
+            //         );
+            //         break :source_switch res;
+            //     } else {
+            //         const disp_u16: u16 = @intCast(displacement_value.?);
+            //         const disp_signed: i16 = if (displacement == DisplacementFormat.d8) blk: {
+            //             const u8val: u8 = @intCast(disp_u16 & 0xFF);
+            //             const s8: i8 = @bitCast(u8val);
+            //             break :blk @as(i16, s8);
+            //         } else blk: {
+            //             const s16: i16 = @bitCast(disp_u16);
+            //             break :blk s16;
+            //         };
+            //         if (disp_signed < 0) {
+            //             const res = try std.fmt.allocPrint(
+            //                 allocator,
+            //                 " [{t} - {d}]",
+            //                 .{
+            //                     base.?,
+            //                     -disp_signed,
+            //                 },
+            //             );
+            //             break :source_switch res;
+            //         } else {
+            //             const res = try std.fmt.allocPrint(
+            //                 allocator,
+            //                 " [{t} + {d}]",
+            //                 .{
+            //                     base.?,
+            //                     disp_signed,
+            //                 },
+            //             );
+            //             break :source_switch res;
+            //         }
+            //     }
+            // } else {
+            //     if (displacement == DisplacementFormat.none) {
+            //         const res = try std.fmt.allocPrint(
+            //             allocator,
+            //             " [{t} + {t}]",
+            //             .{
+            //                 base.?,
+            //                 index.?,
+            //             },
+            //         );
+            //         break :source_switch res;
+            //     } else {
+            //         const disp_u16: u16 = @intCast(displacement_value.?);
+            //         const disp_signed: i16 = if (displacement == DisplacementFormat.d8) blk: {
+            //             const u8val: u8 = @intCast(disp_u16 & 0xFF);
+            //             const s8: i8 = @bitCast(u8val);
+            //             break :blk @as(i16, s8);
+            //         } else blk: {
+            //             const s16: i16 = @bitCast(disp_u16);
+            //             break :blk s16;
+            //         };
+            //         if (disp_signed < 0) {
+            //             const res = try std.fmt.allocPrint(
+            //                 allocator,
+            //                 " [{t} + {t} - {d}]",
+            //                 .{
+            //                     base.?,
+            //                     index.?,
+            //                     -disp_signed,
+            //                 },
+            //             );
+            //             break :source_switch res;
+            //         } else {
+            //             const res = try std.fmt.allocPrint(
+            //                 allocator,
+            //                 " [{t} + {t} + {d}]",
+            //                 .{
+            //                     base.?,
+            //                     index.?,
+            //                     disp_signed,
+            //                 },
+            //             );
+            //             break :source_switch res;
+            //         }
+            //     }
+            // }
         },
         SourceInfo.immediate => switch (opcode) {
             BinaryInstructions.mov_mem8_immed8 => {

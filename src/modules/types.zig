@@ -96,6 +96,7 @@ pub const data_types = struct {
         index: ?RegisterNames,
         displacement: ?data_types.DisplacementFormat,
         displacement_value: ?u16,
+        signed_displacement_value: ?i16,
         effective_address: ?u20,
     };
 
@@ -131,7 +132,7 @@ pub const data_types = struct {
     pub const SourceInfo = union(SourceInfoIdentifiers) {
         address: RegisterNames,
         address_calculation: EffectiveAddressCalculation,
-        immediate: u16,
+        immediate: i16,
         mem_addr: u20,
         none: void,
     };

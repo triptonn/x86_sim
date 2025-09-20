@@ -150,8 +150,8 @@ pub fn getImmediateToMemoryOpSourceAndDest(
             },
         },
         .source_info = SourceInfo{ .immediate = switch (opcode) {
-            BinaryInstructions.mov_mem8_immed8 => @as(u16, data_8.?),
-            BinaryInstructions.mov_mem16_immed16 => (@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?),
+            BinaryInstructions.mov_mem8_immed8 => @as(i16, data_8.?),
+            BinaryInstructions.mov_mem16_immed16 => @bitCast((@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?)),
             else => return LocatorError.InvalidOpcode,
         } },
     };
@@ -205,10 +205,9 @@ pub fn getIdentifierAddOpSourceAndDest(
             } },
         },
         .source_info = SourceInfo{
-            // TODO: This does not work correctly at all!!
             .immediate = immed: switch (opcode) {
                 .regmem8_immed8 => @intCast(data_8.?),
-                .regmem16_immed16 => (@as(u16, data_hi.?) << 8) + data_lo.?,
+                .regmem16_immed16 => @bitCast((@as(u16, data_hi.?) << 8) + data_lo.?),
                 .signed_regmem8_immed8 => {
                     const signed_immed8: i8 = @bitCast(data_8.?);
                     break :immed @intCast(signed_immed8);
@@ -385,10 +384,10 @@ pub fn getIdentifierTestOpSourceAndDest(
             .IDIV,
             => switch (opcode) {
                 .regmem8_immed8 => break :src SourceInfo{
-                    .immediate = @as(u16, data_8.?),
+                    .immediate = @as(i16, data_8.?),
                 },
                 .regmem16_immed16 => break :src SourceInfo{
-                    .immediate = (@as(u16, data_hi.?) << 8) + data_lo.?,
+                    .immediate = @bitCast((@as(u16, data_hi.?) << 8) + data_lo.?),
                 },
                 else => return LocatorError.NotYetImplemented,
             },
@@ -420,7 +419,7 @@ pub fn getImmediateToRegDest(
         .source_info = SourceInfo{
             .immediate = switch (w) {
                 Width.byte => @intCast(data_8.?),
-                Width.word => (@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?),
+                Width.word => @bitCast((@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?)),
             },
         },
     };
@@ -513,28 +512,24 @@ pub fn getImmediateToAccumulatorDest(
 ) InstructionInfo {
     const Address = RegisterNames;
     var dest: Address = undefined;
-    var immediate_8: u8 = undefined;
-    var immediate_16: u16 = undefined;
     if (w == Width.byte) {
         dest = Address.al;
-        immediate_8 = data_8.?;
         return InstructionInfo{
             .destination_info = DestinationInfo{
                 .address = dest,
             },
             .source_info = SourceInfo{
-                .immediate = @intCast(immediate_8),
+                .immediate = @intCast(data_8.?),
             },
         };
     } else {
         dest = Address.ax;
-        immediate_16 = (@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?);
         return InstructionInfo{
             .destination_info = DestinationInfo{
                 .address = dest,
             },
             .source_info = SourceInfo{
-                .immediate = immediate_16,
+                .immediate = @bitCast((@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?)),
             },
         };
     }
@@ -684,285 +679,18 @@ pub fn getRegMemToSegMovSourceAndDest(
     var source_payload: SourceInfo = undefined;
 
     switch (mod) {
-        .memoryModeNoDisplacement => {
-            switch (rm) {
-                .ALAX_BXSI_BXSID8_BXSID16 => {
-                    const bx_value: u16 = execution_unit.getBX(Width.word, null).value16;
-                    const si_value: u16 = execution_unit.getSI();
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.si,
-                        .displacement = DisplacementFormat.none,
-                        .displacement_value = null,
-                        .effective_address = (@as(u20, bx_value) << 4) + si_value,
-                    };
-                },
-                .CLCX_BXDI_BXDID8_BXDID16 => {
-                    const bx_value: u16 = execution_unit.getBX(Width.word, null).value16;
-                    const di_value: u16 = execution_unit.getDI();
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.di,
-                        .displacement = DisplacementFormat.none,
-                        .displacement_value = null,
-                        .effective_address = (@as(u20, bx_value) << 4) + di_value,
-                    };
-                },
-                .DLDX_BPSI_BPSID8_BPSID16 => {
-                    const bp_value: u16 = execution_unit.getBP();
-                    const si_value: u16 = execution_unit.getSI();
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bp,
-                        .index = Address.si,
-                        .displacement = DisplacementFormat.none,
-                        .displacement_value = null,
-                        .effective_address = (@as(u20, bp_value) << 4) + si_value,
-                    };
-                },
-                .BLBX_BPDI_BPDID8_BPDID16 => {
-                    const bp_value: u16 = execution_unit.getBP();
-                    const di_value: u16 = execution_unit.getDI();
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bp,
-                        .index = Address.di,
-                        .displacement = DisplacementFormat.none,
-                        .displacement_value = null,
-                        .effective_address = (@as(u20, bp_value) << 4) + di_value,
-                    };
-                },
-                .AHSP_SI_SID8_SID16 => {
-                    const si_value: u16 = execution_unit.getSI();
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.si,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.none,
-                        .displacement_value = null,
-                        .effective_address = (@as(u20, si_value) << 4),
-                    };
-                },
-                .CHBP_DI_DID8_DID16 => {
-                    const di_value: u16 = execution_unit.getDI();
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.di,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.none,
-                        .displacement_value = null,
-                        .effective_address = (@as(u20, di_value) << 4),
-                    };
-                },
-                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.none,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, displacement),
-                    };
-                },
-                .BHDI_BX_BXD8_BXD16 => {
-                    const bx_value: u16 = execution_unit.getBX(Width.word, null).value16;
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.none,
-                        .displacement_value = null,
-                        .effective_address = (@as(u20, bx_value) << 4),
-                    };
-                },
-            }
-        },
-        .memoryMode8BitDisplacement => {
-            switch (rm) {
-                .ALAX_BXSI_BXSID8_BXSID16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const si_value = execution_unit.getSI();
-                    const displacement = @as(u16, disp_lo.?);
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.si,
-                        .displacement = DisplacementFormat.d8,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, bx_value) + si_value + displacement,
-                    };
-                },
-                .CLCX_BXDI_BXDID8_BXDID16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const di_value = execution_unit.getDI();
-                    const displacement = @as(u16, disp_lo.?);
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.di,
-                        .displacement = DisplacementFormat.d8,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, bx_value) + di_value + displacement,
-                    };
-                },
-                .DLDX_BPSI_BPSID8_BPSID16 => {
-                    const bp_value = execution_unit.getBP();
-                    const si_value = execution_unit.getSI();
-                    const displacement = @as(u16, disp_lo.?);
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bp,
-                        .index = Address.si,
-                        .displacement = DisplacementFormat.d8,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, bp_value) + si_value + displacement,
-                    };
-                },
-                .BLBX_BPDI_BPDID8_BPDID16 => {
-                    const bp_value = execution_unit.getBP();
-                    const di_value = execution_unit.getDI();
-                    const displacement = @as(u16, disp_lo.?);
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bp,
-                        .index = Address.di,
-                        .displacement = DisplacementFormat.d8,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, bp_value) + di_value + displacement,
-                    };
-                },
-                .AHSP_SI_SID8_SID16 => {
-                    const si_value = execution_unit.getSI();
-                    const displacement = @as(u16, disp_lo.?);
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.si,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d8,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, si_value) + displacement,
-                    };
-                },
-                .CHBP_DI_DID8_DID16 => {
-                    const di_value = execution_unit.getDI();
-                    const displacement = @as(u16, disp_lo.?);
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.di,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d8,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, di_value) + displacement,
-                    };
-                },
-                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                    const bp_value = execution_unit.getBP();
-                    const displacement = @as(u16, disp_lo.?);
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bp,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d8,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, bp_value) + displacement,
-                    };
-                },
-                .BHDI_BX_BXD8_BXD16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const displacement = @as(u16, disp_lo.?);
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d8,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, bx_value) + displacement,
-                    };
-                },
-            }
-        },
-        .memoryMode16BitDisplacement => {
-            switch (rm) {
-                .ALAX_BXSI_BXSID8_BXSID16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const si_value = execution_unit.getSI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.si,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = (@as(u20, bx_value) << 4) + si_value + displacement,
-                    };
-                },
-                .CLCX_BXDI_BXDID8_BXDID16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const di_value = execution_unit.getDI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.di,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = (@as(u20, bx_value) << 4) + di_value + displacement,
-                    };
-                },
-                .DLDX_BPSI_BPSID8_BPSID16 => {
-                    const bp_value = execution_unit.getBP();
-                    const si_value = execution_unit.getSI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bp,
-                        .index = Address.si,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = (@as(u20, bp_value) << 4) + si_value + displacement,
-                    };
-                },
-                .BLBX_BPDI_BPDID8_BPDID16 => {
-                    const bp_value = execution_unit.getBP();
-                    const di_value = execution_unit.getDI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bp,
-                        .index = Address.di,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = (@as(u20, bp_value) << 4) + di_value + displacement,
-                    };
-                },
-                .AHSP_SI_SID8_SID16 => {
-                    const si_value = execution_unit.getSI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.si,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, si_value) + displacement,
-                    };
-                },
-                .CHBP_DI_DID8_DID16 => {
-                    const di_value = execution_unit.getDI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.di,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, di_value) + displacement,
-                    };
-                },
-                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                    const bp_value = execution_unit.getBP();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.none,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, bp_value) + displacement,
-                    };
-                },
-                .BHDI_BX_BXD8_BXD16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
-                    source_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = (@as(u20, bx_value) << 4) + displacement,
-                    };
-                },
-            }
+        .memoryModeNoDisplacement,
+        .memoryMode8BitDisplacement,
+        .memoryMode16BitDisplacement,
+        => {
+            source_address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                execution_unit,
+                Width.word,
+                mod,
+                rm,
+                disp_lo,
+                disp_hi,
+            );
         },
         .registerModeNoDisplacement => {
             switch (rm) {
@@ -1064,285 +792,18 @@ pub fn getSegToRegMemMovSourceAndDest(
     };
 
     switch (mod) {
-        .memoryModeNoDisplacement => {
-            switch (rm) {
-                .ALAX_BXSI_BXSID8_BXSID16 => {
-                    const bx_value: u16 = execution_unit.getBX(Width.word, null).value16;
-                    const si_value: u16 = execution_unit.getSI();
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.si,
-                        .displacement = DisplacementFormat.none,
-                        .displacement_value = null,
-                        .effective_address = (@as(u20, bx_value) << 4) + si_value,
-                    };
-                },
-                .CLCX_BXDI_BXDID8_BXDID16 => {
-                    const bx_value: u16 = execution_unit.getBX(Width.word, null).value16;
-                    const di_value: u16 = execution_unit.getDI();
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.di,
-                        .displacement = DisplacementFormat.none,
-                        .displacement_value = null,
-                        .effective_address = (@as(u20, bx_value) << 4) + di_value,
-                    };
-                },
-                .DLDX_BPSI_BPSID8_BPSID16 => {
-                    const bp_value: u16 = execution_unit.getBP();
-                    const si_value: u16 = execution_unit.getSI();
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bp,
-                        .index = Address.si,
-                        .displacement = DisplacementFormat.none,
-                        .displacement_value = null,
-                        .effective_address = (@as(u20, bp_value) << 4) + si_value,
-                    };
-                },
-                .BLBX_BPDI_BPDID8_BPDID16 => {
-                    const bp_value: u16 = execution_unit.getBP();
-                    const di_value: u16 = execution_unit.getDI();
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bp,
-                        .index = Address.di,
-                        .displacement = DisplacementFormat.none,
-                        .displacement_value = null,
-                        .effective_address = (@as(u20, bp_value) << 4) + di_value,
-                    };
-                },
-                .AHSP_SI_SID8_SID16 => {
-                    const si_value: u16 = execution_unit.getSI();
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.si,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.none,
-                        .displacement_value = null,
-                        .effective_address = (@as(u20, si_value) << 4),
-                    };
-                },
-                .CHBP_DI_DID8_DID16 => {
-                    const di_value: u16 = execution_unit.getDI();
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.di,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.none,
-                        .displacement_value = null,
-                        .effective_address = (@as(u20, di_value) << 4),
-                    };
-                },
-                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.none,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, displacement),
-                    };
-                },
-                .BHDI_BX_BXD8_BXD16 => {
-                    const bx_value: u16 = execution_unit.getBX(Width.word, null).value16;
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.none,
-                        .displacement_value = null,
-                        .effective_address = (@as(u20, bx_value) << 4),
-                    };
-                },
-            }
-        },
-        .memoryMode8BitDisplacement => {
-            switch (rm) {
-                .ALAX_BXSI_BXSID8_BXSID16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const si_value = execution_unit.getSI();
-                    const displacement = @as(u16, disp_lo.?);
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.si,
-                        .displacement = DisplacementFormat.d8,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, bx_value) + si_value + displacement,
-                    };
-                },
-                .CLCX_BXDI_BXDID8_BXDID16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const di_value = execution_unit.getDI();
-                    const displacement = @as(u16, disp_lo.?);
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.di,
-                        .displacement = DisplacementFormat.d8,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, bx_value) + di_value + displacement,
-                    };
-                },
-                .DLDX_BPSI_BPSID8_BPSID16 => {
-                    const bp_value = execution_unit.getBP();
-                    const si_value = execution_unit.getSI();
-                    const displacement = @as(u16, disp_lo.?);
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bp,
-                        .index = Address.si,
-                        .displacement = DisplacementFormat.d8,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, bp_value) + si_value + displacement,
-                    };
-                },
-                .BLBX_BPDI_BPDID8_BPDID16 => {
-                    const bp_value = execution_unit.getBP();
-                    const di_value = execution_unit.getDI();
-                    const displacement = @as(u16, disp_lo.?);
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bp,
-                        .index = Address.di,
-                        .displacement = DisplacementFormat.d8,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, bp_value) + di_value + displacement,
-                    };
-                },
-                .AHSP_SI_SID8_SID16 => {
-                    const si_value = execution_unit.getSI();
-                    const displacement = @as(u16, disp_lo.?);
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.si,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d8,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, si_value) + displacement,
-                    };
-                },
-                .CHBP_DI_DID8_DID16 => {
-                    const di_value = execution_unit.getDI();
-                    const displacement = @as(u16, disp_lo.?);
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.di,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d8,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, di_value) + displacement,
-                    };
-                },
-                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                    const bp_value = execution_unit.getBP();
-                    const displacement = @as(u16, disp_lo.?);
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bp,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d8,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, bp_value) + displacement,
-                    };
-                },
-                .BHDI_BX_BXD8_BXD16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const displacement = @as(u16, disp_lo.?);
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d8,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, bx_value) + displacement,
-                    };
-                },
-            }
-        },
-        .memoryMode16BitDisplacement => {
-            switch (rm) {
-                .ALAX_BXSI_BXSID8_BXSID16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const si_value = execution_unit.getSI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.si,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = (@as(u20, bx_value) << 4) + si_value + displacement,
-                    };
-                },
-                .CLCX_BXDI_BXDID8_BXDID16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const di_value = execution_unit.getDI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.di,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = (@as(u20, bx_value) << 4) + di_value + displacement,
-                    };
-                },
-                .DLDX_BPSI_BPSID8_BPSID16 => {
-                    const bp_value = execution_unit.getBP();
-                    const si_value = execution_unit.getSI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bp,
-                        .index = Address.si,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = (@as(u20, bp_value) << 4) + si_value + displacement,
-                    };
-                },
-                .BLBX_BPDI_BPDID8_BPDID16 => {
-                    const bp_value = execution_unit.getBP();
-                    const di_value = execution_unit.getDI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bp,
-                        .index = Address.di,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = (@as(u20, bp_value) << 4) + di_value + displacement,
-                    };
-                },
-                .AHSP_SI_SID8_SID16 => {
-                    const si_value = execution_unit.getSI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.si,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, si_value) + displacement,
-                    };
-                },
-                .CHBP_DI_DID8_DID16 => {
-                    const di_value = execution_unit.getDI();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.di,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, di_value) + displacement,
-                    };
-                },
-                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                    const bp_value = execution_unit.getBP();
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.none,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = @as(u20, bp_value) + displacement,
-                    };
-                },
-                .BHDI_BX_BXD8_BXD16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const displacement = @as(u16, disp_hi.?) + disp_lo.?;
-                    dest_address_calculation = EffectiveAddressCalculation{
-                        .base = Address.bx,
-                        .index = Address.none,
-                        .displacement = DisplacementFormat.d16,
-                        .displacement_value = displacement,
-                        .effective_address = (@as(u20, bx_value) << 4) + displacement,
-                    };
-                },
-            }
+        .memoryModeNoDisplacement,
+        .memoryMode8BitDisplacement,
+        .memoryMode16BitDisplacement,
+        => {
+            dest_address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                execution_unit,
+                Width.word,
+                mod,
+                rm,
+                disp_lo,
+                disp_hi,
+            );
         },
         .registerModeNoDisplacement => {
             switch (rm) {

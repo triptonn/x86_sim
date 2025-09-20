@@ -1,12 +1,4 @@
-// ========================================================================
-//
-// (C) Copyright 2025, Nicolas Selig, All Rights Reserved.
-//
-// This software is provided 'as-is', without any express or implied
-// warranty. In no event will the authors be held liable for any damages
-// arising from the use of this software.
-//
-// ========================================================================
+//! Enter Docstring
 
 const std = @import("std");
 
@@ -257,8 +249,14 @@ pub const BusInterfaceUnit = struct {
             },
             .displacement_value = switch (mod) {
                 .memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) (@as(u16, disp_hi.?) << 8) + disp_lo.? else null,
-                .memoryMode8BitDisplacement => @as(u16, disp_lo.?),
-                .memoryMode16BitDisplacement => (@as(u16, disp_hi.?) << 8) + disp_lo.?,
+                .memoryMode8BitDisplacement => null,
+                .memoryMode16BitDisplacement => null,
+                .registerModeNoDisplacement => null,
+            },
+            .signed_displacement_value = switch (mod) {
+                .memoryModeNoDisplacement => null,
+                .memoryMode8BitDisplacement => @bitCast(@as(i16, disp_lo.?)),
+                .memoryMode16BitDisplacement => @bitCast((@as(u16, disp_hi.?) << 8) + disp_lo.?),
                 .registerModeNoDisplacement => null,
             },
             .effective_address = ea: switch (rm) {
@@ -428,89 +426,6 @@ pub const BusInterfaceUnit = struct {
                 },
             },
         };
-
-        // var disp_format: DisplacementFormat = undefined;
-        // var disp_value: u16 = undefined;
-
-        // if (mod == ModValue.memoryMode16BitDisplacement) {
-        //     disp_format = DisplacementFormat.d16;
-        //     disp_value = (@as(u16, disp_hi.?) << 8) + @as(u16, disp_lo.?);
-        // } else if (mod == ModValue.memoryMode8BitDisplacement) {
-        //     disp_format = DisplacementFormat.d8;
-        //     disp_value = @as(u16, disp_lo.?);
-        // } else {
-        //     disp_format = DisplacementFormat.none;
-        //     disp_value = 0;
-        // }
-
-        // var base_value: u20 = undefined;
-        // var index_value: u20 = undefined;
-
-        // switch (rm) {
-        //     .ALAX_BXSI_BXSID8_BXSID16 => {
-        //         base_value = @as(u20, execution_unit.getBX(WValue.word, null).value16);
-        //         index_value = @as(u20, execution_unit.getSI());
-        //     },
-        //     .DLDX_BPSI_BPSID8_BPSID16 => {
-        //         base_value = @as(u20, execution_unit.getBP());
-        //         index_value = @as(u20, execution_unit.getSI());
-        //     },
-        //     .CLCX_BXDI_BXDID8_BXDID16 => {
-        //         base_value = @as(u20, execution_unit.getBX(WValue.word, null).value16);
-        //         index_value = @as(u20, execution_unit.getDI());
-        //     },
-        //     .BLBX_BPDI_BPDID8_BPDID16 => {
-        //         base_value = @as(u20, execution_unit.getBP());
-        //         index_value = @as(u20, execution_unit.getDI());
-        //     },
-        //     .AHSP_SI_SID8_SID16 => {
-        //         base_value = @as(u20, execution_unit.getSI());
-        //         index_value = 0;
-        //     },
-        //     .CHBP_DI_DID8_DID16 => {
-        //         base_value = @as(u20, execution_unit.getDI());
-        //         index_value = 0;
-        //     },
-        //     .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-        //         base_value = @as(u20, execution_unit.getBP());
-        //         index_value = 0;
-        //     },
-        //     .BHDI_BX_BXD8_BXD16 => {
-        //         base_value = @as(u20, execution_unit.getBX(WValue.word, null).value16);
-        //         index_value = 0;
-        //     },
-        // }
-
-        // return EffectiveAddressCalculation{
-        //     .base = switch (rm) {
-        //         .ALAX_BXSI_BXSID8_BXSID16,
-        //         .CLCX_BXDI_BXDID8_BXDID16,
-        //         => Address.bx,
-        //         .DLDX_BPSI_BPSID8_BPSID16,
-        //         .BLBX_BPDI_BPDID8_BPDID16,
-        //         => Address.bp,
-        //         .AHSP_SI_SID8_SID16 => Address.si,
-        //         .CHBP_DI_DID8_DID16 => Address.di,
-        //         .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.bp,
-        //         .BHDI_BX_BXD8_BXD16 => Address.bx,
-        //     },
-        //     .index = switch (rm) {
-        //         .ALAX_BXSI_BXSID8_BXSID16,
-        //         .DLDX_BPSI_BPSID8_BPSID16,
-        //         => Address.si,
-        //         .CLCX_BXDI_BXDID8_BXDID16,
-        //         .BLBX_BPDI_BPDID8_BPDID16,
-        //         => Address.di,
-        //         .AHSP_SI_SID8_SID16,
-        //         .CHBP_DI_DID8_DID16,
-        //         .DHSI_DIRECTACCESS_BPD8_BPD16,
-        //         .BHDI_BX_BXD8_BXD16,
-        //         => Address.none,
-        //     },
-        //     .displacement = disp_format,
-        //     .displacement_value = disp_value,
-        //     .effective_address = (base_value << 4) + index_value + disp_value,
-        // };
     }
 };
 
@@ -1058,3 +973,13 @@ test "BusInterfaceUnit - calculateEffectiveAddress" {
         ),
     );
 }
+
+// ========================================================================
+//
+// (C) Copyright 2025, Nicolas Selig, All Rights Reserved.
+//
+// This software is provided 'as-is', without any express or implied
+// warranty. In no event will the authors be held liable for any damages
+// arising from the use of this software.
+//
+// ========================================================================
