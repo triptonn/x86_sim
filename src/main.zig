@@ -443,6 +443,8 @@ pub fn main() !void {
         disassembler.next(
             &EU,
             OutputWriter,
+            opcode,
+            // scope,
             instruction_data,
         ) catch |err| {
             switch (err) {

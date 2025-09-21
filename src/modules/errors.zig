@@ -40,6 +40,7 @@ pub const DiassembleError = error{
 
 pub const LocatorError = error{
     NotYetImplemented,
+    AccumulatorSourceAndDest,
     InvalidOpcode,
 };
 

@@ -35,11 +35,26 @@ const BusInterfaceUnit = hw.BusInterfaceUnit;
 
 const decoder = @import("decoder.zig");
 const BinaryInstructions = decoder.BinaryInstructions;
+const InstructionScope = decoder.InstructionScope;
 const InstructionData = decoder.InstructionData;
 const AddSet = decoder.AddSet;
 const RolSet = decoder.RolSet;
 const TestSet = decoder.TestSet;
 const IncSet = decoder.IncSet;
+const AccumulatorOp = decoder.AccumulatorOp;
+const EscapeOp = decoder.EscapeOp;
+const RegisterMemoryToFromRegisterOp = decoder.RegisterMemoryToFromRegisterOp;
+const RegisterMemoryOp = decoder.RegisterMemoryOp;
+const RegisterOp = decoder.RegisterOp;
+const ImmediateToRegisterOp = decoder.ImmediateToRegisterOp;
+const ImmediateToMemoryOp = decoder.ImmediateToMemoryOp;
+const SegmentRegisterOp = decoder.SegmentRegisterOp;
+const IdentifierAddOp = decoder.IdentifierAddOp;
+const IdentifierRolOp = decoder.IdentifierRolOp;
+const IdentifierTestOp = decoder.IdentifierTestOp;
+const IdentifierIncOp = decoder.IdentifierIncOp;
+const DirectOp = decoder.DirectOp;
+const SingleByteOp = decoder.SingleByteOp;
 
 /// Identifiers of the Internal Communication execution_unit as well as
 /// the General execution_unit of the Intel 8086 CPU plus an identifier for
@@ -100,6 +115,151 @@ pub fn registerNameFrom(reg: REG, w: ?Width) RegisterNames {
     }
 }
 
+pub fn getInstructionSourceAndDest(
+    EU: *ExecutionUnit,
+    opcode: BinaryInstructions,
+    instruction_data: InstructionData,
+) LocatorError!InstructionInfo {
+    switch (instruction_data) {
+        .err => return LocatorError.AccumulatorSourceAndDest,
+        .accumulator_op => {
+            // const accumulator_op: AccumulatorOp = instruction_data.accumulator_op;
+
+            // const mnemonic = accumulator_op.mnemonic;
+            // const w = accumulator_op.w;
+            // const data_8 = accumulator_op.data_8;
+            // const data_lo = accumulator_op.data_lo;
+            // const data_hi = accumulator_op.data_hi;
+            // const addr_lo = accumulator_op.addr_lo;
+            // const addr_hi = accumulator_op.addr_hi;
+
+            const AccumulatorOps = decoder.ScopedInstruction(.AccumulatorOp);
+            const accumulator_ops: AccumulatorOps = @enumFromInt(@intFromEnum(opcode));
+
+            switch (accumulator_ops) {
+                .add_al_immed8,
+                .add_ax_immed16,
+                .or_al_immed8,
+                .or_ax_immed16,
+                .adc_al_immed8,
+                .adc_ax_immed16,
+                .sbb_al_immed8,
+                .sbb_ax_immed16,
+                .and_al_immed8,
+                .and_ax_immed16,
+                .sub_al_immed8,
+                .sub_ax_immed16,
+                .xor_al_immed8,
+                .xor_ax_immed16,
+                .cmp_al_immed8,
+                .cmp_ax_immed16,
+                .test_al_immed8,
+                .test_ax_immed16,
+                .in_al_immed8,
+                .in_ax_immed8,
+                .out_al_immed8,
+                .out_ax_immed8,
+                => {
+                    const Address = RegisterNames;
+                    const w = instruction_data.accumulator_op.w;
+                    const data_8: ?u8 = instruction_data.accumulator_op.data_8;
+                    const data_lo: ?u8 = instruction_data.accumulator_op.data_lo;
+                    const data_hi: ?u8 = instruction_data.accumulator_op.data_hi;
+
+                    if (w == Width.byte) {
+                        return InstructionInfo{
+                            .destination_info = DestinationInfo{
+                                .address = Address.al,
+                            },
+                            .source_info = SourceInfo{
+                                .immediate = @intCast(data_8.?),
+                            },
+                        };
+                    } else {
+                        return InstructionInfo{
+                            .destination_info = DestinationInfo{
+                                .address = Address.ax,
+                            },
+                            .source_info = SourceInfo{
+                                .immediate = @bitCast((@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?)),
+                            },
+                        };
+                    }
+                },
+                .mov_al_mem8,
+                .mov_ax_mem16,
+                => {
+                    const Address = RegisterNames;
+                    const addr_lo = instruction_data.accumulator_op.addr_lo;
+                    const addr_hi = instruction_data.accumulator_op.addr_hi;
+                    const w = instruction_data.accumulator_op.w;
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .address = if (w == Width.word) Address.ax else Address.al,
+                        },
+                        .source_info = SourceInfo{
+                            .mem_addr = if (w == Width.word) (@as(u16, addr_hi.?) << 8) + addr_lo.? else (@as(u16, addr_hi.?) << 8) + addr_lo.?,
+                        },
+                    };
+                },
+                .mov_mem8_al,
+                .mov_mem16_ax,
+                => {
+                    const Address = RegisterNames;
+                    const addr_lo = instruction_data.accumulator_op.addr_lo;
+                    const addr_hi = instruction_data.accumulator_op.addr_hi;
+                    const w = instruction_data.accumulator_op.w;
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .mem_addr = if (w == Width.word) (@as(u16, addr_hi.?) << 8) + addr_lo.? else (@as(u16, addr_hi.?) << 8) + addr_lo.?,
+                        },
+                        .source_info = SourceInfo{
+                            .address = if (w == Width.word) Address.ax else Address.al,
+                        },
+                    };
+                },
+            }
+        },
+        .direct_op,
+        .escape_op,
+        .identifier_add_op,
+        .identifier_inc_op,
+        .identifier_rol_op,
+        .identifier_test_op,
+        .immediate_to_memory_op,
+        .immediate_to_register_op,
+        .register_memory_op,
+        => {
+            const Address = RegisterNames;
+            const mod: MOD = instruction_data.register_memory_op.mod;
+            const rm: RM = instruction_data.register_memory_op.rm;
+            const disp_lo: ?u8 = instruction_data.register_memory_op.disp_lo;
+            const disp_hi: ?u8 = instruction_data.register_memory_op.disp_hi;
+
+            return InstructionInfo{
+                .destination_info = DestinationInfo{
+                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                        EU,
+                        Width.word,
+                        mod,
+                        rm,
+                        disp_lo,
+                        disp_hi,
+                    ),
+                },
+                .source_info = SourceInfo{
+                    .address = Address.sp,
+                },
+            };
+        },
+        .register_memory_to_from_register_op,
+        .register_op,
+        .segment_register_op,
+        .single_byte_op,
+        => return LocatorError.NotYetImplemented,
+    }
+}
+
 // TODO: DocString
 
 pub fn getImmediateToMemoryOpSourceAndDest(
@@ -149,6 +309,7 @@ pub fn getImmediateToMemoryOpSourceAndDest(
                 };
             },
         },
+        // TODO: Signing of immediate source values depends on the opcode. This needs to be implemented!
         .source_info = SourceInfo{ .immediate = switch (opcode) {
             BinaryInstructions.mov_mem8_immed8 => @as(i16, data_8.?),
             BinaryInstructions.mov_mem16_immed16 => @bitCast((@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?)),
@@ -504,36 +665,36 @@ pub fn getImmediateToRegMovDest(w: Width, reg: REG, data: u8, w_data: ?u8) Instr
     };
 }
 
-pub fn getImmediateToAccumulatorDest(
-    w: Width,
-    data_8: ?u8,
-    data_lo: ?u8,
-    data_hi: ?u8,
-) InstructionInfo {
-    const Address = RegisterNames;
-    var dest: Address = undefined;
-    if (w == Width.byte) {
-        dest = Address.al;
-        return InstructionInfo{
-            .destination_info = DestinationInfo{
-                .address = dest,
-            },
-            .source_info = SourceInfo{
-                .immediate = @intCast(data_8.?),
-            },
-        };
-    } else {
-        dest = Address.ax;
-        return InstructionInfo{
-            .destination_info = DestinationInfo{
-                .address = dest,
-            },
-            .source_info = SourceInfo{
-                .immediate = @bitCast((@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?)),
-            },
-        };
-    }
-}
+// pub fn getImmediateToAccumulatorDest(
+//     w: Width,
+//     data_8: ?u8,
+//     data_lo: ?u8,
+//     data_hi: ?u8,
+// ) InstructionInfo {
+//     const Address = RegisterNames;
+//     var dest: Address = undefined;
+//     if (w == Width.byte) {
+//         dest = Address.al;
+//         return InstructionInfo{
+//             .destination_info = DestinationInfo{
+//                 .address = dest,
+//             },
+//             .source_info = SourceInfo{
+//                 .immediate = @intCast(data_8.?),
+//             },
+//         };
+//     } else {
+//         dest = Address.ax;
+//         return InstructionInfo{
+//             .destination_info = DestinationInfo{
+//                 .address = dest,
+//             },
+//             .source_info = SourceInfo{
+//                 .immediate = @bitCast((@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?)),
+//             },
+//         };
+//     }
+// }
 
 pub fn registerNameFromRm(w: Width, rm: RM) RegisterNames {
     return switch (rm) {
@@ -1074,399 +1235,85 @@ pub fn getRegisterOpSourceAndDest(
     }
 }
 
-pub fn getImmediateToRegMemMovDest(
-    execution_unit: *ExecutionUnit,
-    mod: MOD,
-    rm: RM,
-    w: Width,
-    disp_lo: ?u8,
-    disp_hi: ?u8,
-    data: u8,
-    w_data: ?u8,
-) InstructionInfo {
-    const Address = RegisterNames;
-    const source_payload: SourceInfo = SourceInfo{
-        .immediate = @intCast(if (w == Width.word) (@as(u16, w_data.?) << 8) + (@as(u16, data)) else @as(u16, data)),
-    };
+// pub fn getImmediateToRegMemMovDest(
+//     execution_unit: *ExecutionUnit,
+//     mod: MOD,
+//     rm: RM,
+//     w: Width,
+//     disp_lo: ?u8,
+//     disp_hi: ?u8,
+//     data: u8,
+//     w_data: ?u8,
+// ) InstructionInfo {
+//     const Address = RegisterNames;
+//     const source_payload: SourceInfo = SourceInfo{
+//         .immediate = @bitCast(if (w == Width.word) (@as(u16, w_data.?) << 8) + data else @as(u16, data)),
+//     };
+//     var destination_payload: DestinationInfo = undefined;
+//     switch (mod) {
+//         .memoryModeNoDisplacement,
+//         .memoryMode8BitDisplacement,
+//         .memoryMode16BitDisplacement,
+//         => {
+//             destination_payload = DestinationInfo{
+//                 .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+//                     execution_unit,
+//                     w,
+//                     mod,
+//                     rm,
+//                     disp_lo,
+//                     disp_hi,
+//                 ),
+//             };
+//         },
+//         .registerModeNoDisplacement => {
+//             switch (rm) {
+//                 .ALAX_BXSI_BXSID8_BXSID16 => {
+//                     destination_payload = DestinationInfo{
+//                         .address = if (w == Width.word) Address.ax else Address.al,
+//                     };
+//                 },
+//                 .CLCX_BXDI_BXDID8_BXDID16 => {
+//                     destination_payload = DestinationInfo{
+//                         .address = if (w == Width.word) Address.cx else Address.cl,
+//                     };
+//                 },
+//                 .DLDX_BPSI_BPSID8_BPSID16 => {
+//                     destination_payload = DestinationInfo{
+//                         .address = if (w == Width.word) Address.dx else Address.dl,
+//                     };
+//                 },
+//                 .BLBX_BPDI_BPDID8_BPDID16 => {
+//                     destination_payload = DestinationInfo{
+//                         .address = if (w == Width.word) Address.bx else Address.bl,
+//                     };
+//                 },
+//                 .AHSP_SI_SID8_SID16 => {
+//                     destination_payload = DestinationInfo{
+//                         .address = if (w == Width.word) Address.sp else Address.ah,
+//                     };
+//                 },
+//                 .CHBP_DI_DID8_DID16 => {
+//                     destination_payload = DestinationInfo{
+//                         .address = if (w == Width.word) Address.bp else Address.ch,
+//                     };
+//                 },
+//                 .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+//                     destination_payload = DestinationInfo{
+//                         .address = if (w == Width.word) Address.si else Address.dh,
+//                     };
+//                 },
+//                 .BHDI_BX_BXD8_BXD16 => {
+//                     destination_payload = DestinationInfo{
+//                         .address = if (w == Width.word) Address.di else Address.bh,
+//                     };
+//                 },
+//             }
+//         },
+//     }
 
-    var destination_payload: DestinationInfo = undefined;
-    switch (mod) {
-        .memoryModeNoDisplacement => {
-            switch (rm) {
-                .ALAX_BXSI_BXSID8_BXSID16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const si_value = execution_unit.getSI();
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bx,
-                            .index = Address.si,
-                            .displacement = DisplacementFormat.none,
-                            .displacement_value = null,
-                            .effective_address = (@as(u20, bx_value) << 4) + si_value,
-                        },
-                    };
-                },
-                .CLCX_BXDI_BXDID8_BXDID16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const di_value = execution_unit.getDI();
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bx,
-                            .index = Address.di,
-                            .displacement = DisplacementFormat.none,
-                            .displacement_value = null,
-                            .effective_address = (@as(u20, bx_value) << 4) + di_value,
-                        },
-                    };
-                },
-                .DLDX_BPSI_BPSID8_BPSID16 => {
-                    const bp_value = execution_unit.getBP();
-                    const si_value = execution_unit.getSI();
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bp,
-                            .index = Address.si,
-                            .displacement = DisplacementFormat.none,
-                            .displacement_value = null,
-                            .effective_address = (@as(u20, bp_value) << 4) + si_value,
-                        },
-                    };
-                },
-                .BLBX_BPDI_BPDID8_BPDID16 => {
-                    const bp_value = execution_unit.getBP();
-                    const di_value = execution_unit.getDI();
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bp,
-                            .index = Address.di,
-                            .displacement = DisplacementFormat.none,
-                            .displacement_value = null,
-                            .effective_address = (@as(u20, bp_value) << 4) + di_value,
-                        },
-                    };
-                },
-                .AHSP_SI_SID8_SID16 => {
-                    const si_value = execution_unit.getSI();
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.si,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.none,
-                            .displacement_value = null,
-                            .effective_address = (@as(u20, si_value) << 4),
-                        },
-                    };
-                },
-                .CHBP_DI_DID8_DID16 => {
-                    const di_value = execution_unit.getDI();
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.di,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.none,
-                            .displacement_value = null,
-                            .effective_address = (@as(u20, di_value) << 4),
-                        },
-                    };
-                },
-                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.none,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.d16,
-                            .displacement_value = displacement,
-                            .effective_address = @as(u20, displacement),
-                        },
-                    };
-                },
-                .BHDI_BX_BXD8_BXD16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bx,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.none,
-                            .displacement_value = null,
-                            .effective_address = (@as(u20, bx_value) << 4),
-                        },
-                    };
-                },
-            }
-        },
-        .memoryMode8BitDisplacement => {
-            switch (rm) {
-                .ALAX_BXSI_BXSID8_BXSID16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const si_value = execution_unit.getSI();
-                    const displacement = @as(u16, disp_lo.?);
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bx,
-                            .index = Address.si,
-                            .displacement = DisplacementFormat.d8,
-                            .displacement_value = displacement,
-                            .effective_address = (@as(u20, bx_value) << 4) + si_value + displacement,
-                        },
-                    };
-                },
-                .CLCX_BXDI_BXDID8_BXDID16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const di_value = execution_unit.getDI();
-                    const displacement = @as(u16, disp_lo.?);
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bx,
-                            .index = Address.di,
-                            .displacement = DisplacementFormat.d8,
-                            .displacement_value = displacement,
-                            .effective_address = (@as(u20, bx_value) << 4) + di_value + displacement,
-                        },
-                    };
-                },
-                .DLDX_BPSI_BPSID8_BPSID16 => {
-                    const bp_value = execution_unit.getBP();
-                    const si_value = execution_unit.getSI();
-                    const displacement = @as(u16, disp_lo.?);
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bp,
-                            .index = Address.si,
-                            .displacement = DisplacementFormat.d8,
-                            .displacement_value = displacement,
-                            .effective_address = (@as(u20, bp_value) << 4) + si_value + displacement,
-                        },
-                    };
-                },
-                .BLBX_BPDI_BPDID8_BPDID16 => {
-                    const bp_value = execution_unit.getBP();
-                    const di_value = execution_unit.getDI();
-                    const displacement = @as(u16, disp_lo.?);
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bp,
-                            .index = Address.di,
-                            .displacement = DisplacementFormat.d8,
-                            .displacement_value = displacement,
-                            .effective_address = (@as(u20, bp_value) << 4) + di_value + displacement,
-                        },
-                    };
-                },
-                .AHSP_SI_SID8_SID16 => {
-                    const si_value = execution_unit.getSI();
-                    const displacement = @as(u16, disp_lo.?);
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.si,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.d8,
-                            .displacement_value = displacement,
-                            .effective_address = (@as(u20, si_value) << 4) + displacement,
-                        },
-                    };
-                },
-                .CHBP_DI_DID8_DID16 => {
-                    const di_value = execution_unit.getDI();
-                    const displacement = @as(u16, disp_lo.?);
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.di,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.d8,
-                            .displacement_value = displacement,
-                            .effective_address = (@as(u20, di_value) << 4) + displacement,
-                        },
-                    };
-                },
-                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                    const bp_value = execution_unit.getBP();
-                    const displacement = @as(u16, disp_lo.?);
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bp,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.d8,
-                            .displacement_value = displacement,
-                            .effective_address = (@as(u20, bp_value) << 4) + displacement,
-                        },
-                    };
-                },
-                .BHDI_BX_BXD8_BXD16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const displacement = @as(u16, disp_lo.?);
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bx,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.d8,
-                            .displacement_value = displacement,
-                            .effective_address = (@as(u20, bx_value) << 4) + displacement,
-                        },
-                    };
-                },
-            }
-        },
-        .memoryMode16BitDisplacement => {
-            switch (rm) {
-                .ALAX_BXSI_BXSID8_BXSID16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const si_value = execution_unit.getSI();
-                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bx,
-                            .index = Address.si,
-                            .displacement = DisplacementFormat.d16,
-                            .displacement_value = displacement,
-                            .effective_address = (@as(u20, bx_value) << 4) + si_value + displacement,
-                        },
-                    };
-                },
-                .CLCX_BXDI_BXDID8_BXDID16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const di_value = execution_unit.getDI();
-                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bx,
-                            .index = Address.di,
-                            .displacement = DisplacementFormat.d16,
-                            .displacement_value = displacement,
-                            .effective_address = (@as(u20, bx_value) << 4) + di_value + displacement,
-                        },
-                    };
-                },
-                .DLDX_BPSI_BPSID8_BPSID16 => {
-                    const bp_value = execution_unit.getBP();
-                    const si_value = execution_unit.getSI();
-                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bp,
-                            .index = Address.si,
-                            .displacement = DisplacementFormat.d16,
-                            .displacement_value = displacement,
-                            .effective_address = (@as(u20, bp_value) << 4) + si_value + displacement,
-                        },
-                    };
-                },
-                .BLBX_BPDI_BPDID8_BPDID16 => {
-                    const bp_value = execution_unit.getBP();
-                    const di_value = execution_unit.getDI();
-                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bp,
-                            .index = Address.di,
-                            .displacement = DisplacementFormat.d16,
-                            .displacement_value = displacement,
-                            .effective_address = (@as(u20, bp_value) << 4) + di_value + displacement,
-                        },
-                    };
-                },
-                .AHSP_SI_SID8_SID16 => {
-                    const si_value = execution_unit.getSI();
-                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.si,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.d16,
-                            .displacement_value = displacement,
-                            .effective_address = (@as(u20, si_value) << 4) + displacement,
-                        },
-                    };
-                },
-                .CHBP_DI_DID8_DID16 => {
-                    const di_value = execution_unit.getDI();
-                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.di,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.d16,
-                            .displacement_value = displacement,
-                            .effective_address = (@as(u20, di_value) << 4) + displacement,
-                        },
-                    };
-                },
-                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                    const bp_value = execution_unit.getBP();
-                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bp,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.d16,
-                            .displacement_value = displacement,
-                            .effective_address = (@as(u20, bp_value) << 4) + displacement,
-                        },
-                    };
-                },
-                .BHDI_BX_BXD8_BXD16 => {
-                    const bx_value = execution_unit.getBX(Width.word, null).value16;
-                    const displacement = (@as(u16, disp_hi.?) << 8) + disp_lo.?;
-                    destination_payload = DestinationInfo{
-                        .address_calculation = EffectiveAddressCalculation{
-                            .base = Address.bx,
-                            .index = Address.none,
-                            .displacement = DisplacementFormat.d16,
-                            .displacement_value = displacement,
-                            .effective_address = (@as(u20, bx_value) << 4) + displacement,
-                        },
-                    };
-                },
-            }
-        },
-        .registerModeNoDisplacement => {
-            switch (rm) {
-                .ALAX_BXSI_BXSID8_BXSID16 => {
-                    destination_payload = DestinationInfo{
-                        .address = if (w == Width.word) Address.ax else Address.al,
-                    };
-                },
-                .CLCX_BXDI_BXDID8_BXDID16 => {
-                    destination_payload = DestinationInfo{
-                        .address = if (w == Width.word) Address.cx else Address.cl,
-                    };
-                },
-                .DLDX_BPSI_BPSID8_BPSID16 => {
-                    destination_payload = DestinationInfo{
-                        .address = if (w == Width.word) Address.dx else Address.dl,
-                    };
-                },
-                .BLBX_BPDI_BPDID8_BPDID16 => {
-                    destination_payload = DestinationInfo{
-                        .address = if (w == Width.word) Address.bx else Address.bl,
-                    };
-                },
-                .AHSP_SI_SID8_SID16 => {
-                    destination_payload = DestinationInfo{
-                        .address = if (w == Width.word) Address.sp else Address.ah,
-                    };
-                },
-                .CHBP_DI_DID8_DID16 => {
-                    destination_payload = DestinationInfo{
-                        .address = if (w == Width.word) Address.bp else Address.ch,
-                    };
-                },
-                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                    destination_payload = DestinationInfo{
-                        .address = if (w == Width.word) Address.si else Address.dh,
-                    };
-                },
-                .BHDI_BX_BXD8_BXD16 => {
-                    destination_payload = DestinationInfo{
-                        .address = if (w == Width.word) Address.di else Address.bh,
-                    };
-                },
-            }
-        },
-    }
-
-    return InstructionInfo{
-        .destination_info = destination_payload,
-        .source_info = source_payload,
-    };
-}
+//     return InstructionInfo{
+//         .destination_info = destination_payload,
+//         .source_info = source_payload,
+//     };
+// }

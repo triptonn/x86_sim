@@ -362,26 +362,28 @@ pub fn instructionScope(opcode: BinaryInstructions) InstructionScope {
 /// Provided a InstructionScope, this function returns an enum containing
 /// all x86 opcodes belonging to this InstructionScope.
 pub fn ScopedInstruction(comptime scope: InstructionScope) type {
-    const all_instructions = @typeInfo(BinaryInstructions).@"enum";
-    var i: usize = 0;
-    var instructions: [all_instructions.len]std.builtin.Type.EnumField = undefined;
-    for (all_instructions) |instruction| {
-        if (instructionScope(instruction) == scope) {
-            instructions[i] = instruction;
-            i += 1;
+    const E = @typeInfo(BinaryInstructions).@"enum";
+    comptime var fields: [E.fields.len]std.builtin.Type.EnumField = undefined;
+    comptime var n: usize = 0;
+
+    inline for (std.enums.values(BinaryInstructions)) |tag| {
+        if (instructionScope(tag) == scope) {
+            fields[n] = .{
+                .name = @tagName(tag),
+                .value = @intFromEnum(tag),
+            };
+            n += 1;
         }
     }
 
-    return @Type(
-        .{
-            .@"enum" = .{
-                .is_exhaustive = true,
-                .tag_type = null,
-                .fields = instructions[0..i],
-                .decls = &.{},
-            },
+    return @Type(.{
+        .@"enum" = .{
+            .is_exhaustive = true,
+            .tag_type = E.tag_type,
+            .fields = fields[0..n],
+            .decls = &.{},
         },
-    );
+    });
 }
 
 // zig fmt: off

@@ -125,6 +125,7 @@ pub const data_types = struct {
         address,
         address_calculation,
         immediate,
+        unsigned_immediate,
         mem_addr,
         none,
     };
@@ -133,6 +134,7 @@ pub const data_types = struct {
         address: RegisterNames,
         address_calculation: EffectiveAddressCalculation,
         immediate: i16,
+        unsigned_immediate: u16,
         mem_addr: u20,
         none: void,
     };

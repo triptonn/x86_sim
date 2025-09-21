@@ -24,6 +24,7 @@ const DestinationInfo = types.data_types.DestinationInfo;
 const SourceInfo = types.data_types.SourceInfo;
 
 const decoder = @import("decoder.zig");
+const InstructionScope = decoder.InstructionScope;
 const BinaryInstructions = decoder.BinaryInstructions;
 const InstructionData = decoder.InstructionData;
 const AccumulatorOp = decoder.AccumulatorOp;
@@ -225,114 +226,40 @@ fn prepareInstructionLine(
                     break :source_switch res;
                 }
             }
-
-            // if (base == Address.none) {
-            //     const res = try std.fmt.allocPrint(
-            //         allocator,
-            //         " [{d}]",
-            //         .{displacement_value.?},
-            //     );
-
-            //     break :source_switch res;
-            // } else if (index == Address.none) {
-            //     if (displacement == DisplacementFormat.none) {
-            //         const res = try std.fmt.allocPrint(
-            //             allocator,
-            //             " [{t}]",
-            //             .{
-            //                 base.?,
-            //             },
-            //         );
-            //         break :source_switch res;
-            //     } else if (displacement != DisplacementFormat.none and displacement_value.? == 0) {
-            //         const res = try std.fmt.allocPrint(
-            //             allocator,
-            //             " [{t}]",
-            //             .{
-            //                 base.?,
-            //             },
-            //         );
-            //         break :source_switch res;
-            //     } else {
-            //         const disp_u16: u16 = @intCast(displacement_value.?);
-            //         const disp_signed: i16 = if (displacement == DisplacementFormat.d8) blk: {
-            //             const u8val: u8 = @intCast(disp_u16 & 0xFF);
-            //             const s8: i8 = @bitCast(u8val);
-            //             break :blk @as(i16, s8);
-            //         } else blk: {
-            //             const s16: i16 = @bitCast(disp_u16);
-            //             break :blk s16;
-            //         };
-            //         if (disp_signed < 0) {
-            //             const res = try std.fmt.allocPrint(
-            //                 allocator,
-            //                 " [{t} - {d}]",
-            //                 .{
-            //                     base.?,
-            //                     -disp_signed,
-            //                 },
-            //             );
-            //             break :source_switch res;
-            //         } else {
-            //             const res = try std.fmt.allocPrint(
-            //                 allocator,
-            //                 " [{t} + {d}]",
-            //                 .{
-            //                     base.?,
-            //                     disp_signed,
-            //                 },
-            //             );
-            //             break :source_switch res;
-            //         }
-            //     }
-            // } else {
-            //     if (displacement == DisplacementFormat.none) {
-            //         const res = try std.fmt.allocPrint(
-            //             allocator,
-            //             " [{t} + {t}]",
-            //             .{
-            //                 base.?,
-            //                 index.?,
-            //             },
-            //         );
-            //         break :source_switch res;
-            //     } else {
-            //         const disp_u16: u16 = @intCast(displacement_value.?);
-            //         const disp_signed: i16 = if (displacement == DisplacementFormat.d8) blk: {
-            //             const u8val: u8 = @intCast(disp_u16 & 0xFF);
-            //             const s8: i8 = @bitCast(u8val);
-            //             break :blk @as(i16, s8);
-            //         } else blk: {
-            //             const s16: i16 = @bitCast(disp_u16);
-            //             break :blk s16;
-            //         };
-            //         if (disp_signed < 0) {
-            //             const res = try std.fmt.allocPrint(
-            //                 allocator,
-            //                 " [{t} + {t} - {d}]",
-            //                 .{
-            //                     base.?,
-            //                     index.?,
-            //                     -disp_signed,
-            //                 },
-            //             );
-            //             break :source_switch res;
-            //         } else {
-            //             const res = try std.fmt.allocPrint(
-            //                 allocator,
-            //                 " [{t} + {t} + {d}]",
-            //                 .{
-            //                     base.?,
-            //                     index.?,
-            //                     disp_signed,
-            //                 },
-            //             );
-            //             break :source_switch res;
-            //         }
-            //     }
-            // }
         },
         SourceInfo.immediate => switch (opcode) {
+            BinaryInstructions.mov_mem8_immed8 => {
+                const res = try std.fmt.allocPrint(
+                    allocator,
+                    " byte {d}",
+                    .{
+                        source.immediate,
+                    },
+                );
+                break :source_switch res;
+            },
+            BinaryInstructions.mov_mem16_immed16 => {
+                const res = try std.fmt.allocPrint(
+                    allocator,
+                    " word {d}",
+                    .{
+                        source.immediate,
+                    },
+                );
+                break :source_switch res;
+            },
+            else => {
+                const res = try std.fmt.allocPrint(
+                    allocator,
+                    " {d}",
+                    .{
+                        source.immediate,
+                    },
+                );
+                break :source_switch res;
+            },
+        },
+        SourceInfo.unsigned_immediate => switch (opcode) {
             BinaryInstructions.mov_mem8_immed8 => {
                 const res = try std.fmt.allocPrint(
                     allocator,
@@ -396,395 +323,421 @@ fn prepareInstructionLine(
 pub fn next(
     EU: *ExecutionUnit,
     OutputWriter: *std.io.Writer,
+    opcode: BinaryInstructions,
+    // instruction_scope: InstructionScope,
     instruction_data: InstructionData,
 ) InstructionDecodeError!void {
     const printer = std.log.scoped(.printer);
-    const log = std.log.scoped(.next);
+    // const log = std.log.scoped(.next);
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
     const allocator = arena.allocator();
 
-    switch (instruction_data) {
-        .err => |err| {
-            log.err("{s}: {any} occured.", .{ @errorName(err), err });
+    const inst_info: InstructionInfo = locator.getInstructionSourceAndDest(
+        EU,
+        opcode,
+        instruction_data,
+    ) catch return InstructionDecodeError.NotYetImplemented;
+
+    const inst_line = prepareInstructionLine(
+        allocator,
+        opcode,
+        switch (instruction_data) {
+            .err => return InstructionDecodeError.NotYetImplemented,
+            .accumulator_op => instruction_data.accumulator_op.mnemonic,
+            .direct_op => instruction_data.direct_op.mnemonic,
+            .escape_op => instruction_data.escape_op.mnemonic,
+            .identifier_add_op => instruction_data.identifier_add_op.mnemonic,
+            .identifier_inc_op => instruction_data.identifier_inc_op.mnemonic,
+            .identifier_rol_op => instruction_data.identifier_rol_op.mnemonic,
+            .identifier_test_op => instruction_data.identifier_test_op.mnemonic,
+            .immediate_to_memory_op => instruction_data.immediate_to_memory_op.mnemonic,
+            .immediate_to_register_op => instruction_data.immediate_to_register_op.mnemonic,
+            .register_memory_op => instruction_data.register_memory_op.mnemonic,
+            .register_memory_to_from_register_op => instruction_data.register_memory_to_from_register_op.mnemonic,
+            .register_op => instruction_data.register_op.mnemonic,
+            .segment_register_op => instruction_data.segment_register_op.mnemonic,
+            .single_byte_op => instruction_data.single_byte_op.mnemonic,
         },
-        .accumulator_op => {
-            const accumulator_op: AccumulatorOp = instruction_data.accumulator_op;
+        inst_info,
+    ) catch return InstructionDecodeError.NotYetImplemented;
+    defer allocator.free(inst_line);
+    printer.info("{s}", .{inst_line});
+    try OutputWriter.print("{s}\n", .{inst_line});
 
-            const opcode = accumulator_op.opcode;
-            const mnemonic = accumulator_op.mnemonic;
-            const w = accumulator_op.w;
-            const data_8 = accumulator_op.data_8;
-            const data_lo = accumulator_op.data_lo;
-            const data_hi = accumulator_op.data_hi;
-            const addr_lo = accumulator_op.addr_lo;
-            const addr_hi = accumulator_op.addr_hi;
+    // DEPRECATED BELOW
 
-            const instruction_info: InstructionInfo = switch (opcode) {
+    // switch (instruction_data) {
+    //     .err => |err| {
+    //         log.err("{s}: {any} occured.", .{ @errorName(err), err });
+    //     },
+    //     .accumulator_op => {
+    //         const accumulator_op: AccumulatorOp = instruction_data.accumulator_op;
 
-                // Immediate to accumulator instructions
-                BinaryInstructions.add_al_immed8,
-                BinaryInstructions.add_ax_immed16,
-                BinaryInstructions.or_al_immed8,
-                BinaryInstructions.or_ax_immed16,
-                BinaryInstructions.adc_al_immed8,
-                BinaryInstructions.adc_ax_immed16,
-                BinaryInstructions.sbb_al_immed8,
-                BinaryInstructions.sbb_ax_immed16,
-                BinaryInstructions.and_al_immed8,
-                BinaryInstructions.and_ax_immed16,
-                BinaryInstructions.sub_al_immed8,
-                BinaryInstructions.sub_ax_immed16,
-                BinaryInstructions.xor_al_immed8,
-                BinaryInstructions.xor_ax_immed16,
-                BinaryInstructions.cmp_al_immed8,
-                BinaryInstructions.cmp_ax_immed16,
-                BinaryInstructions.test_al_immed8,
-                BinaryInstructions.test_ax_immed16,
-                BinaryInstructions.in_al_dx,
-                BinaryInstructions.in_ax_dx,
-                BinaryInstructions.out_al_dx,
-                BinaryInstructions.out_ax_dx,
-                => locator.getImmediateToAccumulatorDest(
-                    w.?,
-                    data_8,
-                    data_lo,
-                    data_hi,
-                ),
+    //         const mnemonic = accumulator_op.mnemonic;
+    //         const w = accumulator_op.w;
+    //         const data_8 = accumulator_op.data_8;
+    //         const data_lo = accumulator_op.data_lo;
+    //         const data_hi = accumulator_op.data_hi;
+    //         const addr_lo = accumulator_op.addr_lo;
+    //         const addr_hi = accumulator_op.addr_hi;
 
-                // Direct address (offset) addr_lo, addr_hi
-                BinaryInstructions.mov_al_mem8,
-                BinaryInstructions.mov_ax_mem16,
-                => locator.getMemToAccSourceAndDest(
-                    w.?,
-                    addr_lo,
-                    addr_hi,
-                ),
-                BinaryInstructions.mov_mem8_al,
-                BinaryInstructions.mov_mem16_ax,
-                => locator.getAccToMemSourceAndDest(
-                    w.?,
-                    addr_lo,
-                    addr_hi,
-                ),
-                else => return InstructionDecodeError.InstructionError,
-            };
+    //         const instruction_info: InstructionInfo = switch (opcode) {
 
-            const instruction_line: []const u8 = prepareInstructionLine(
-                allocator,
-                opcode,
-                mnemonic,
-                instruction_info,
-            ) catch {
-                return InstructionDecodeError.NotYetImplemented;
-            };
-            defer allocator.free(instruction_line);
-            printer.info("{s}", .{instruction_line});
-            try OutputWriter.print("{s}\n", .{instruction_line});
-        },
-        .escape_op => {
-            const escape_op: EscapeOp = instruction_data.escape_op;
-            try OutputWriter.print("{s} ", .{escape_op.mnemonic});
-        },
-        .register_memory_to_from_register_op => {
-            const register_memory_to_from_register_op: RegisterMemoryToFromRegisterOp = instruction_data.register_memory_to_from_register_op;
+    //             // Immediate to accumulator instructions
+    //             BinaryInstructions.add_al_immed8,
+    //             BinaryInstructions.add_ax_immed16,
+    //             BinaryInstructions.or_al_immed8,
+    //             BinaryInstructions.or_ax_immed16,
+    //             BinaryInstructions.adc_al_immed8,
+    //             BinaryInstructions.adc_ax_immed16,
+    //             BinaryInstructions.sbb_al_immed8,
+    //             BinaryInstructions.sbb_ax_immed16,
+    //             BinaryInstructions.and_al_immed8,
+    //             BinaryInstructions.and_ax_immed16,
+    //             BinaryInstructions.sub_al_immed8,
+    //             BinaryInstructions.sub_ax_immed16,
+    //             BinaryInstructions.xor_al_immed8,
+    //             BinaryInstructions.xor_ax_immed16,
+    //             BinaryInstructions.cmp_al_immed8,
+    //             BinaryInstructions.cmp_ax_immed16,
+    //             BinaryInstructions.test_al_immed8,
+    //             BinaryInstructions.test_ax_immed16,
+    //             BinaryInstructions.in_al_immed8,
+    //             BinaryInstructions.in_ax_immed8,
+    //             BinaryInstructions.out_al_immed8,
+    //             BinaryInstructions.out_ax_immed8,
+    //             => locator.getImmediateToAccumulatorDest(
+    //                 w.?,
+    //                 data_8,
+    //                 data_lo,
+    //                 data_hi,
+    //             ),
 
-            const opcode = register_memory_to_from_register_op.opcode;
-            const mnemonic = register_memory_to_from_register_op.mnemonic;
-            const d = register_memory_to_from_register_op.d;
-            const w = register_memory_to_from_register_op.w;
-            const mod = register_memory_to_from_register_op.mod;
-            const reg = register_memory_to_from_register_op.reg;
-            const rm = register_memory_to_from_register_op.rm;
+    //             // Direct address (offset) addr_lo, addr_hi
+    //             BinaryInstructions.mov_al_mem8,
+    //             BinaryInstructions.mov_ax_mem16,
+    //             => locator.getMemToAccSourceAndDest(
+    //                 w.?,
+    //                 addr_lo,
+    //                 addr_hi,
+    //             ),
+    //             BinaryInstructions.mov_mem8_al,
+    //             BinaryInstructions.mov_mem16_ax,
+    //             => locator.getAccToMemSourceAndDest(
+    //                 w.?,
+    //                 addr_lo,
+    //                 addr_hi,
+    //             ),
+    //             else => return InstructionDecodeError.InstructionError,
+    //         };
 
-            const instruction_info: InstructionInfo = locator.getRegMemToFromRegSourceAndDest(
-                EU,
-                d.?,
-                w.?,
-                reg,
-                mod,
-                rm,
-                switch (mod) {
-                    ModValue.memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) register_memory_to_from_register_op.disp_lo else null,
-                    ModValue.memoryMode8BitDisplacement => register_memory_to_from_register_op.disp_lo,
-                    ModValue.memoryMode16BitDisplacement => register_memory_to_from_register_op.disp_lo,
-                    ModValue.registerModeNoDisplacement => null,
-                },
-                switch (mod) {
-                    ModValue.memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) register_memory_to_from_register_op.disp_hi else null,
-                    ModValue.memoryMode8BitDisplacement => null,
-                    ModValue.memoryMode16BitDisplacement => register_memory_to_from_register_op.disp_hi,
-                    ModValue.registerModeNoDisplacement => null,
-                },
-            );
+    //         const instruction_line: []const u8 = prepareInstructionLine(
+    //             allocator,
+    //             opcode,
+    //             mnemonic,
+    //             instruction_info,
+    //         ) catch {
+    //             return InstructionDecodeError.NotYetImplemented;
+    //         };
+    //         defer allocator.free(instruction_line);
+    //         printer.info("{s}", .{instruction_line});
+    //         try OutputWriter.print("{s}\n", .{instruction_line});
+    //     },
+    //     .escape_op => {
+    //         const escape_op: EscapeOp = instruction_data.escape_op;
+    //         try OutputWriter.print("{s} ", .{escape_op.mnemonic});
+    //     },
+    //     .register_memory_to_from_register_op => {
+    //         const register_memory_to_from_register_op: RegisterMemoryToFromRegisterOp = instruction_data.register_memory_to_from_register_op;
 
-            const instruction_line: []const u8 = prepareInstructionLine(
-                allocator,
-                opcode,
-                mnemonic,
-                instruction_info,
-            ) catch {
-                return InstructionDecodeError.NotYetImplemented;
-            };
-            defer allocator.free(instruction_line);
-            printer.info("{s}", .{instruction_line});
-            try OutputWriter.print("{s}\n", .{instruction_line});
-        },
-        .register_memory_op => {
-            const register_memory_op: RegisterMemoryOp = instruction_data.register_memory_op;
-            const opcode: BinaryInstructions = register_memory_op.opcode;
-            const mnemonic: []const u8 = register_memory_op.mnemonic;
-            const mod: ModValue = register_memory_op.mod;
-            const rm: RmValue = register_memory_op.rm;
-            const disp_lo: ?u8 = register_memory_op.disp_lo;
-            const disp_hi: ?u8 = register_memory_op.disp_hi;
+    //         const mnemonic = register_memory_to_from_register_op.mnemonic;
+    //         const d = register_memory_to_from_register_op.d;
+    //         const w = register_memory_to_from_register_op.w;
+    //         const mod = register_memory_to_from_register_op.mod;
+    //         const reg = register_memory_to_from_register_op.reg;
+    //         const rm = register_memory_to_from_register_op.rm;
 
-            const instruction_info: InstructionInfo = locator.getRegisterMemoryOpSourceAndDest(
-                EU,
-                mod,
-                rm,
-                disp_lo,
-                disp_hi,
-            );
+    //         const instruction_info: InstructionInfo = locator.getRegMemToFromRegSourceAndDest(
+    //             EU,
+    //             d.?,
+    //             w.?,
+    //             reg,
+    //             mod,
+    //             rm,
+    //             switch (mod) {
+    //                 ModValue.memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) register_memory_to_from_register_op.disp_lo else null,
+    //                 ModValue.memoryMode8BitDisplacement => register_memory_to_from_register_op.disp_lo,
+    //                 ModValue.memoryMode16BitDisplacement => register_memory_to_from_register_op.disp_lo,
+    //                 ModValue.registerModeNoDisplacement => null,
+    //             },
+    //             switch (mod) {
+    //                 ModValue.memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) register_memory_to_from_register_op.disp_hi else null,
+    //                 ModValue.memoryMode8BitDisplacement => null,
+    //                 ModValue.memoryMode16BitDisplacement => register_memory_to_from_register_op.disp_hi,
+    //                 ModValue.registerModeNoDisplacement => null,
+    //             },
+    //         );
 
-            const instruction_line: []const u8 = prepareInstructionLine(
-                allocator,
-                opcode,
-                mnemonic,
-                instruction_info,
-            ) catch return InstructionDecodeError.NotYetImplemented;
-            defer allocator.free(instruction_line);
-            printer.info("{s}", .{instruction_line});
-            try OutputWriter.print("{s}\n", .{instruction_line});
-        },
-        .register_op => {
-            const register_op: RegisterOp = instruction_data.register_op;
-            const opcode: BinaryInstructions = register_op.opcode;
-            const mnemonic: []const u8 = register_op.mnemonic;
-            const reg: RegValue = register_op.reg;
+    //         const instruction_line: []const u8 = prepareInstructionLine(
+    //             allocator,
+    //             opcode,
+    //             mnemonic,
+    //             instruction_info,
+    //         ) catch {
+    //             return InstructionDecodeError.NotYetImplemented;
+    //         };
+    //         defer allocator.free(instruction_line);
+    //         printer.info("{s}", .{instruction_line});
+    //         try OutputWriter.print("{s}\n", .{instruction_line});
+    //     },
+    //     .register_memory_op => {
+    //         const register_memory_op: RegisterMemoryOp = instruction_data.register_memory_op;
+    //         const mnemonic: []const u8 = register_memory_op.mnemonic;
+    //         const mod: ModValue = register_memory_op.mod;
+    //         const rm: RmValue = register_memory_op.rm;
+    //         const disp_lo: ?u8 = register_memory_op.disp_lo;
+    //         const disp_hi: ?u8 = register_memory_op.disp_hi;
 
-            const instruction_info: InstructionInfo = locator.getRegisterOpSourceAndDest(
-                opcode,
-                reg,
-            );
-            const instruction_line: []const u8 = prepareInstructionLine(
-                allocator,
-                opcode,
-                mnemonic,
-                instruction_info,
-            ) catch {
-                return InstructionDecodeError.NotYetImplemented;
-            };
-            defer allocator.free(instruction_line);
-            printer.info("{s}", .{instruction_line});
-            try OutputWriter.print("{s}\n", .{instruction_line});
-        },
-        .immediate_to_register_op => {
-            const immediate_to_register_op: ImmediateToRegisterOp = instruction_data.immediate_to_register_op;
+    //         const instruction_info: InstructionInfo = locator.getRegisterMemoryOpSourceAndDest(
+    //             EU,
+    //             mod,
+    //             rm,
+    //             disp_lo,
+    //             disp_hi,
+    //         );
 
-            const opcode: BinaryInstructions = immediate_to_register_op.opcode;
-            const mnemonic: []const u8 = immediate_to_register_op.mnemonic;
-            const w: WValue = immediate_to_register_op.w;
-            const reg: RegValue = immediate_to_register_op.reg;
-            const data_8: ?u8 = immediate_to_register_op.data_8;
-            const data_lo: ?u8 = immediate_to_register_op.data_lo;
-            const data_hi: ?u8 = immediate_to_register_op.data_hi;
+    //         const instruction_line: []const u8 = prepareInstructionLine(
+    //             allocator,
+    //             opcode,
+    //             mnemonic,
+    //             instruction_info,
+    //         ) catch return InstructionDecodeError.NotYetImplemented;
+    //         defer allocator.free(instruction_line);
+    //         printer.info("{s}", .{instruction_line});
+    //         try OutputWriter.print("{s}\n", .{instruction_line});
+    //     },
+    //     .register_op => {
+    //         const register_op: RegisterOp = instruction_data.register_op;
+    //         const mnemonic: []const u8 = register_op.mnemonic;
+    //         const reg: RegValue = register_op.reg;
 
-            const instruction_info: InstructionInfo = locator.getImmediateToRegDest(
-                w,
-                reg,
-                data_8,
-                data_lo,
-                data_hi,
-            );
-            const instruction_line: []const u8 = prepareInstructionLine(
-                allocator,
-                opcode,
-                mnemonic,
-                instruction_info,
-            ) catch {
-                return InstructionDecodeError.NotYetImplemented;
-            };
-            defer allocator.free(instruction_line);
-            printer.info("{s}", .{instruction_line});
-            try OutputWriter.print("{s}\n", .{instruction_line});
-        },
-        .immediate_to_memory_op => {
-            const immediate_to_memory_op: ImmediateToMemoryOp = instruction_data.immediate_to_memory_op;
+    //         const instruction_info: InstructionInfo = locator.getRegisterOpSourceAndDest(
+    //             opcode,
+    //             reg,
+    //         );
+    //         const instruction_line: []const u8 = prepareInstructionLine(
+    //             allocator,
+    //             opcode,
+    //             mnemonic,
+    //             instruction_info,
+    //         ) catch {
+    //             return InstructionDecodeError.NotYetImplemented;
+    //         };
+    //         defer allocator.free(instruction_line);
+    //         printer.info("{s}", .{instruction_line});
+    //         try OutputWriter.print("{s}\n", .{instruction_line});
+    //     },
+    //     .immediate_to_register_op => {
+    //         const immediate_to_register_op: ImmediateToRegisterOp = instruction_data.immediate_to_register_op;
 
-            const opcode = immediate_to_memory_op.opcode;
-            const mnemonic = immediate_to_memory_op.mnemonic;
+    //         const mnemonic: []const u8 = immediate_to_register_op.mnemonic;
+    //         const w: WValue = immediate_to_register_op.w;
+    //         const reg: RegValue = immediate_to_register_op.reg;
+    //         const data_8: ?u8 = immediate_to_register_op.data_8;
+    //         const data_lo: ?u8 = immediate_to_register_op.data_lo;
+    //         const data_hi: ?u8 = immediate_to_register_op.data_hi;
 
-            const instruction_info: InstructionInfo = locator.getImmediateToMemoryOpSourceAndDest(
-                EU,
-                instruction_data,
-            ) catch {
-                return InstructionDecodeError.NotYetImplemented;
-            };
+    //         const instruction_info: InstructionInfo = locator.getImmediateToRegDest(
+    //             w,
+    //             reg,
+    //             data_8,
+    //             data_lo,
+    //             data_hi,
+    //         );
+    //         const instruction_line: []const u8 = prepareInstructionLine(
+    //             allocator,
+    //             opcode,
+    //             mnemonic,
+    //             instruction_info,
+    //         ) catch {
+    //             return InstructionDecodeError.NotYetImplemented;
+    //         };
+    //         defer allocator.free(instruction_line);
+    //         printer.info("{s}", .{instruction_line});
+    //         try OutputWriter.print("{s}\n", .{instruction_line});
+    //     },
+    //     .immediate_to_memory_op => {
+    //         const immediate_to_memory_op: ImmediateToMemoryOp = instruction_data.immediate_to_memory_op;
 
-            const instruction_line: []const u8 = prepareInstructionLine(
-                allocator,
-                opcode,
-                mnemonic,
-                instruction_info,
-            ) catch {
-                return InstructionDecodeError.NotYetImplemented;
-            };
+    //         const mnemonic = immediate_to_memory_op.mnemonic;
 
-            defer allocator.free(instruction_line);
-            printer.info("{s}", .{instruction_line});
-            try OutputWriter.print("{s}\n", .{instruction_line});
-        },
-        .segment_register_op => {
-            const segment_register_op: SegmentRegisterOp = instruction_data.segment_register_op;
+    //         const instruction_info: InstructionInfo = locator.getImmediateToMemoryOpSourceAndDest(
+    //             EU,
+    //             instruction_data,
+    //         ) catch {
+    //             return InstructionDecodeError.NotYetImplemented;
+    //         };
 
-            const opcode: BinaryInstructions = segment_register_op.opcode;
-            const mnemonic: []const u8 = segment_register_op.mnemonic;
-            const mod: ?ModValue = segment_register_op.mod;
-            const sr: SrValue = segment_register_op.sr;
-            const rm: ?RmValue = segment_register_op.rm;
-            const disp_lo: ?u8 = segment_register_op.disp_lo;
-            const disp_hi: ?u8 = segment_register_op.disp_hi;
+    //         const instruction_line: []const u8 = prepareInstructionLine(
+    //             allocator,
+    //             opcode,
+    //             mnemonic,
+    //             instruction_info,
+    //         ) catch {
+    //             return InstructionDecodeError.NotYetImplemented;
+    //         };
 
-            switch (opcode) {
-                BinaryInstructions.segment_override_prefix_es,
-                BinaryInstructions.segment_override_prefix_cs,
-                BinaryInstructions.segment_override_prefix_ss,
-                BinaryInstructions.segment_override_prefix_ds,
-                => {
-                    // TODO: Segment override prefixes need to be implemented.
-                },
-                BinaryInstructions.mov_segreg_regmem16 => {
-                    const instruction_info: InstructionInfo = locator.getRegMemToSegMovSourceAndDest(
-                        EU,
-                        mod.?,
-                        sr,
-                        rm.?,
-                        disp_lo,
-                        disp_hi,
-                    );
-                    const instruction_line: []const u8 = prepareInstructionLine(
-                        allocator,
-                        opcode,
-                        mnemonic,
-                        instruction_info,
-                    ) catch {
-                        return InstructionDecodeError.NotYetImplemented;
-                    };
-                    try OutputWriter.print("{s} ", .{instruction_line});
-                },
-                BinaryInstructions.mov_regmem16_segreg => {
-                    const instruction_info: InstructionInfo = locator.getSegToRegMemMovSourceAndDest(
-                        EU,
-                        mod.?,
-                        sr,
-                        rm.?,
-                        disp_lo,
-                        disp_hi,
-                    );
-                    const instruction_line: []const u8 = prepareInstructionLine(
-                        allocator,
-                        opcode,
-                        mnemonic,
-                        instruction_info,
-                    ) catch {
-                        return InstructionDecodeError.NotYetImplemented;
-                    };
-                    try OutputWriter.print("{s} ", .{instruction_line});
-                },
-                else => return InstructionDecodeError.NotYetImplemented,
-            }
-        },
-        .identifier_add_op => {
-            const identifier_add_op: IdentifierAddOp = instruction_data.identifier_add_op;
+    //         defer allocator.free(instruction_line);
+    //         printer.info("{s}", .{instruction_line});
+    //         try OutputWriter.print("{s}\n", .{instruction_line});
+    //     },
+    //     .segment_register_op => {
+    //         const segment_register_op: SegmentRegisterOp = instruction_data.segment_register_op;
 
-            const opcode: BinaryInstructions = identifier_add_op.opcode;
-            const mnemonic: []const u8 = identifier_add_op.mnemonic;
+    //         const mnemonic: []const u8 = segment_register_op.mnemonic;
+    //         const mod: ?ModValue = segment_register_op.mod;
+    //         const sr: SrValue = segment_register_op.sr;
+    //         const rm: ?RmValue = segment_register_op.rm;
+    //         const disp_lo: ?u8 = segment_register_op.disp_lo;
+    //         const disp_hi: ?u8 = segment_register_op.disp_hi;
 
-            const instruction_info: InstructionInfo = locator.getIdentifierAddOpSourceAndDest(
-                EU,
-                opcode,
-                instruction_data,
-            ) catch {
-                return InstructionDecodeError.NotYetImplemented;
-            };
+    //         switch (opcode) {
+    //             BinaryInstructions.segment_override_prefix_es,
+    //             BinaryInstructions.segment_override_prefix_cs,
+    //             BinaryInstructions.segment_override_prefix_ss,
+    //             BinaryInstructions.segment_override_prefix_ds,
+    //             => {
+    //                 // TODO: Segment override prefixes need to be implemented.
+    //             },
+    //             BinaryInstructions.mov_segreg_regmem16 => {
+    //                 const instruction_info: InstructionInfo = locator.getRegMemToSegMovSourceAndDest(
+    //                     EU,
+    //                     mod.?,
+    //                     sr,
+    //                     rm.?,
+    //                     disp_lo,
+    //                     disp_hi,
+    //                 );
+    //                 const instruction_line: []const u8 = prepareInstructionLine(
+    //                     allocator,
+    //                     opcode,
+    //                     mnemonic,
+    //                     instruction_info,
+    //                 ) catch {
+    //                     return InstructionDecodeError.NotYetImplemented;
+    //                 };
+    //                 try OutputWriter.print("{s} ", .{instruction_line});
+    //             },
+    //             BinaryInstructions.mov_regmem16_segreg => {
+    //                 const instruction_info: InstructionInfo = locator.getSegToRegMemMovSourceAndDest(
+    //                     EU,
+    //                     mod.?,
+    //                     sr,
+    //                     rm.?,
+    //                     disp_lo,
+    //                     disp_hi,
+    //                 );
+    //                 const instruction_line: []const u8 = prepareInstructionLine(
+    //                     allocator,
+    //                     opcode,
+    //                     mnemonic,
+    //                     instruction_info,
+    //                 ) catch {
+    //                     return InstructionDecodeError.NotYetImplemented;
+    //                 };
+    //                 try OutputWriter.print("{s} ", .{instruction_line});
+    //             },
+    //             else => return InstructionDecodeError.NotYetImplemented,
+    //         }
+    //     },
+    //     .identifier_add_op => {
+    //         const identifier_add_op: IdentifierAddOp = instruction_data.identifier_add_op;
 
-            const instruction_line: []const u8 = prepareInstructionLine(
-                allocator,
-                opcode,
-                mnemonic,
-                instruction_info,
-            ) catch {
-                return InstructionDecodeError.NotYetImplemented;
-            };
-            defer allocator.free(instruction_line);
-            try OutputWriter.print("{s}\n", .{instruction_line});
-        },
-        .identifier_rol_op => {
-            const identifier_rol_op: IdentifierRolOp = instruction_data.identifier_rol_op;
+    //         const mnemonic: []const u8 = identifier_add_op.mnemonic;
 
-            const opcode: BinaryInstructions = identifier_rol_op.opcode;
-            const mnemonic: []const u8 = identifier_rol_op.mnemonic;
+    //         const instruction_info: InstructionInfo = locator.getIdentifierAddOpSourceAndDest(
+    //             EU,
+    //             opcode,
+    //             instruction_data,
+    //         ) catch {
+    //             return InstructionDecodeError.NotYetImplemented;
+    //         };
 
-            const instruction_info: InstructionInfo = locator.getIdentifierRolOpSourceAndDest(
-                EU,
-                opcode,
-                instruction_data,
-            ) catch {
-                return InstructionDecodeError.NotYetImplemented;
-            };
+    //         const instruction_line: []const u8 = prepareInstructionLine(
+    //             allocator,
+    //             opcode,
+    //             mnemonic,
+    //             instruction_info,
+    //         ) catch {
+    //             return InstructionDecodeError.NotYetImplemented;
+    //         };
+    //         defer allocator.free(instruction_line);
+    //         try OutputWriter.print("{s}\n", .{instruction_line});
+    //     },
+    //     .identifier_rol_op => {
+    //         const identifier_rol_op: IdentifierRolOp = instruction_data.identifier_rol_op;
 
-            const instruction_line: []const u8 = prepareInstructionLine(
-                allocator,
-                opcode,
-                mnemonic,
-                instruction_info,
-            ) catch {
-                return InstructionDecodeError.NotYetImplemented;
-            };
-            defer allocator.free(instruction_line);
-            try OutputWriter.print("{s} ", .{identifier_rol_op.mnemonic});
-        },
-        .identifier_test_op => {
-            const identifier_test_op: IdentifierTestOp = instruction_data.identifier_test_op;
+    //         const mnemonic: []const u8 = identifier_rol_op.mnemonic;
 
-            const opcode: BinaryInstructions = identifier_test_op.opcode;
-            const mnemonic: []const u8 = identifier_test_op.mnemonic;
+    //         const instruction_info: InstructionInfo = locator.getIdentifierRolOpSourceAndDest(
+    //             EU,
+    //             opcode,
+    //             instruction_data,
+    //         ) catch {
+    //             return InstructionDecodeError.NotYetImplemented;
+    //         };
 
-            const instruction_info: InstructionInfo = locator.getIdentifierTestOpSourceAndDest(
-                EU,
-                opcode,
-                instruction_data,
-            ) catch {
-                return InstructionDecodeError.NotYetImplemented;
-            };
+    //         const instruction_line: []const u8 = prepareInstructionLine(
+    //             allocator,
+    //             opcode,
+    //             mnemonic,
+    //             instruction_info,
+    //         ) catch {
+    //             return InstructionDecodeError.NotYetImplemented;
+    //         };
+    //         defer allocator.free(instruction_line);
+    //         try OutputWriter.print("{s} ", .{identifier_rol_op.mnemonic});
+    //     },
+    //     .identifier_test_op => {
+    //         const identifier_test_op: IdentifierTestOp = instruction_data.identifier_test_op;
 
-            const instruction_line: []const u8 = prepareInstructionLine(
-                allocator,
-                opcode,
-                mnemonic,
-                instruction_info,
-            ) catch {
-                return InstructionDecodeError.NotYetImplemented;
-            };
-            defer allocator.free(instruction_line);
-            try OutputWriter.print("{s} ", .{instruction_line});
-        },
-        .identifier_inc_op => {
-            const identifier_inc_op: IdentifierIncOp = instruction_data.identifier_inc_op;
-            try OutputWriter.print("{s} ", .{identifier_inc_op.mnemonic});
-        },
-        .direct_op => {
-            const direct_op: DirectOp = instruction_data.direct_op;
-            try OutputWriter.print("{s} ", .{direct_op.mnemonic});
-        },
-        .single_byte_op => {
-            const single_byte_op: SingleByteOp = instruction_data.single_byte_op;
-            try OutputWriter.print("{s} ", .{single_byte_op.mnemonic});
-        },
-    }
+    //         const mnemonic: []const u8 = identifier_test_op.mnemonic;
+
+    //         const instruction_info: InstructionInfo = locator.getIdentifierTestOpSourceAndDest(
+    //             EU,
+    //             opcode,
+    //             instruction_data,
+    //         ) catch {
+    //             return InstructionDecodeError.NotYetImplemented;
+    //         };
+
+    //         const instruction_line: []const u8 = prepareInstructionLine(
+    //             allocator,
+    //             opcode,
+    //             mnemonic,
+    //             instruction_info,
+    //         ) catch {
+    //             return InstructionDecodeError.NotYetImplemented;
+    //         };
+    //         defer allocator.free(instruction_line);
+    //         try OutputWriter.print("{s} ", .{instruction_line});
+    //     },
+    //     .identifier_inc_op => {
+    //         const identifier_inc_op: IdentifierIncOp = instruction_data.identifier_inc_op;
+    //         try OutputWriter.print("{s} ", .{identifier_inc_op.mnemonic});
+    //     },
+    //     .direct_op => {
+    //         const direct_op: DirectOp = instruction_data.direct_op;
+    //         try OutputWriter.print("{s} ", .{direct_op.mnemonic});
+    //     },
+    //     .single_byte_op => {
+    //         const single_byte_op: SingleByteOp = instruction_data.single_byte_op;
+    //         try OutputWriter.print("{s} ", .{single_byte_op.mnemonic});
+    //     },
+    // }
 }
 
 pub fn runAssemblyTest(
