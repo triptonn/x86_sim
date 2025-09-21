@@ -461,7 +461,7 @@ pub fn getInstructionSourceAndDest(
                         disp_lo,
                         disp_hi,
                     );
-                    const addr: Address = registerNameFromReg(w.?, reg);
+                    const register: Address = registerNameFromReg(w.?, reg);
 
                     return InstructionInfo{
                         .destination_info = switch (d.?) {
@@ -469,12 +469,12 @@ pub fn getInstructionSourceAndDest(
                                 .address_calculation = ea_calc,
                             },
                             Direction.destination => DestinationInfo{
-                                .address = addr,
+                                .address = register,
                             },
                         },
                         .source_info = switch (d.?) {
                             Direction.source => SourceInfo{
-                                .address = addr,
+                                .address = register,
                             },
                             Direction.destination => SourceInfo{
                                 .address_calculation = ea_calc,

@@ -92,6 +92,7 @@ pub const data_types = struct {
     pub const DisplacementFormat = enum { d8, d16, none };
 
     pub const EffectiveAddressCalculation = struct {
+        mod: instruction_fields.MOD,
         base: ?RegisterNames,
         index: ?RegisterNames,
         displacement: ?data_types.DisplacementFormat,

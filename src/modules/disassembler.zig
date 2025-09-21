@@ -76,6 +76,7 @@ fn prepareInstructionLine(
         DestinationInfo.address_calculation => {
             const Address = RegisterNames;
 
+            const mod: ModValue = destination.address_calculation.mod;
             const base = destination.address_calculation.base;
             const index = destination.address_calculation.index;
             const displacement = destination.address_calculation.displacement;
@@ -88,12 +89,21 @@ fn prepareInstructionLine(
 
             if (no_displacement) {
                 if (no_index) {
-                    const res = try std.fmt.allocPrint(
-                        allocator,
-                        " [{t}]",
-                        .{base.?},
-                    );
-                    break :dest_switch res;
+                    if (mod == ModValue.registerModeNoDisplacement) {
+                        const res = try std.fmt.allocPrint(
+                            allocator,
+                            " {t}",
+                            .{base.?},
+                        );
+                        break :dest_switch res;
+                    } else {
+                        const res = try std.fmt.allocPrint(
+                            allocator,
+                            " [{t}]",
+                            .{base.?},
+                        );
+                        break :dest_switch res;
+                    }
                 } else {
                     const res = try std.fmt.allocPrint(
                         allocator,
@@ -120,7 +130,7 @@ fn prepareInstructionLine(
                 } else if (no_index) {
                     const res = try std.fmt.allocPrint(
                         allocator,
-                        " [{t} - {d}]",
+                        " [{t} {d}]",
                         .{ base.?, signed_displacement_value.? },
                     );
                     break :dest_switch res;
@@ -134,7 +144,7 @@ fn prepareInstructionLine(
                 } else {
                     const res = try std.fmt.allocPrint(
                         allocator,
-                        " [{t} + {t} - {d}]",
+                        " [{t} + {t} {d}]",
                         .{ base.?, index.?, signed_displacement_value.? },
                     );
                     break :dest_switch res;
@@ -206,7 +216,7 @@ fn prepareInstructionLine(
                 } else if (no_index) {
                     const res = try std.fmt.allocPrint(
                         allocator,
-                        " [{t} - {d}]",
+                        " [{t} {d}]",
                         .{ base.?, signed_displacement_value.? },
                     );
                     break :source_switch res;
@@ -220,7 +230,7 @@ fn prepareInstructionLine(
                 } else {
                     const res = try std.fmt.allocPrint(
                         allocator,
-                        " [{t} + {t} - {d}]",
+                        " [{t} + {t} {d}]",
                         .{ base.?, index.?, signed_displacement_value.? },
                     );
                     break :source_switch res;
@@ -259,37 +269,39 @@ fn prepareInstructionLine(
                 break :source_switch res;
             },
         },
-        SourceInfo.unsigned_immediate => switch (opcode) {
-            BinaryInstructions.mov_mem8_immed8 => {
-                const res = try std.fmt.allocPrint(
-                    allocator,
-                    " byte {d}",
-                    .{
-                        source.immediate,
-                    },
-                );
-                break :source_switch res;
-            },
-            BinaryInstructions.mov_mem16_immed16 => {
-                const res = try std.fmt.allocPrint(
-                    allocator,
-                    " word {d}",
-                    .{
-                        source.immediate,
-                    },
-                );
-                break :source_switch res;
-            },
-            else => {
-                const res = try std.fmt.allocPrint(
-                    allocator,
-                    " {d}",
-                    .{
-                        source.immediate,
-                    },
-                );
-                break :source_switch res;
-            },
+        SourceInfo.unsigned_immediate => {
+            switch (opcode) {
+                .mov_mem8_immed8 => {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " byte {d}",
+                        .{
+                            source.immediate,
+                        },
+                    );
+                    break :source_switch res;
+                },
+                .mov_mem16_immed16 => {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " word {d}",
+                        .{
+                            source.immediate,
+                        },
+                    );
+                    break :source_switch res;
+                },
+                else => {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " {d}",
+                        .{
+                            source.unsigned_immediate,
+                        },
+                    );
+                    break :source_switch res;
+                },
+            }
         },
         SourceInfo.mem_addr => {
             const res = try std.fmt.allocPrint(

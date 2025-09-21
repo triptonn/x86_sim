@@ -181,6 +181,7 @@ pub const BusInterfaceUnit = struct {
         const Address = RegisterNames;
 
         return EffectiveAddressCalculation{
+            .mod = mod,
             .base = base: switch (mod) {
                 .memoryModeNoDisplacement => switch (rm) {
                     .ALAX_BXSI_BXSID8_BXSID16,
@@ -253,9 +254,13 @@ pub const BusInterfaceUnit = struct {
                 .memoryMode16BitDisplacement => null,
                 .registerModeNoDisplacement => null,
             },
-            .signed_displacement_value = switch (mod) {
+            .signed_displacement_value = signed_displacement: switch (mod) {
                 .memoryModeNoDisplacement => null,
-                .memoryMode8BitDisplacement => @bitCast(@as(i16, disp_lo.?)),
+                .memoryMode8BitDisplacement => {
+                    const temp: i8 = @bitCast(disp_lo.?);
+                    const sign_extended_immed8: i16 = @intCast(temp);
+                    break :signed_displacement sign_extended_immed8;
+                },
                 .memoryMode16BitDisplacement => @bitCast((@as(u16, disp_hi.?) << 8) + disp_lo.?),
                 .registerModeNoDisplacement => null,
             },
