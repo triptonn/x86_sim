@@ -362,6 +362,8 @@ pub fn instructionScope(opcode: BinaryInstructions) InstructionScope {
 /// Provided a InstructionScope, this function returns an enum containing
 /// all x86 opcodes belonging to this InstructionScope.
 pub fn ScopedInstruction(comptime scope: InstructionScope) type {
+    @setEvalBranchQuota(50_000);
+
     const E = @typeInfo(BinaryInstructions).@"enum";
     comptime var fields: [E.fields.len]std.builtin.Type.EnumField = undefined;
     comptime var n: usize = 0;

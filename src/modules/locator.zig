@@ -314,10 +314,10 @@ pub fn getInstructionSourceAndDest(
                     .DIV,
                     .IDIV,
                     => switch (identifier_test_ops) {
-                        .regmem8_immed8 => break :src SourceInfo{
+                        .logical_regmem8_immed8 => break :src SourceInfo{
                             .immediate = @bitCast(@as(u16, data_8.?)),
                         },
-                        .regmem16_immed16 => break :src SourceInfo{
+                        .logical_regmem16_immed16 => break :src SourceInfo{
                             .immediate = @bitCast((@as(u16, data_hi.?) << 8) + data_lo.?),
                         },
                     },
@@ -356,7 +356,7 @@ pub fn getInstructionSourceAndDest(
                 .source_info = SourceInfo{
                     .immediate = switch (w) {
                         .byte => @intCast(data_8.?),
-                        .word => @intCast(@as(u16, data_hi.? << 8) + data_lo.?),
+                        .word => @intCast((@as(u16, data_hi.?) << 8) + data_lo.?),
                     },
                 },
             };
@@ -403,49 +403,102 @@ pub fn getInstructionSourceAndDest(
             };
         },
         .register_memory_to_from_register_op => {
+            const RegisterMemoryToFromRegisterOps = decoder.ScopedInstruction(.RegisterMemoryToFromRegisterOp);
+            const register_memory_to_from_register_ops: RegisterMemoryToFromRegisterOps = @enumFromInt(@intFromEnum(opcode));
+
             const Address = RegisterNames;
-            const d: Direction = instruction_data.register_memory_to_from_register_op.d;
-            const w: Width = instruction_data.register_memory_to_from_register_op.w;
+            const d: ?Direction = instruction_data.register_memory_to_from_register_op.d;
+            const w: ?Width = instruction_data.register_memory_to_from_register_op.w;
             const mod: MOD = instruction_data.register_memory_to_from_register_op.mod;
             const reg: REG = instruction_data.register_memory_to_from_register_op.reg;
             const rm: RM = instruction_data.register_memory_to_from_register_op.rm;
             const disp_lo: ?u8 = instruction_data.register_memory_to_from_register_op.disp_lo;
             const disp_hi: ?u8 = instruction_data.register_memory_to_from_register_op.disp_hi;
 
-            const ea_calc: EffectiveAddressCalculation = BusInterfaceUnit.calculateEffectiveAddress(
-                EU,
-                w,
-                mod,
-                rm,
-                disp_lo,
-                disp_hi,
-            );
-            const addr: Address = registerNameFromReg(w, reg);
+            switch (register_memory_to_from_register_ops) {
+                .add_regmem8_reg8,
+                .add_regmem16_reg16,
+                .add_reg8_regmem8,
+                .add_reg16_regmem16,
+                .or_regmem8_reg8,
+                .or_regmem16_reg16,
+                .or_reg8_regmem8,
+                .or_reg16_regmem16,
+                .adc_regmem8_reg8,
+                .adc_regmem16_reg16,
+                .adc_reg8_regmem8,
+                .adc_reg16_regmem16,
+                .sbb_regmem8_reg8,
+                .sbb_regmem16_reg16,
+                .sbb_reg8_regmem8,
+                .sbb_reg16_regmem16,
+                .and_regmem8_reg8,
+                .and_regmem16_reg16,
+                .and_reg8_regmem8,
+                .and_reg16_regmem16,
+                .sub_regmem8_reg8,
+                .sub_regmem16_reg16,
+                .sub_reg8_regmem8,
+                .sub_reg16_regmem16,
+                .xor_regmem8_reg8,
+                .xor_regmem16_reg16,
+                .xor_reg8_regmem8,
+                .xor_reg16_regmem16,
+                .cmp_regmem8_reg8,
+                .cmp_regmem16_reg16,
+                .cmp_reg8_regmem8,
+                .cmp_reg16_regmem16,
+                .mov_regmem8_reg8,
+                .mov_regmem16_reg16,
+                .mov_reg8_regmem8,
+                .mov_reg16_regmem16,
+                => {
+                    const ea_calc: EffectiveAddressCalculation = BusInterfaceUnit.calculateEffectiveAddress(
+                        EU,
+                        w.?,
+                        mod,
+                        rm,
+                        disp_lo,
+                        disp_hi,
+                    );
+                    const addr: Address = registerNameFromReg(w.?, reg);
 
-            return InstructionInfo{
-                .destination_info = switch (d) {
-                    Direction.source => DestinationInfo{
-                        .address_calculation = ea_calc,
-                    },
-                    Direction.destination => DestinationInfo{
-                        .address = addr,
-                    },
+                    return InstructionInfo{
+                        .destination_info = switch (d.?) {
+                            Direction.source => DestinationInfo{
+                                .address_calculation = ea_calc,
+                            },
+                            Direction.destination => DestinationInfo{
+                                .address = addr,
+                            },
+                        },
+                        .source_info = switch (d.?) {
+                            Direction.source => SourceInfo{
+                                .address = addr,
+                            },
+                            Direction.destination => SourceInfo{
+                                .address_calculation = ea_calc,
+                            },
+                        },
+                    };
                 },
-                .source_info = switch (d) {
-                    Direction.source => SourceInfo{
-                        .address = addr,
-                    },
-                    Direction.destination => SourceInfo{
-                        .address_calculation = ea_calc,
-                    },
-                },
-            };
+
+                // TODO: Next step is to add InstructionInfo returns for these opcodes
+                .test_regmem8_reg8,
+                .test_regmem16_reg16,
+                .xchg_reg8_regmem8,
+                .xchg_reg16_regmem16,
+                .lea_reg16_mem16,
+                .load_ds_regmem16,
+                .load_es_regmem16,
+                => return LocatorError.NotYetImplemented,
+            }
         },
         .register_op => {
-            const Address = RegisterNames;
             const RegisterOps = decoder.ScopedInstruction(.RegisterOp);
             const register_ops: RegisterOps = @enumFromInt(@intFromEnum(opcode));
 
+            const Address = RegisterNames;
             const reg: REG = instruction_data.register_op.reg;
 
             switch (register_ops) {
@@ -526,9 +579,9 @@ pub fn getInstructionSourceAndDest(
             const segment_register_ops: SegmentRegisterOps = @enumFromInt(@intFromEnum(opcode));
             const Address = RegisterNames;
 
-            const mod: MOD = instruction_data.segment_register_op.mod;
+            const mod: ?MOD = instruction_data.segment_register_op.mod;
             const sr: SR = instruction_data.segment_register_op.sr;
-            const rm: RM = instruction_data.segment_register_op.rm;
+            const rm: ?RM = instruction_data.segment_register_op.rm;
             const disp_lo: ?u8 = instruction_data.segment_register_op.disp_lo;
             const disp_hi: ?u8 = instruction_data.segment_register_op.disp_hi;
 
@@ -537,7 +590,10 @@ pub fn getInstructionSourceAndDest(
                 .segment_override_prefix_cs,
                 .segment_override_prefix_ss,
                 .segment_override_prefix_ds,
-                => {},
+                => {
+                    // TODO: Add missing SegmentRegisterOp cases to getInstructionSourceAndDest()
+                    return LocatorError.NotYetImplemented;
+                },
                 .push_es,
                 .pop_es,
                 .push_cs,
@@ -545,7 +601,10 @@ pub fn getInstructionSourceAndDest(
                 .pop_ss,
                 .push_ds,
                 .pop_ds,
-                => {},
+                => {
+                    // TODO: Add missing SegmentRegisterOp cases to getInstructionSourceAndDest()
+                    return LocatorError.NotYetImplemented;
+                },
                 .mov_segreg_regmem16 => return InstructionInfo{
                     .destination_info = DestinationInfo{
                         .address = switch (sr) {
@@ -555,7 +614,7 @@ pub fn getInstructionSourceAndDest(
                             .DS => Address.ds,
                         },
                     },
-                    .source_info = switch (mod) {
+                    .source_info = switch (mod.?) {
                         .memoryModeNoDisplacement,
                         .memoryMode8BitDisplacement,
                         .memoryMode16BitDisplacement,
@@ -563,19 +622,19 @@ pub fn getInstructionSourceAndDest(
                             .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
                                 EU,
                                 Width.word,
-                                mod,
-                                rm,
+                                mod.?,
+                                rm.?,
                                 disp_lo,
                                 disp_hi,
                             ),
                         },
                         .registerModeNoDisplacement => SourceInfo{
-                            .address = registerNameFromRm(Width.word, rm),
+                            .address = registerNameFromRm(Width.word, rm.?),
                         },
                     },
                 },
                 .mov_regmem16_segreg => return InstructionInfo{
-                    .destination_info = switch (mod) {
+                    .destination_info = switch (mod.?) {
                         .memoryModeNoDisplacement,
                         .memoryMode8BitDisplacement,
                         .memoryMode16BitDisplacement,
@@ -583,14 +642,14 @@ pub fn getInstructionSourceAndDest(
                             .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
                                 EU,
                                 Width.word,
-                                mod,
-                                rm,
+                                mod.?,
+                                rm.?,
                                 disp_lo,
                                 disp_hi,
                             ),
                         },
                         .registerModeNoDisplacement => DestinationInfo{
-                            .address = registerNameFromRm(Width.word, rm),
+                            .address = registerNameFromRm(Width.word, rm.?),
                         },
                     },
                     .source_info = SourceInfo{
