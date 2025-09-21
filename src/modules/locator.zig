@@ -123,16 +123,6 @@ pub fn getInstructionSourceAndDest(
     switch (instruction_data) {
         .err => return LocatorError.AccumulatorSourceAndDest,
         .accumulator_op => {
-            // const accumulator_op: AccumulatorOp = instruction_data.accumulator_op;
-
-            // const mnemonic = accumulator_op.mnemonic;
-            // const w = accumulator_op.w;
-            // const data_8 = accumulator_op.data_8;
-            // const data_lo = accumulator_op.data_lo;
-            // const data_hi = accumulator_op.data_hi;
-            // const addr_lo = accumulator_op.addr_lo;
-            // const addr_hi = accumulator_op.addr_hi;
-
             const AccumulatorOps = decoder.ScopedInstruction(.AccumulatorOp);
             const accumulator_ops: AccumulatorOps = @enumFromInt(@intFromEnum(opcode));
 
@@ -226,10 +216,83 @@ pub fn getInstructionSourceAndDest(
         .identifier_inc_op,
         .identifier_rol_op,
         .identifier_test_op,
-        .immediate_to_memory_op,
-        .immediate_to_register_op,
-        .register_memory_op,
-        => {
+        => return LocatorError.NotYetImplemented,
+        .immediate_to_memory_op => {
+            const Address = RegisterNames;
+            const w: Width = instruction_data.immediate_to_memory_op.w;
+            const mod: MOD = instruction_data.immediate_to_memory_op.mod;
+            const rm: RM = instruction_data.immediate_to_memory_op.rm;
+            const disp_lo: ?u8 = instruction_data.immediate_to_memory_op.disp_lo;
+            const disp_hi: ?u8 = instruction_data.immediate_to_memory_op.disp_hi;
+            const data_8: ?u8 = instruction_data.immediate_to_memory_op.data_8;
+            const data_lo: ?u8 = instruction_data.immediate_to_memory_op.data_lo;
+            const data_hi: ?u8 = instruction_data.immediate_to_memory_op.data_hi;
+            return InstructionInfo{
+                .destination_info = switch (mod) {
+                    .memoryModeNoDisplacement,
+                    .memoryMode8BitDisplacement,
+                    .memoryMode16BitDisplacement,
+                    => DestinationInfo{
+                        .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                            EU,
+                            w,
+                            mod,
+                            rm,
+                            disp_lo,
+                            disp_hi,
+                        ),
+                    },
+                    .registerModeNoDisplacement,
+                    => DestinationInfo{
+                        .address = switch (rm) {
+                            .ALAX_BXSI_BXSID8_BXSID16 => Address.ax,
+                            .CLCX_BXDI_BXDID8_BXDID16 => Address.cx,
+                            .DLDX_BPSI_BPSID8_BPSID16 => Address.dx,
+                            .BLBX_BPDI_BPDID8_BPDID16 => Address.bx,
+                            .AHSP_SI_SID8_SID16 => Address.sp,
+                            .CHBP_DI_DID8_DID16 => Address.bp,
+                            .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.si,
+                            .BHDI_BX_BXD8_BXD16 => Address.di,
+                        },
+                    },
+                },
+                .source_info = SourceInfo{
+                    .immediate = switch (w) {
+                        .byte => @intCast(data_8.?),
+                        .word => @intCast(@as(u16, data_hi.? << 8) + data_lo.?),
+                    },
+                },
+            };
+        },
+        .immediate_to_register_op => {
+            const Address = RegisterNames;
+            const reg: REG = instruction_data.immediate_to_register_op.reg;
+            const w: Width = instruction_data.immediate_to_register_op.w;
+            const data_8: ?u8 = instruction_data.immediate_to_register_op.data_8;
+            const data_lo: ?u8 = instruction_data.immediate_to_register_op.data_lo;
+            const data_hi: ?u8 = instruction_data.immediate_to_register_op.data_hi;
+            return InstructionInfo{
+                .destination_info = DestinationInfo{
+                    .address = switch (reg) {
+                        .ALAX => if (w == Width.byte) Address.al else Address.ax,
+                        .CLCX => if (w == Width.byte) Address.cl else Address.cx,
+                        .DLDX => if (w == Width.byte) Address.dl else Address.dx,
+                        .BLBX => if (w == Width.byte) Address.bl else Address.bx,
+                        .AHSP => if (w == Width.byte) Address.ah else Address.sp,
+                        .CHBP => if (w == Width.byte) Address.ch else Address.bp,
+                        .DHSI => if (w == Width.byte) Address.dh else Address.si,
+                        .BHDI => if (w == Width.byte) Address.bh else Address.di,
+                    },
+                },
+                .source_info = SourceInfo{
+                    .immediate = switch (w) {
+                        Width.byte => @intCast(data_8.?),
+                        Width.word => @bitCast((@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?)),
+                    },
+                },
+            };
+        },
+        .register_memory_op => {
             const Address = RegisterNames;
             const mod: MOD = instruction_data.register_memory_op.mod;
             const rm: RM = instruction_data.register_memory_op.rm;
@@ -252,71 +315,212 @@ pub fn getInstructionSourceAndDest(
                 },
             };
         },
-        .register_memory_to_from_register_op,
-        .register_op,
+        .register_memory_to_from_register_op => {
+            const Address = RegisterNames;
+            const d: Direction = instruction_data.register_memory_to_from_register_op.d;
+            const w: Width = instruction_data.register_memory_to_from_register_op.w;
+            const mod: MOD = instruction_data.register_memory_to_from_register_op.mod;
+            const reg: REG = instruction_data.register_memory_to_from_register_op.reg;
+            const rm: RM = instruction_data.register_memory_to_from_register_op.rm;
+            const disp_lo: ?u8 = instruction_data.register_memory_to_from_register_op.disp_lo;
+            const disp_hi: ?u8 = instruction_data.register_memory_to_from_register_op.disp_hi;
+
+            const ea_calc: EffectiveAddressCalculation = BusInterfaceUnit.calculateEffectiveAddress(
+                EU,
+                w,
+                mod,
+                rm,
+                disp_lo,
+                disp_hi,
+            );
+            const addr: Address = switch (reg) {
+                .ALAX => if (w == Width.word) Address.ax else Address.al,
+                .CLCX => if (w == Width.word) Address.cx else Address.cl,
+                .DLDX => if (w == Width.word) Address.dx else Address.dl,
+                .BLBX => if (w == Width.word) Address.bx else Address.bl,
+                .AHSP => if (w == Width.word) Address.sp else Address.ah,
+                .CHBP => if (w == Width.word) Address.bp else Address.ch,
+                .DHSI => if (w == Width.word) Address.si else Address.dh,
+                .BHDI => if (w == Width.word) Address.di else Address.bh,
+            };
+
+            return InstructionInfo{
+                .destination_info = switch (d) {
+                    Direction.source => DestinationInfo{
+                        .address_calculation = ea_calc,
+                    },
+                    Direction.destination => DestinationInfo{
+                        .address = addr,
+                    },
+                },
+                .source_info = switch (d) {
+                    Direction.source => SourceInfo{
+                        .address = addr,
+                    },
+                    Direction.destination => SourceInfo{
+                        .address_calculation = ea_calc,
+                    },
+                },
+            };
+        },
+        .register_op => {
+            const Address = RegisterNames;
+            const RegisterOps = decoder.ScopedInstruction(.RegisterOp);
+            const register_ops: RegisterOps = @enumFromInt(@intFromEnum(opcode));
+
+            const reg: REG = instruction_data.register_op.reg;
+
+            switch (register_ops) {
+                .inc_ax,
+                .inc_cx,
+                .inc_dx,
+                .inc_bx,
+                .inc_sp,
+                .inc_bp,
+                .inc_si,
+                .inc_di,
+                .dec_ax,
+                .dec_cx,
+                .dec_dx,
+                .dec_bx,
+                .dec_sp,
+                .dec_bp,
+                .dec_si,
+                .dec_di,
+                .push_ax,
+                .push_cx,
+                .push_dx,
+                .push_bx,
+                .push_sp,
+                .push_bp,
+                .push_si,
+                .push_di,
+                .pop_ax,
+                .pop_cx,
+                .pop_dx,
+                .pop_bx,
+                .pop_sp,
+                .pop_bp,
+                .pop_si,
+                .pop_di,
+                => {
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .address = switch (reg) {
+                                .ALAX => Address.ax,
+                                .CLCX => Address.cx,
+                                .DLDX => Address.dx,
+                                .BLBX => Address.bx,
+                                .AHSP => Address.sp,
+                                .CHBP => Address.bp,
+                                .DHSI => Address.si,
+                                .BHDI => Address.di,
+                            },
+                        },
+                        .source_info = SourceInfo{
+                            .none = {},
+                        },
+                    };
+                },
+                .nop_xchg_ax_ax,
+                => {
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .none = {},
+                        },
+                        .source_info = SourceInfo{
+                            .none = {},
+                        },
+                    };
+                },
+                .xchg_ax_cx,
+                .xchg_ax_dx,
+                .xchg_ax_bx,
+                .xchg_ax_sp,
+                .xchg_ax_bp,
+                .xchg_ax_si,
+                .xchg_ax_di,
+                => {
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .address = Address.ax,
+                        },
+                        .source_info = SourceInfo{
+                            .address = switch (reg) {
+                                .ALAX => Address.ax,
+                                .CLCX => Address.cx,
+                                .DLDX => Address.dx,
+                                .BLBX => Address.bx,
+                                .AHSP => Address.sp,
+                                .CHBP => Address.bp,
+                                .DHSI => Address.si,
+                                .BHDI => Address.di,
+                            },
+                        },
+                    };
+                },
+            }
+        },
         .segment_register_op,
         .single_byte_op,
         => return LocatorError.NotYetImplemented,
     }
 }
 
-// TODO: DocString
+// pub fn getImmediateToMemoryOpSourceAndDest(
+//     EU: *ExecutionUnit,
+//     instruction_data: InstructionData,
+// ) LocatorError!InstructionInfo {
+//     // const log = std.log.scoped(.getImmediateToMemoryOpSourceAndDest);
+//     const Address = RegisterNames;
 
-pub fn getImmediateToMemoryOpSourceAndDest(
-    EU: *ExecutionUnit,
-    instruction_data: InstructionData,
-) LocatorError!InstructionInfo {
-    // const log = std.log.scoped(.getImmediateToMemoryOpSourceAndDest);
-    const Address = RegisterNames;
+//     const opcode: BinaryInstructions = instruction_data.immediate_to_memory_op.opcode;
+//     const w: Width = instruction_data.immediate_to_memory_op.w;
+//     const mod: MOD = instruction_data.immediate_to_memory_op.mod;
+//     const rm: RM = instruction_data.immediate_to_memory_op.rm;
+//     const disp_lo: ?u8 = instruction_data.immediate_to_memory_op.disp_lo;
+//     const disp_hi: ?u8 = instruction_data.immediate_to_memory_op.disp_hi;
+//     const data_8: ?u8 = instruction_data.immediate_to_memory_op.data_8;
+//     const data_lo: ?u8 = instruction_data.immediate_to_memory_op.data_lo;
+//     const data_hi: ?u8 = instruction_data.immediate_to_memory_op.data_hi;
 
-    const opcode: BinaryInstructions = instruction_data.immediate_to_memory_op.opcode;
-    const w: Width = instruction_data.immediate_to_memory_op.w;
-    const mod: MOD = instruction_data.immediate_to_memory_op.mod;
-    const rm: RM = instruction_data.immediate_to_memory_op.rm;
-    const disp_lo: ?u8 = instruction_data.immediate_to_memory_op.disp_lo;
-    const disp_hi: ?u8 = instruction_data.immediate_to_memory_op.disp_hi;
-    const data_8: ?u8 = instruction_data.immediate_to_memory_op.data_8;
-    const data_lo: ?u8 = instruction_data.immediate_to_memory_op.data_lo;
-    const data_hi: ?u8 = instruction_data.immediate_to_memory_op.data_hi;
-
-    return InstructionInfo{
-        .destination_info = destination_switch: switch (mod) {
-            .memoryModeNoDisplacement,
-            .memoryMode8BitDisplacement,
-            .memoryMode16BitDisplacement,
-            => DestinationInfo{
-                .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
-                    EU,
-                    w,
-                    mod,
-                    rm,
-                    disp_lo,
-                    disp_hi,
-                ),
-            },
-            .registerModeNoDisplacement => {
-                break :destination_switch DestinationInfo{
-                    .address = switch (rm) {
-                        .ALAX_BXSI_BXSID8_BXSID16 => Address.ax,
-                        .CLCX_BXDI_BXDID8_BXDID16 => Address.cx,
-                        .DLDX_BPSI_BPSID8_BPSID16 => Address.dx,
-                        .BLBX_BPDI_BPDID8_BPDID16 => Address.bx,
-                        .AHSP_SI_SID8_SID16 => Address.sp,
-                        .CHBP_DI_DID8_DID16 => Address.bp,
-                        .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.si,
-                        .BHDI_BX_BXD8_BXD16 => Address.di,
-                    },
-                };
-            },
-        },
-        // TODO: Signing of immediate source values depends on the opcode. This needs to be implemented!
-        .source_info = SourceInfo{ .immediate = switch (opcode) {
-            BinaryInstructions.mov_mem8_immed8 => @as(i16, data_8.?),
-            BinaryInstructions.mov_mem16_immed16 => @bitCast((@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?)),
-            else => return LocatorError.InvalidOpcode,
-        } },
-    };
-}
+//     return InstructionInfo{
+//         .destination_info = destination_switch: switch (mod) {
+//             .memoryModeNoDisplacement,
+//             .memoryMode8BitDisplacement,
+//             .memoryMode16BitDisplacement,
+//             => DestinationInfo{
+//                 .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+//                     EU,
+//                     w,
+//                     mod,
+//                     rm,
+//                     disp_lo,
+//                     disp_hi,
+//                 ),
+//             },
+//             .registerModeNoDisplacement => {
+//                 break :destination_switch DestinationInfo{
+//                     .address = switch (rm) {
+//                         .ALAX_BXSI_BXSID8_BXSID16 => Address.ax,
+//                         .CLCX_BXDI_BXDID8_BXDID16 => Address.cx,
+//                         .DLDX_BPSI_BPSID8_BPSID16 => Address.dx,
+//                         .BLBX_BPDI_BPDID8_BPDID16 => Address.bx,
+//                         .AHSP_SI_SID8_SID16 => Address.sp,
+//                         .CHBP_DI_DID8_DID16 => Address.bp,
+//                         .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.si,
+//                         .BHDI_BX_BXD8_BXD16 => Address.di,
+//                     },
+//                 };
+//             },
+//         },
+//         .source_info = SourceInfo{ .immediate = switch (opcode) {
+//             BinaryInstructions.mov_mem8_immed8 => @as(i16, data_8.?),
+//             BinaryInstructions.mov_mem16_immed16 => @bitCast((@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?)),
+//             else => return LocatorError.InvalidOpcode,
+//         } },
+//     };
+// }
 
 pub fn getIdentifierAddOpSourceAndDest(
     EU: *ExecutionUnit,
@@ -556,35 +760,35 @@ pub fn getIdentifierTestOpSourceAndDest(
     };
 }
 
-pub fn getImmediateToRegDest(
-    w: Width,
-    reg: REG,
-    data_8: ?u8,
-    data_lo: ?u8,
-    data_hi: ?u8,
-) InstructionInfo {
-    const Address = RegisterNames;
-    return InstructionInfo{
-        .destination_info = DestinationInfo{
-            .address = switch (reg) {
-                .ALAX => if (w == Width.byte) Address.al else Address.ax,
-                .CLCX => if (w == Width.byte) Address.cl else Address.cx,
-                .DLDX => if (w == Width.byte) Address.dl else Address.dx,
-                .BLBX => if (w == Width.byte) Address.bl else Address.bx,
-                .AHSP => if (w == Width.byte) Address.ah else Address.sp,
-                .CHBP => if (w == Width.byte) Address.ch else Address.bp,
-                .DHSI => if (w == Width.byte) Address.dh else Address.si,
-                .BHDI => if (w == Width.byte) Address.bh else Address.di,
-            },
-        },
-        .source_info = SourceInfo{
-            .immediate = switch (w) {
-                Width.byte => @intCast(data_8.?),
-                Width.word => @bitCast((@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?)),
-            },
-        },
-    };
-}
+// pub fn getImmediateToRegDest(
+//     w: Width,
+//     reg: REG,
+//     data_8: ?u8,
+//     data_lo: ?u8,
+//     data_hi: ?u8,
+// ) InstructionInfo {
+//     const Address = RegisterNames;
+//     return InstructionInfo{
+//         .destination_info = DestinationInfo{
+//             .address = switch (reg) {
+//                 .ALAX => if (w == Width.byte) Address.al else Address.ax,
+//                 .CLCX => if (w == Width.byte) Address.cl else Address.cx,
+//                 .DLDX => if (w == Width.byte) Address.dl else Address.dx,
+//                 .BLBX => if (w == Width.byte) Address.bl else Address.bx,
+//                 .AHSP => if (w == Width.byte) Address.ah else Address.sp,
+//                 .CHBP => if (w == Width.byte) Address.ch else Address.bp,
+//                 .DHSI => if (w == Width.byte) Address.dh else Address.si,
+//                 .BHDI => if (w == Width.byte) Address.bh else Address.di,
+//             },
+//         },
+//         .source_info = SourceInfo{
+//             .immediate = switch (w) {
+//                 Width.byte => @intCast(data_8.?),
+//                 Width.word => @bitCast((@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?)),
+//             },
+//         },
+//     };
+// }
 
 pub fn getImmediateToRegMovDest(w: Width, reg: REG, data: u8, w_data: ?u8) InstructionInfo {
     const Address = RegisterNames;
@@ -726,101 +930,101 @@ pub fn registerNameFromReg(w: Width, reg: REG) RegisterNames {
 /// Given the fields decoded from the instruction bytes this function returns
 /// the addresses of source and destination. These can be execution_unit or memory
 /// addresses. The values are returned as InstructionInfo.
-pub fn getRegMemToFromRegSourceAndDest(
-    EU: *ExecutionUnit,
-    d: Direction,
-    w: Width,
-    reg: REG,
-    mod: MOD,
-    rm: RM,
-    disp_lo: ?u8,
-    disp_hi: ?u8,
-) InstructionInfo {
-    const Address = RegisterNames;
+// pub fn getRegMemToFromRegSourceAndDest(
+//     EU: *ExecutionUnit,
+//     d: Direction,
+//     w: Width,
+//     reg: REG,
+//     mod: MOD,
+//     rm: RM,
+//     disp_lo: ?u8,
+//     disp_hi: ?u8,
+// ) InstructionInfo {
+//     const Address = RegisterNames;
 
-    const regIsSource: bool = if (d == Direction.source) true else false;
-    const instruction_info: InstructionInfo = switch (regIsSource) {
-        true => InstructionInfo{
-            .destination_info = switch (mod) {
-                .memoryModeNoDisplacement => if (rm == RM.DHSI_DIRECTACCESS_BPD8_BPD16) DestinationInfo{
-                    .mem_addr = @intCast((@as(u16, disp_hi.?) << 8) + disp_lo.?),
-                    // .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
-                    //     EU,
-                    //     w,
-                    //     mod,
-                    //     rm,
-                    //     disp_lo,
-                    //     disp_hi,
-                    // ),
-                } else DestinationInfo{
-                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
-                        EU,
-                        w,
-                        mod,
-                        rm,
-                        disp_lo,
-                        disp_hi,
-                    ),
-                },
-                .memoryMode8BitDisplacement,
-                .memoryMode16BitDisplacement,
-                => DestinationInfo{
-                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
-                        EU,
-                        w,
-                        mod,
-                        rm,
-                        disp_lo,
-                        disp_hi,
-                    ),
-                },
-                .registerModeNoDisplacement => DestinationInfo{
-                    .address = registerNameFromRm(w, rm),
-                },
-            },
-            .source_info = SourceInfo{
-                .address = switch (reg) {
-                    REG.ALAX => if (w == Width.word) Address.ax else Address.al,
-                    REG.CLCX => if (w == Width.word) Address.cx else Address.cl,
-                    REG.DLDX => if (w == Width.word) Address.dx else Address.dl,
-                    REG.BLBX => if (w == Width.word) Address.bx else Address.bl,
-                    REG.AHSP => if (w == Width.word) Address.sp else Address.ah,
-                    REG.CHBP => if (w == Width.word) Address.bp else Address.ch,
-                    REG.DHSI => if (w == Width.word) Address.si else Address.dh,
-                    REG.BHDI => if (w == Width.word) Address.di else Address.bh,
-                },
-            },
-        },
-        false => InstructionInfo{
-            .destination_info = DestinationInfo{
-                .address = registerNameFromReg(w, reg),
-            },
-            .source_info = switch (mod) {
-                .memoryModeNoDisplacement => if (rm == RM.DHSI_DIRECTACCESS_BPD8_BPD16) SourceInfo{
-                    .mem_addr = (@as(u20, disp_hi.?) << 8) + @as(u20, disp_lo.?),
-                } else SourceInfo{
-                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(EU, w, mod, rm, disp_lo, disp_hi),
-                },
-                .memoryMode8BitDisplacement,
-                .memoryMode16BitDisplacement,
-                => SourceInfo{
-                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
-                        EU,
-                        w,
-                        mod,
-                        rm,
-                        disp_lo,
-                        disp_hi,
-                    ),
-                },
-                .registerModeNoDisplacement => SourceInfo{
-                    .address = registerNameFromRm(Width.word, rm),
-                },
-            },
-        },
-    };
-    return instruction_info;
-}
+//     const regIsSource: bool = if (d == Direction.source) true else false;
+//     const instruction_info: InstructionInfo = switch (regIsSource) {
+//         true => InstructionInfo{
+//             .destination_info = switch (mod) {
+//                 .memoryModeNoDisplacement => if (rm == RM.DHSI_DIRECTACCESS_BPD8_BPD16) DestinationInfo{
+//                     .mem_addr = @intCast((@as(u16, disp_hi.?) << 8) + disp_lo.?),
+//                     // .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+//                     //     EU,
+//                     //     w,
+//                     //     mod,
+//                     //     rm,
+//                     //     disp_lo,
+//                     //     disp_hi,
+//                     // ),
+//                 } else DestinationInfo{
+//                     .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+//                         EU,
+//                         w,
+//                         mod,
+//                         rm,
+//                         disp_lo,
+//                         disp_hi,
+//                     ),
+//                 },
+//                 .memoryMode8BitDisplacement,
+//                 .memoryMode16BitDisplacement,
+//                 => DestinationInfo{
+//                     .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+//                         EU,
+//                         w,
+//                         mod,
+//                         rm,
+//                         disp_lo,
+//                         disp_hi,
+//                     ),
+//                 },
+//                 .registerModeNoDisplacement => DestinationInfo{
+//                     .address = registerNameFromRm(w, rm),
+//                 },
+//             },
+//             .source_info = SourceInfo{
+//                 .address = switch (reg) {
+//                     REG.ALAX => if (w == Width.word) Address.ax else Address.al,
+//                     REG.CLCX => if (w == Width.word) Address.cx else Address.cl,
+//                     REG.DLDX => if (w == Width.word) Address.dx else Address.dl,
+//                     REG.BLBX => if (w == Width.word) Address.bx else Address.bl,
+//                     REG.AHSP => if (w == Width.word) Address.sp else Address.ah,
+//                     REG.CHBP => if (w == Width.word) Address.bp else Address.ch,
+//                     REG.DHSI => if (w == Width.word) Address.si else Address.dh,
+//                     REG.BHDI => if (w == Width.word) Address.di else Address.bh,
+//                 },
+//             },
+//         },
+//         false => InstructionInfo{
+//             .destination_info = DestinationInfo{
+//                 .address = registerNameFromReg(w, reg),
+//             },
+//             .source_info = switch (mod) {
+//                 .memoryModeNoDisplacement => if (rm == RM.DHSI_DIRECTACCESS_BPD8_BPD16) SourceInfo{
+//                     .mem_addr = (@as(u20, disp_hi.?) << 8) + @as(u20, disp_lo.?),
+//                 } else SourceInfo{
+//                     .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(EU, w, mod, rm, disp_lo, disp_hi),
+//                 },
+//                 .memoryMode8BitDisplacement,
+//                 .memoryMode16BitDisplacement,
+//                 => SourceInfo{
+//                     .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+//                         EU,
+//                         w,
+//                         mod,
+//                         rm,
+//                         disp_lo,
+//                         disp_hi,
+//                     ),
+//                 },
+//                 .registerModeNoDisplacement => SourceInfo{
+//                     .address = registerNameFromRm(Width.word, rm),
+//                 },
+//             },
+//         },
+//     };
+//     return instruction_info;
+// }
 
 /// Get source and destination for Reg/Mem to segment register operations.
 pub fn getRegMemToSegMovSourceAndDest(
@@ -1010,32 +1214,32 @@ pub fn getSegToRegMemMovSourceAndDest(
     };
 }
 
-pub fn getRegisterMemoryOpSourceAndDest(
-    EU: *ExecutionUnit,
-    // opcode: BinaryInstructions,
-    mod: MOD,
-    rm: RM,
-    disp_lo: ?u8,
-    disp_hi: ?u8,
-) InstructionInfo {
-    // const log = std.log.scoped(.getRegisterMemoryOpSourceAndDest);
-    const Address = RegisterNames;
-    return InstructionInfo{
-        .destination_info = DestinationInfo{
-            .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
-                EU,
-                Width.word,
-                mod,
-                rm,
-                disp_lo,
-                disp_hi,
-            ),
-        },
-        .source_info = SourceInfo{
-            .address = Address.sp,
-        },
-    };
-}
+// pub fn getRegisterMemoryOpSourceAndDest(
+//     EU: *ExecutionUnit,
+//     // opcode: BinaryInstructions,
+//     mod: MOD,
+//     rm: RM,
+//     disp_lo: ?u8,
+//     disp_hi: ?u8,
+// ) InstructionInfo {
+//     // const log = std.log.scoped(.getRegisterMemoryOpSourceAndDest);
+//     const Address = RegisterNames;
+//     return InstructionInfo{
+//         .destination_info = DestinationInfo{
+//             .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+//                 EU,
+//                 Width.word,
+//                 mod,
+//                 rm,
+//                 disp_lo,
+//                 disp_hi,
+//             ),
+//         },
+//         .source_info = SourceInfo{
+//             .address = Address.sp,
+//         },
+//     };
+// }
 
 pub fn getMemToAccSourceAndDest(
     w: Width,
@@ -1106,134 +1310,134 @@ pub fn getAccToMemSourceAndDest(
     };
 }
 
-pub fn getRegisterOpSourceAndDest(
-    opcode: BinaryInstructions,
-    reg: REG,
-) InstructionInfo {
-    const log = std.log.scoped(.getRegisterOpSourceAndDest);
-    const Address = RegisterNames;
+// pub fn getRegisterOpSourceAndDest(
+//     opcode: BinaryInstructions,
+//     reg: REG,
+// ) InstructionInfo {
+//     const log = std.log.scoped(.getRegisterOpSourceAndDest);
+//     const Address = RegisterNames;
 
-    switch (opcode) {
-        BinaryInstructions.inc_ax,
-        BinaryInstructions.inc_cx,
-        BinaryInstructions.inc_dx,
-        BinaryInstructions.inc_bx,
-        BinaryInstructions.inc_sp,
-        BinaryInstructions.inc_bp,
-        BinaryInstructions.inc_si,
-        BinaryInstructions.inc_di,
-        BinaryInstructions.dec_ax,
-        BinaryInstructions.dec_cx,
-        BinaryInstructions.dec_dx,
-        BinaryInstructions.dec_bx,
-        BinaryInstructions.dec_sp,
-        BinaryInstructions.dec_bp,
-        BinaryInstructions.dec_si,
-        BinaryInstructions.dec_di,
-        => {
-            return InstructionInfo{
-                .destination_info = DestinationInfo{
-                    .address = switch (reg) {
-                        .ALAX => Address.ax,
-                        .CLCX => Address.cx,
-                        .DLDX => Address.dx,
-                        .BLBX => Address.bx,
-                        .AHSP => Address.sp,
-                        .CHBP => Address.bp,
-                        .DHSI => Address.si,
-                        .BHDI => Address.di,
-                    },
-                },
-                .source_info = SourceInfo{
-                    .none = {},
-                },
-            };
-        },
-        BinaryInstructions.push_ax,
-        BinaryInstructions.push_cx,
-        BinaryInstructions.push_dx,
-        BinaryInstructions.push_bx,
-        BinaryInstructions.push_sp,
-        BinaryInstructions.push_bp,
-        BinaryInstructions.push_si,
-        BinaryInstructions.push_di,
-        BinaryInstructions.pop_ax,
-        BinaryInstructions.pop_cx,
-        BinaryInstructions.pop_dx,
-        BinaryInstructions.pop_bx,
-        BinaryInstructions.pop_sp,
-        BinaryInstructions.pop_bp,
-        BinaryInstructions.pop_si,
-        BinaryInstructions.pop_di,
-        => {
-            return InstructionInfo{
-                .destination_info = DestinationInfo{
-                    .address = switch (reg) {
-                        .ALAX => Address.ax,
-                        .CLCX => Address.cx,
-                        .DLDX => Address.dx,
-                        .BLBX => Address.bx,
-                        .AHSP => Address.sp,
-                        .CHBP => Address.bp,
-                        .DHSI => Address.si,
-                        .BHDI => Address.di,
-                    },
-                },
-                .source_info = SourceInfo{
-                    .none = {},
-                },
-            };
-        },
-        BinaryInstructions.nop_xchg_ax_ax,
-        => {
-            return InstructionInfo{
-                .destination_info = DestinationInfo{
-                    .none = {},
-                },
-                .source_info = SourceInfo{
-                    .none = {},
-                },
-            };
-        },
-        BinaryInstructions.xchg_ax_cx,
-        BinaryInstructions.xchg_ax_dx,
-        BinaryInstructions.xchg_ax_bx,
-        BinaryInstructions.xchg_ax_sp,
-        BinaryInstructions.xchg_ax_bp,
-        BinaryInstructions.xchg_ax_si,
-        BinaryInstructions.xchg_ax_di,
-        => {
-            return InstructionInfo{
-                .destination_info = DestinationInfo{
-                    .address = Address.ax,
-                },
-                .source_info = SourceInfo{
-                    .address = switch (reg) {
-                        .ALAX => Address.ax, // Should never happen!
-                        .CLCX => Address.cx,
-                        .DLDX => Address.dx,
-                        .BLBX => Address.bx,
-                        .AHSP => Address.sp,
-                        .CHBP => Address.bp,
-                        .DHSI => Address.si,
-                        .BHDI => Address.di,
-                    },
-                },
-            };
-        },
-        else => {
-            log.err("ERROR: {t} should not end up here.", .{opcode});
-            return InstructionInfo{
-                .destination_info = DestinationInfo{
-                    .none = {},
-                },
-                .source_info = SourceInfo{
-                    .none = {},
-                },
-            };
-        },
-    }
-}
+//     switch (opcode) {
+//         BinaryInstructions.inc_ax,
+//         BinaryInstructions.inc_cx,
+//         BinaryInstructions.inc_dx,
+//         BinaryInstructions.inc_bx,
+//         BinaryInstructions.inc_sp,
+//         BinaryInstructions.inc_bp,
+//         BinaryInstructions.inc_si,
+//         BinaryInstructions.inc_di,
+//         BinaryInstructions.dec_ax,
+//         BinaryInstructions.dec_cx,
+//         BinaryInstructions.dec_dx,
+//         BinaryInstructions.dec_bx,
+//         BinaryInstructions.dec_sp,
+//         BinaryInstructions.dec_bp,
+//         BinaryInstructions.dec_si,
+//         BinaryInstructions.dec_di,
+//         => {
+//             return InstructionInfo{
+//                 .destination_info = DestinationInfo{
+//                     .address = switch (reg) {
+//                         .ALAX => Address.ax,
+//                         .CLCX => Address.cx,
+//                         .DLDX => Address.dx,
+//                         .BLBX => Address.bx,
+//                         .AHSP => Address.sp,
+//                         .CHBP => Address.bp,
+//                         .DHSI => Address.si,
+//                         .BHDI => Address.di,
+//                     },
+//                 },
+//                 .source_info = SourceInfo{
+//                     .none = {},
+//                 },
+//             };
+//         },
+//         BinaryInstructions.push_ax,
+//         BinaryInstructions.push_cx,
+//         BinaryInstructions.push_dx,
+//         BinaryInstructions.push_bx,
+//         BinaryInstructions.push_sp,
+//         BinaryInstructions.push_bp,
+//         BinaryInstructions.push_si,
+//         BinaryInstructions.push_di,
+//         BinaryInstructions.pop_ax,
+//         BinaryInstructions.pop_cx,
+//         BinaryInstructions.pop_dx,
+//         BinaryInstructions.pop_bx,
+//         BinaryInstructions.pop_sp,
+//         BinaryInstructions.pop_bp,
+//         BinaryInstructions.pop_si,
+//         BinaryInstructions.pop_di,
+//         => {
+//             return InstructionInfo{
+//                 .destination_info = DestinationInfo{
+//                     .address = switch (reg) {
+//                         .ALAX => Address.ax,
+//                         .CLCX => Address.cx,
+//                         .DLDX => Address.dx,
+//                         .BLBX => Address.bx,
+//                         .AHSP => Address.sp,
+//                         .CHBP => Address.bp,
+//                         .DHSI => Address.si,
+//                         .BHDI => Address.di,
+//                     },
+//                 },
+//                 .source_info = SourceInfo{
+//                     .none = {},
+//                 },
+//             };
+//         },
+//         BinaryInstructions.nop_xchg_ax_ax,
+//         => {
+//             return InstructionInfo{
+//                 .destination_info = DestinationInfo{
+//                     .none = {},
+//                 },
+//                 .source_info = SourceInfo{
+//                     .none = {},
+//                 },
+//             };
+//         },
+//         BinaryInstructions.xchg_ax_cx,
+//         BinaryInstructions.xchg_ax_dx,
+//         BinaryInstructions.xchg_ax_bx,
+//         BinaryInstructions.xchg_ax_sp,
+//         BinaryInstructions.xchg_ax_bp,
+//         BinaryInstructions.xchg_ax_si,
+//         BinaryInstructions.xchg_ax_di,
+//         => {
+//             return InstructionInfo{
+//                 .destination_info = DestinationInfo{
+//                     .address = Address.ax,
+//                 },
+//                 .source_info = SourceInfo{
+//                     .address = switch (reg) {
+//                         .ALAX => Address.ax, // Should never happen!
+//                         .CLCX => Address.cx,
+//                         .DLDX => Address.dx,
+//                         .BLBX => Address.bx,
+//                         .AHSP => Address.sp,
+//                         .CHBP => Address.bp,
+//                         .DHSI => Address.si,
+//                         .BHDI => Address.di,
+//                     },
+//                 },
+//             };
+//         },
+//         else => {
+//             log.err("ERROR: {t} should not end up here.", .{opcode});
+//             return InstructionInfo{
+//                 .destination_info = DestinationInfo{
+//                     .none = {},
+//                 },
+//                 .source_info = SourceInfo{
+//                     .none = {},
+//                 },
+//             };
+//         },
+//     }
+// }
 
 // pub fn getImmediateToRegMemMovDest(
 //     execution_unit: *ExecutionUnit,
