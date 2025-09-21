@@ -1041,6 +1041,7 @@ pub const IdentifierRolOp = struct {
     opcode: BinaryInstructions,
     mnemonic: []const u8,
     identifier: RolSet,
+    w: WValue,
     v: VValue,
     mod: ModValue,
     rm: RmValue,
@@ -2532,6 +2533,7 @@ pub fn decode(
         BinaryInstructions.logical_regmem16_cl,
         => {
             const v: VValue = @enumFromInt((input[0] << 6) >> 7);
+            const w: WValue = @enumFromInt((input[0] << 5) >> 7);
             const mod: ModValue = @enumFromInt(input[1] >> 6);
             const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
             const identifier: RolSet = @enumFromInt((input[1] << 2) >> 5);
@@ -2549,6 +2551,7 @@ pub fn decode(
                                 .identifier = identifier,
                                 .mnemonic = mnemonic,
                                 .v = v,
+                                .w = w,
                                 .mod = mod,
                                 .rm = rm,
                                 .disp_lo = disp_lo,
@@ -2563,6 +2566,7 @@ pub fn decode(
                                 .identifier = identifier,
                                 .mnemonic = mnemonic,
                                 .v = v,
+                                .w = w,
                                 .mod = mod,
                                 .rm = rm,
                                 .disp_lo = null,
@@ -2581,6 +2585,7 @@ pub fn decode(
                             .identifier = identifier,
                             .mnemonic = mnemonic,
                             .v = v,
+                            .w = w,
                             .mod = mod,
                             .rm = rm,
                             .disp_lo = disp_lo,
@@ -2599,6 +2604,7 @@ pub fn decode(
                             .identifier = identifier,
                             .mnemonic = mnemonic,
                             .v = v,
+                            .w = w,
                             .mod = mod,
                             .rm = rm,
                             .disp_lo = disp_lo,
@@ -2614,6 +2620,7 @@ pub fn decode(
                             .identifier = identifier,
                             .mnemonic = mnemonic,
                             .v = v,
+                            .w = w,
                             .mod = mod,
                             .rm = rm,
                             .disp_lo = null,

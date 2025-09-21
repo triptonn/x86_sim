@@ -213,8 +213,106 @@ pub fn getInstructionSourceAndDest(
         .direct_op,
         .escape_op,
         .identifier_add_op,
+        => {
+            const IdentifierAddOps = decoder.ScopedInstruction(.IdentifierAddOp);
+            const identifier_add_ops: IdentifierAddOps = @enumFromInt(@intFromEnum(opcode));
+
+            const Address = RegisterNames;
+            const w: Width = instruction_data.identifier_add_op.w;
+            const mod: MOD = instruction_data.identifier_add_op.mod;
+            const rm: RM = instruction_data.identifier_add_op.rm;
+            const disp_lo: ?u8 = instruction_data.identifier_add_op.disp_lo;
+            const disp_hi: ?u8 = instruction_data.identifier_add_op.disp_hi;
+            const data_8: ?u8 = instruction_data.identifier_add_op.data_8;
+            const data_lo: ?u8 = instruction_data.identifier_add_op.data_lo;
+            const data_hi: ?u8 = instruction_data.identifier_add_op.data_hi;
+            const data_sx: ?u8 = instruction_data.identifier_add_op.data_sx;
+
+            return InstructionInfo{
+                .destination_info = switch (mod) {
+                    .memoryModeNoDisplacement,
+                    .memoryMode8BitDisplacement,
+                    .memoryMode16BitDisplacement,
+                    => DestinationInfo{
+                        .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                            EU,
+                            w,
+                            mod,
+                            rm,
+                            disp_lo,
+                            disp_hi,
+                        ),
+                    },
+                    .registerModeNoDisplacement => DestinationInfo{
+                        .address = switch (rm) {
+                            .ALAX_BXSI_BXSID8_BXSID16 => if (w == Width.word) Address.ax else Address.al,
+                            .CLCX_BXDI_BXDID8_BXDID16 => if (w == Width.word) Address.cx else Address.cl,
+                            .DLDX_BPSI_BPSID8_BPSID16 => if (w == Width.word) Address.dx else Address.dl,
+                            .BLBX_BPDI_BPDID8_BPDID16 => if (w == Width.word) Address.bx else Address.bl,
+                            .AHSP_SI_SID8_SID16 => if (w == Width.word) Address.sp else Address.ah,
+                            .CHBP_DI_DID8_DID16 => if (w == Width.word) Address.bp else Address.ch,
+                            .DHSI_DIRECTACCESS_BPD8_BPD16 => if (w == Width.word) Address.si else Address.dh,
+                            .BHDI_BX_BXD8_BXD16 => if (w == Width.word) Address.di else Address.bh,
+                        },
+                    },
+                },
+                .source_info = switch (identifier_add_ops) {
+                    .regmem8_immed8,
+                    .regmem16_immed16,
+                    => SourceInfo{
+                        .unsigned_immediate = switch (w) {
+                            Width.byte => @intCast(data_8.?),
+                            Width.word => (@as(u16, data_hi.?) << 8) + data_lo.?,
+                        },
+                    },
+                    .signed_regmem8_immed8,
+                    .sign_extend_regmem16_immed8,
+                    => SourceInfo{
+                        .immediate = immed: switch (w) {
+                            Width.byte => {
+                                const signed_immed8: i8 = @bitCast(data_sx.?);
+                                break :immed @intCast(signed_immed8);
+                            },
+                            Width.word => {
+                                const signed_immed8: i8 = @bitCast(data_sx.?);
+                                break :immed @bitCast(@as(i16, signed_immed8));
+                            },
+                        },
+                    },
+                },
+            };
+        },
         .identifier_inc_op,
-        .identifier_rol_op,
+        => return LocatorError.NotYetImplemented,
+        .identifier_rol_op => {
+            const Address = RegisterNames;
+            const v: Variable = instruction_data.identifier_rol_op.v;
+            const w: Width = instruction_data.identifier_rol_op.w;
+            const mod: MOD = instruction_data.identifier_rol_op.mod;
+            const rm: RM = instruction_data.identifier_rol_op.rm;
+            const disp_lo: ?u8 = instruction_data.identifier_rol_op.disp_lo;
+            const disp_hi: ?u8 = instruction_data.identifier_rol_op.disp_hi;
+            return InstructionInfo{
+                .destination_info = DestinationInfo{
+                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                        EU,
+                        w,
+                        mod,
+                        rm,
+                        disp_lo,
+                        disp_hi,
+                    ),
+                },
+                .source_info = switch (v) {
+                    Variable.one => SourceInfo{
+                        .immediate = 1,
+                    },
+                    Variable.in_CL => SourceInfo{
+                        .address = Address.cl,
+                    },
+                },
+            };
+        },
         .identifier_test_op,
         => return LocatorError.NotYetImplemented,
         .immediate_to_memory_op => {
@@ -522,168 +620,168 @@ pub fn getInstructionSourceAndDest(
 //     };
 // }
 
-pub fn getIdentifierAddOpSourceAndDest(
-    EU: *ExecutionUnit,
-    opcode: BinaryInstructions,
-    instruction_data: InstructionData,
-) LocatorError!InstructionInfo {
-    const Address = RegisterNames;
+// pub fn getIdentifierAddOpSourceAndDest(
+//     EU: *ExecutionUnit,
+//     opcode: BinaryInstructions,
+//     instruction_data: InstructionData,
+// ) LocatorError!InstructionInfo {
+//     const Address = RegisterNames;
 
-    // const identifier: AddSet = identifier_add_op.identifier;
-    const w: Width = instruction_data.identifier_add_op.w;
-    // const s: Sign = instruction_data.identifier_add_op.s;
-    const mod: MOD = instruction_data.identifier_add_op.mod;
-    const rm: RM = instruction_data.identifier_add_op.rm;
-    const disp_lo: ?u8 = instruction_data.identifier_add_op.disp_lo;
-    const disp_hi: ?u8 = instruction_data.identifier_add_op.disp_hi;
+//     // const identifier: AddSet = identifier_add_op.identifier;
+//     const w: Width = instruction_data.identifier_add_op.w;
+//     // const s: Sign = instruction_data.identifier_add_op.s;
+//     const mod: MOD = instruction_data.identifier_add_op.mod;
+//     const rm: RM = instruction_data.identifier_add_op.rm;
+//     const disp_lo: ?u8 = instruction_data.identifier_add_op.disp_lo;
+//     const disp_hi: ?u8 = instruction_data.identifier_add_op.disp_hi;
 
-    const data_8: ?u8 = instruction_data.identifier_add_op.data_8;
-    const data_lo: ?u8 = instruction_data.identifier_add_op.data_lo;
-    const data_hi: ?u8 = instruction_data.identifier_add_op.data_hi;
-    const data_sx: ?u8 = instruction_data.identifier_add_op.data_sx;
+//     const data_8: ?u8 = instruction_data.identifier_add_op.data_8;
+//     const data_lo: ?u8 = instruction_data.identifier_add_op.data_lo;
+//     const data_hi: ?u8 = instruction_data.identifier_add_op.data_hi;
+//     const data_sx: ?u8 = instruction_data.identifier_add_op.data_sx;
 
-    return InstructionInfo{
-        .destination_info = dest: switch (mod) {
-            .memoryModeNoDisplacement => if (rm == RM.DHSI_DIRECTACCESS_BPD8_BPD16) {
-                break :dest DestinationInfo{
-                    .mem_addr = (@as(u20, disp_hi.?) << 8) + @as(u20, disp_lo.?),
-                };
-            } else {
-                break :dest DestinationInfo{
-                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(EU, w, mod, rm, disp_lo, disp_hi),
-                };
-            },
-            .memoryMode8BitDisplacement,
-            .memoryMode16BitDisplacement,
-            => DestinationInfo{
-                .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(EU, w, mod, rm, disp_lo, disp_hi),
-            },
-            .registerModeNoDisplacement => DestinationInfo{ .address = switch (rm) {
-                .ALAX_BXSI_BXSID8_BXSID16 => if (w == Width.word) Address.ax else Address.al,
-                .CLCX_BXDI_BXDID8_BXDID16 => if (w == Width.word) Address.cx else Address.cl,
-                .DLDX_BPSI_BPSID8_BPSID16 => if (w == Width.word) Address.dx else Address.dl,
-                .BLBX_BPDI_BPDID8_BPDID16 => if (w == Width.word) Address.bx else Address.bl,
-                .AHSP_SI_SID8_SID16 => if (w == Width.word) Address.sp else Address.ah,
-                .CHBP_DI_DID8_DID16 => if (w == Width.word) Address.bp else Address.ch,
-                .DHSI_DIRECTACCESS_BPD8_BPD16 => if (w == Width.word) Address.si else Address.dh,
-                .BHDI_BX_BXD8_BXD16 => if (w == Width.word) Address.di else Address.bh,
-            } },
-        },
-        .source_info = SourceInfo{
-            .immediate = immed: switch (opcode) {
-                .regmem8_immed8 => @intCast(data_8.?),
-                .regmem16_immed16 => @bitCast((@as(u16, data_hi.?) << 8) + data_lo.?),
-                .signed_regmem8_immed8 => {
-                    const signed_immed8: i8 = @bitCast(data_8.?);
-                    break :immed @intCast(signed_immed8);
-                },
-                .sign_extend_regmem16_immed8 => {
-                    const signed_immed8: i8 = @bitCast(data_sx.?);
-                    break :immed @bitCast(@as(i16, signed_immed8));
-                },
-                else => {
-                    return LocatorError.NotYetImplemented;
-                },
-            },
-        },
-    };
-}
+//     return InstructionInfo{
+//         .destination_info = dest: switch (mod) {
+//             .memoryModeNoDisplacement => if (rm == RM.DHSI_DIRECTACCESS_BPD8_BPD16) {
+//                 break :dest DestinationInfo{
+//                     .mem_addr = (@as(u20, disp_hi.?) << 8) + @as(u20, disp_lo.?),
+//                 };
+//             } else {
+//                 break :dest DestinationInfo{
+//                     .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(EU, w, mod, rm, disp_lo, disp_hi),
+//                 };
+//             },
+//             .memoryMode8BitDisplacement,
+//             .memoryMode16BitDisplacement,
+//             => DestinationInfo{
+//                 .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(EU, w, mod, rm, disp_lo, disp_hi),
+//             },
+//             .registerModeNoDisplacement => DestinationInfo{ .address = switch (rm) {
+//                 .ALAX_BXSI_BXSID8_BXSID16 => if (w == Width.word) Address.ax else Address.al,
+//                 .CLCX_BXDI_BXDID8_BXDID16 => if (w == Width.word) Address.cx else Address.cl,
+//                 .DLDX_BPSI_BPSID8_BPSID16 => if (w == Width.word) Address.dx else Address.dl,
+//                 .BLBX_BPDI_BPDID8_BPDID16 => if (w == Width.word) Address.bx else Address.bl,
+//                 .AHSP_SI_SID8_SID16 => if (w == Width.word) Address.sp else Address.ah,
+//                 .CHBP_DI_DID8_DID16 => if (w == Width.word) Address.bp else Address.ch,
+//                 .DHSI_DIRECTACCESS_BPD8_BPD16 => if (w == Width.word) Address.si else Address.dh,
+//                 .BHDI_BX_BXD8_BXD16 => if (w == Width.word) Address.di else Address.bh,
+//             } },
+//         },
+//         .source_info = SourceInfo{
+//             .immediate = immed: switch (opcode) {
+//                 .regmem8_immed8 => @intCast(data_8.?),
+//                 .regmem16_immed16 => @bitCast((@as(u16, data_hi.?) << 8) + data_lo.?),
+//                 .signed_regmem8_immed8 => {
+//                     const signed_immed8: i8 = @bitCast(data_8.?);
+//                     break :immed @intCast(signed_immed8);
+//                 },
+//                 .sign_extend_regmem16_immed8 => {
+//                     const signed_immed8: i8 = @bitCast(data_sx.?);
+//                     break :immed @bitCast(@as(i16, signed_immed8));
+//                 },
+//                 else => {
+//                     return LocatorError.NotYetImplemented;
+//                 },
+//             },
+//         },
+//     };
+// }
 
-pub fn getIdentifierRolOpSourceAndDest(
-    EU: *ExecutionUnit,
-    opcode: BinaryInstructions,
-    instruction_data: InstructionData,
-) LocatorError!InstructionInfo {
-    const Address = RegisterNames;
+// pub fn getIdentifierRolOpSourceAndDest(
+//     EU: *ExecutionUnit,
+//     opcode: BinaryInstructions,
+//     instruction_data: InstructionData,
+// ) LocatorError!InstructionInfo {
+//     const Address = RegisterNames;
 
-    // const identifier: RolSet = instruction_data.identifier_rol_op.identifier;
-    const v: Variable = instruction_data.identifier_rol_op.v;
-    const mod: MOD = instruction_data.identifier_rol_op.mod;
-    const rm: RM = instruction_data.identifier_rol_op.rm;
+//     // const identifier: RolSet = instruction_data.identifier_rol_op.identifier;
+//     const v: Variable = instruction_data.identifier_rol_op.v;
+//     const mod: MOD = instruction_data.identifier_rol_op.mod;
+//     const rm: RM = instruction_data.identifier_rol_op.rm;
 
-    const disp_lo: ?u8 = instruction_data.identifier_rol_op.disp_lo;
-    const disp_hi: ?u8 = instruction_data.identifier_rol_op.disp_hi;
+//     const disp_lo: ?u8 = instruction_data.identifier_rol_op.disp_lo;
+//     const disp_hi: ?u8 = instruction_data.identifier_rol_op.disp_hi;
 
-    return InstructionInfo{
-        .destination_info = switch (mod) {
-            .memoryModeNoDisplacement => if (rm == RM.DHSI_DIRECTACCESS_BPD8_BPD16) DestinationInfo{
-                .mem_addr = @as(u20, (@as(u16, disp_hi.?) << 8) + disp_lo.?),
-            } else DestinationInfo{
-                .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
-                    EU,
-                    switch (opcode) {
-                        .logical_regmem8,
-                        .logical_regmem8_cl,
-                        => Width.byte,
-                        .logical_regmem16,
-                        .logical_regmem16_cl,
-                        => Width.word,
-                        else => return LocatorError.NotYetImplemented,
-                    },
-                    mod,
-                    rm,
-                    disp_lo,
-                    disp_hi,
-                ),
-            },
-            .memoryMode8BitDisplacement,
-            .memoryMode16BitDisplacement,
-            => DestinationInfo{
-                .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
-                    EU,
-                    switch (opcode) {
-                        .logical_regmem8,
-                        .logical_regmem8_cl,
-                        => Width.byte,
-                        .logical_regmem16,
-                        .logical_regmem16_cl,
-                        => Width.word,
-                        else => return LocatorError.NotYetImplemented,
-                    },
-                    mod,
-                    rm,
-                    disp_lo,
-                    disp_hi,
-                ),
-            },
-            .registerModeNoDisplacement => DestinationInfo{ .address = switch (opcode) {
-                .logical_regmem8,
-                .logical_regmem8_cl,
-                => switch (rm) {
-                    .ALAX_BXSI_BXSID8_BXSID16 => Address.al,
-                    .CLCX_BXDI_BXDID8_BXDID16 => Address.cl,
-                    .DLDX_BPSI_BPSID8_BPSID16 => Address.dl,
-                    .BLBX_BPDI_BPDID8_BPDID16 => Address.bl,
-                    .AHSP_SI_SID8_SID16 => Address.ah,
-                    .CHBP_DI_DID8_DID16 => Address.ch,
-                    .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.dh,
-                    .BHDI_BX_BXD8_BXD16 => Address.bh,
-                },
-                .logical_regmem16,
-                .logical_regmem16_cl,
-                => switch (rm) {
-                    .ALAX_BXSI_BXSID8_BXSID16 => Address.ax,
-                    .CLCX_BXDI_BXDID8_BXDID16 => Address.cx,
-                    .DLDX_BPSI_BPSID8_BPSID16 => Address.dx,
-                    .BLBX_BPDI_BPDID8_BPDID16 => Address.bx,
-                    .AHSP_SI_SID8_SID16 => Address.sp,
-                    .CHBP_DI_DID8_DID16 => Address.bp,
-                    .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.si,
-                    .BHDI_BX_BXD8_BXD16 => Address.di,
-                },
-                else => return LocatorError.NotYetImplemented,
-            } },
-        },
-        .source_info = switch (v) {
-            .one => SourceInfo{
-                .immediate = 1,
-            },
-            .in_CL => SourceInfo{
-                .address = Address.cl,
-            },
-        },
-    };
-}
+//     return InstructionInfo{
+//         .destination_info = switch (mod) {
+//             .memoryModeNoDisplacement => if (rm == RM.DHSI_DIRECTACCESS_BPD8_BPD16) DestinationInfo{
+//                 .mem_addr = @as(u20, (@as(u16, disp_hi.?) << 8) + disp_lo.?),
+//             } else DestinationInfo{
+//                 .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+//                     EU,
+//                     switch (opcode) {
+//                         .logical_regmem8,
+//                         .logical_regmem8_cl,
+//                         => Width.byte,
+//                         .logical_regmem16,
+//                         .logical_regmem16_cl,
+//                         => Width.word,
+//                         else => return LocatorError.NotYetImplemented,
+//                     },
+//                     mod,
+//                     rm,
+//                     disp_lo,
+//                     disp_hi,
+//                 ),
+//             },
+//             .memoryMode8BitDisplacement,
+//             .memoryMode16BitDisplacement,
+//             => DestinationInfo{
+//                 .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+//                     EU,
+//                     switch (opcode) {
+//                         .logical_regmem8,
+//                         .logical_regmem8_cl,
+//                         => Width.byte,
+//                         .logical_regmem16,
+//                         .logical_regmem16_cl,
+//                         => Width.word,
+//                         else => return LocatorError.NotYetImplemented,
+//                     },
+//                     mod,
+//                     rm,
+//                     disp_lo,
+//                     disp_hi,
+//                 ),
+//             },
+//             .registerModeNoDisplacement => DestinationInfo{ .address = switch (opcode) {
+//                 .logical_regmem8,
+//                 .logical_regmem8_cl,
+//                 => switch (rm) {
+//                     .ALAX_BXSI_BXSID8_BXSID16 => Address.al,
+//                     .CLCX_BXDI_BXDID8_BXDID16 => Address.cl,
+//                     .DLDX_BPSI_BPSID8_BPSID16 => Address.dl,
+//                     .BLBX_BPDI_BPDID8_BPDID16 => Address.bl,
+//                     .AHSP_SI_SID8_SID16 => Address.ah,
+//                     .CHBP_DI_DID8_DID16 => Address.ch,
+//                     .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.dh,
+//                     .BHDI_BX_BXD8_BXD16 => Address.bh,
+//                 },
+//                 .logical_regmem16,
+//                 .logical_regmem16_cl,
+//                 => switch (rm) {
+//                     .ALAX_BXSI_BXSID8_BXSID16 => Address.ax,
+//                     .CLCX_BXDI_BXDID8_BXDID16 => Address.cx,
+//                     .DLDX_BPSI_BPSID8_BPSID16 => Address.dx,
+//                     .BLBX_BPDI_BPDID8_BPDID16 => Address.bx,
+//                     .AHSP_SI_SID8_SID16 => Address.sp,
+//                     .CHBP_DI_DID8_DID16 => Address.bp,
+//                     .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.si,
+//                     .BHDI_BX_BXD8_BXD16 => Address.di,
+//                 },
+//                 else => return LocatorError.NotYetImplemented,
+//             } },
+//         },
+//         .source_info = switch (v) {
+//             .one => SourceInfo{
+//                 .immediate = 1,
+//             },
+//             .in_CL => SourceInfo{
+//                 .address = Address.cl,
+//             },
+//         },
+//     };
+// }
 
 pub fn getIdentifierTestOpSourceAndDest(
     EU: *ExecutionUnit,
