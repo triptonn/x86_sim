@@ -121,12 +121,13 @@ pub fn getInstructionSourceAndDest(
                     const data_hi: ?u8 = instruction_data.accumulator_op.data_hi;
 
                     if (w == Width.byte) {
+                        const signed_immed8: i8 = @bitCast(data_8.?);
                         return InstructionInfo{
                             .destination_info = DestinationInfo{
                                 .address = Address.al,
                             },
                             .source_info = SourceInfo{
-                                .immediate = @intCast(data_8.?),
+                                .immediate = @intCast(signed_immed8),
                             },
                         };
                     } else {
@@ -211,7 +212,7 @@ pub fn getInstructionSourceAndDest(
                         .address = registerNameFromRm(w, rm),
                     },
                 },
-                .source_info = switch (identifier_add_ops) {
+                .source_info = src: switch (identifier_add_ops) {
                     .regmem8_immed8,
                     .regmem16_immed16,
                     => SourceInfo{
@@ -221,18 +222,19 @@ pub fn getInstructionSourceAndDest(
                         },
                     },
                     .signed_regmem8_immed8,
+                    => {
+                        // Here a u16 value is simply cast to a i16 value (interpreted as signed bytes)
+                        const unsigned_immed16_cast: u16 = @intCast(data_8.?);
+                        break :src SourceInfo{
+                            .immediate = @bitCast(unsigned_immed16_cast),
+                        };
+                    },
                     .sign_extend_regmem16_immed8,
-                    => SourceInfo{
-                        .immediate = immed: switch (w) {
-                            Width.byte => {
-                                const signed_immed8: i8 = @bitCast(data_sx.?);
-                                break :immed @intCast(signed_immed8);
-                            },
-                            Width.word => {
-                                const signed_immed8: i8 = @bitCast(data_sx.?);
-                                break :immed @bitCast(@as(i16, signed_immed8));
-                            },
-                        },
+                    => {
+                        const signed_immed8_cast: i8 = @bitCast(data_sx.?);
+                        break :src SourceInfo{
+                            .immediate = @intCast(signed_immed8_cast),
+                        };
                     },
                 },
             };
