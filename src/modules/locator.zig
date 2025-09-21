@@ -313,8 +313,62 @@ pub fn getInstructionSourceAndDest(
                 },
             };
         },
-        .identifier_test_op,
-        => return LocatorError.NotYetImplemented,
+        .identifier_test_op => {
+            const IdentifierTestOps = decoder.ScopedInstruction(.IdentifierTestOp);
+            const identifier_test_ops: IdentifierTestOps = @enumFromInt(@intFromEnum(opcode));
+
+            const w: Width = instruction_data.identifier_test_op.w;
+            const mod: ?MOD = instruction_data.identifier_test_op.mod;
+            const identifier: TestSet = instruction_data.identifier_test_op.identifier;
+            const rm: ?RM = instruction_data.identifier_test_op.rm;
+            const disp_lo: ?u8 = instruction_data.identifier_test_op.disp_lo;
+            const disp_hi: ?u8 = instruction_data.identifier_test_op.disp_hi;
+
+            const data_8: ?u8 = instruction_data.identifier_test_op.data_8;
+            const data_lo: ?u8 = instruction_data.identifier_test_op.data_lo;
+            const data_hi: ?u8 = instruction_data.identifier_test_op.data_hi;
+
+            return InstructionInfo{
+                .destination_info = switch (identifier) {
+                    .TEST,
+                    .NOT,
+                    .NEG,
+                    => DestinationInfo{
+                        .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                            EU,
+                            w,
+                            mod.?,
+                            rm.?,
+                            disp_lo,
+                            disp_hi,
+                        ),
+                    },
+                    .MUL,
+                    .IMUL,
+                    .DIV,
+                    .IDIV,
+                    => DestinationInfo{ .none = {} },
+                },
+                .source_info = src: switch (identifier) {
+                    .NOT,
+                    .NEG,
+                    => SourceInfo{ .none = {} },
+                    .TEST,
+                    .MUL,
+                    .IMUL,
+                    .DIV,
+                    .IDIV,
+                    => switch (identifier_test_ops) {
+                        .regmem8_immed8 => break :src SourceInfo{
+                            .immediate = @bitCast(@as(u16, data_8.?)),
+                        },
+                        .regmem16_immed16 => break :src SourceInfo{
+                            .immediate = @bitCast((@as(u16, data_hi.?) << 8) + data_lo.?),
+                        },
+                    },
+                },
+            };
+        },
         .immediate_to_memory_op => {
             const Address = RegisterNames;
             const w: Width = instruction_data.immediate_to_memory_op.w;
@@ -559,7 +613,107 @@ pub fn getInstructionSourceAndDest(
                 },
             }
         },
-        .segment_register_op,
+        .segment_register_op => {
+            const SegmentRegisterOps = decoder.ScopedInstruction(.SegmentRegisterOp);
+            const segment_register_ops: SegmentRegisterOps = @enumFromInt(@intFromEnum(opcode));
+            const Address = RegisterNames;
+
+            const mod: MOD = instruction_data.segment_register_op.mod;
+            const sr: SR = instruction_data.segment_register_op.sr;
+            const rm: RM = instruction_data.segment_register_op.rm;
+            const disp_lo: ?u8 = instruction_data.segment_register_op.disp_lo;
+            const disp_hi: ?u8 = instruction_data.segment_register_op.disp_hi;
+
+            switch (segment_register_ops) {
+                .segment_override_prefix_es,
+                .segment_override_prefix_cs,
+                .segment_override_prefix_ss,
+                .segment_override_prefix_ds,
+                => {},
+                .push_es,
+                .pop_es,
+                .push_cs,
+                .push_ss,
+                .pop_ss,
+                .push_ds,
+                .pop_ds,
+                => {},
+                .mov_segreg_regmem16 => return InstructionInfo{
+                    .destination_info = DestinationInfo{
+                        .address = switch (sr) {
+                            .ES => Address.es,
+                            .CS => Address.cs,
+                            .SS => Address.ss,
+                            .DS => Address.ds,
+                        },
+                    },
+                    .source_info = switch (mod) {
+                        .memoryModeNoDisplacement,
+                        .memoryMode8BitDisplacement,
+                        .memoryMode16BitDisplacement,
+                        => SourceInfo{
+                            .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                                EU,
+                                Width.word,
+                                mod,
+                                rm,
+                                disp_lo,
+                                disp_hi,
+                            ),
+                        },
+                        .registerModeNoDisplacement => SourceInfo{
+                            .address = switch (rm) {
+                                .ALAX_BXSI_BXSID8_BXSID16 => Address.ax,
+                                .CLCX_BXDI_BXDID8_BXDID16 => Address.cx,
+                                .DLDX_BPSI_BPSID8_BPSID16 => Address.dx,
+                                .BLBX_BPDI_BPDID8_BPDID16 => Address.bx,
+                                .AHSP_SI_SID8_SID16 => Address.sp,
+                                .CHBP_DI_DID8_DID16 => Address.bp,
+                                .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.si,
+                                .BHDI_BX_BXD8_BXD16 => Address.di,
+                            },
+                        },
+                    },
+                },
+                .mov_regmem16_segreg => return InstructionInfo{
+                    .destination_info = switch (mod) {
+                        .memoryModeNoDisplacement,
+                        .memoryMode8BitDisplacement,
+                        .memoryMode16BitDisplacement,
+                        => DestinationInfo{
+                            .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                                EU,
+                                Width.word,
+                                mod,
+                                rm,
+                                disp_lo,
+                                disp_hi,
+                            ),
+                        },
+                        .registerModeNoDisplacement => DestinationInfo{
+                            .address = switch (rm) {
+                                .ALAX_BXSI_BXSID8_BXSID16 => Address.ax,
+                                .CLCX_BXDI_BXDID8_BXDID16 => Address.cx,
+                                .DLDX_BPSI_BPSID8_BPSID16 => Address.dx,
+                                .BLBX_BPDI_BPDID8_BPDID16 => Address.bx,
+                                .AHSP_SI_SID8_SID16 => Address.sp,
+                                .CHBP_DI_DID8_DID16 => Address.bp,
+                                .DHSI_DIRECTACCESS_BPD8_BPD16 => Address.si,
+                                .BHDI_BX_BXD8_BXD16 => Address.di,
+                            },
+                        },
+                    },
+                    .source_info = SourceInfo{
+                        .address = switch (sr) {
+                            .ES => Address.es,
+                            .CS => Address.cs,
+                            .SS => Address.ss,
+                            .DS => Address.ds,
+                        },
+                    },
+                },
+            }
+        },
         .single_byte_op,
         => return LocatorError.NotYetImplemented,
     }
@@ -783,80 +937,80 @@ pub fn getInstructionSourceAndDest(
 //     };
 // }
 
-pub fn getIdentifierTestOpSourceAndDest(
-    EU: *ExecutionUnit,
-    opcode: BinaryInstructions,
-    instruction_data: InstructionData,
-) LocatorError!InstructionInfo {
-    const mod: ?MOD = instruction_data.identifier_test_op.mod;
-    const identifier: TestSet = instruction_data.identifier_test_op.identifier;
-    const rm: ?RM = instruction_data.identifier_test_op.rm;
-    const disp_lo: ?u8 = instruction_data.identifier_test_op.disp_lo;
-    const disp_hi: ?u8 = instruction_data.identifier_test_op.disp_hi;
+// pub fn getIdentifierTestOpSourceAndDest(
+//     EU: *ExecutionUnit,
+//     opcode: BinaryInstructions,
+//     instruction_data: InstructionData,
+// ) LocatorError!InstructionInfo {
+//     const mod: ?MOD = instruction_data.identifier_test_op.mod;
+//     const identifier: TestSet = instruction_data.identifier_test_op.identifier;
+//     const rm: ?RM = instruction_data.identifier_test_op.rm;
+//     const disp_lo: ?u8 = instruction_data.identifier_test_op.disp_lo;
+//     const disp_hi: ?u8 = instruction_data.identifier_test_op.disp_hi;
 
-    const data_8: ?u8 = instruction_data.identifier_test_op.data_8;
-    const data_lo: ?u8 = instruction_data.identifier_test_op.data_lo;
-    const data_hi: ?u8 = instruction_data.identifier_test_op.data_hi;
+//     const data_8: ?u8 = instruction_data.identifier_test_op.data_8;
+//     const data_lo: ?u8 = instruction_data.identifier_test_op.data_lo;
+//     const data_hi: ?u8 = instruction_data.identifier_test_op.data_hi;
 
-    return InstructionInfo{
-        .destination_info = dest: switch (identifier) {
-            .TEST,
-            .NOT,
-            .NEG,
-            => switch (opcode) {
-                .regmem8_immed8 => break :dest DestinationInfo{
-                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
-                        EU,
-                        Width.byte,
-                        mod.?,
-                        rm.?,
-                        disp_lo,
-                        disp_hi,
-                    ),
-                },
-                .regmem16_immed16 => break :dest DestinationInfo{
-                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
-                        EU,
-                        Width.word,
-                        mod.?,
-                        rm.?,
-                        disp_lo,
-                        disp_hi,
-                    ),
-                },
-                else => return LocatorError.NotYetImplemented,
-            },
-            .MUL,
-            .IMUL,
-            .DIV,
-            .IDIV,
-            => DestinationInfo{
-                .none = {},
-            },
-        },
-        .source_info = src: switch (identifier) {
-            .NOT,
-            .NEG,
-            => SourceInfo{
-                .none = {},
-            },
-            .TEST,
-            .MUL,
-            .IMUL,
-            .DIV,
-            .IDIV,
-            => switch (opcode) {
-                .regmem8_immed8 => break :src SourceInfo{
-                    .immediate = @as(i16, data_8.?),
-                },
-                .regmem16_immed16 => break :src SourceInfo{
-                    .immediate = @bitCast((@as(u16, data_hi.?) << 8) + data_lo.?),
-                },
-                else => return LocatorError.NotYetImplemented,
-            },
-        },
-    };
-}
+//     return InstructionInfo{
+//         .destination_info = dest: switch (identifier) {
+//             .TEST,
+//             .NOT,
+//             .NEG,
+//             => switch (opcode) {
+//                 .regmem8_immed8 => break :dest DestinationInfo{
+//                     .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+//                         EU,
+//                         Width.byte,
+//                         mod.?,
+//                         rm.?,
+//                         disp_lo,
+//                         disp_hi,
+//                     ),
+//                 },
+//                 .regmem16_immed16 => break :dest DestinationInfo{
+//                     .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+//                         EU,
+//                         Width.word,
+//                         mod.?,
+//                         rm.?,
+//                         disp_lo,
+//                         disp_hi,
+//                     ),
+//                 },
+//                 else => return LocatorError.NotYetImplemented,
+//             },
+//             .MUL,
+//             .IMUL,
+//             .DIV,
+//             .IDIV,
+//             => DestinationInfo{
+//                 .none = {},
+//             },
+//         },
+//         .source_info = src: switch (identifier) {
+//             .NOT,
+//             .NEG,
+//             => SourceInfo{
+//                 .none = {},
+//             },
+//             .TEST,
+//             .MUL,
+//             .IMUL,
+//             .DIV,
+//             .IDIV,
+//             => switch (opcode) {
+//                 .regmem8_immed8 => break :src SourceInfo{
+//                     .immediate = @as(i16, data_8.?),
+//                 },
+//                 .regmem16_immed16 => break :src SourceInfo{
+//                     .immediate = @bitCast((@as(u16, data_hi.?) << 8) + data_lo.?),
+//                 },
+//                 else => return LocatorError.NotYetImplemented,
+//             },
+//         },
+//     };
+// }
 
 // pub fn getImmediateToRegDest(
 //     w: Width,
@@ -1124,193 +1278,193 @@ pub fn registerNameFromReg(w: Width, reg: REG) RegisterNames {
 //     return instruction_info;
 // }
 
-/// Get source and destination for Reg/Mem to segment register operations.
-pub fn getRegMemToSegMovSourceAndDest(
-    execution_unit: *ExecutionUnit,
-    mod: MOD,
-    sr: SR,
-    rm: RM,
-    disp_lo: ?u8,
-    disp_hi: ?u8,
-) InstructionInfo {
-    const Address = RegisterNames;
-    var dest: Address = undefined;
-    var source: Address = undefined;
-    var source_address_calculation: EffectiveAddressCalculation = undefined;
+// /// Get source and destination for Reg/Mem to segment register operations.
+// pub fn getRegMemToSegMovSourceAndDest(
+//     execution_unit: *ExecutionUnit,
+//     mod: MOD,
+//     sr: SR,
+//     rm: RM,
+//     disp_lo: ?u8,
+//     disp_hi: ?u8,
+// ) InstructionInfo {
+//     const Address = RegisterNames;
+//     var dest: Address = undefined;
+//     var source: Address = undefined;
+//     var source_address_calculation: EffectiveAddressCalculation = undefined;
 
-    var destination_payload: DestinationInfo = undefined;
-    var source_payload: SourceInfo = undefined;
+//     var destination_payload: DestinationInfo = undefined;
+//     var source_payload: SourceInfo = undefined;
 
-    switch (mod) {
-        .memoryModeNoDisplacement,
-        .memoryMode8BitDisplacement,
-        .memoryMode16BitDisplacement,
-        => {
-            source_address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
-                execution_unit,
-                Width.word,
-                mod,
-                rm,
-                disp_lo,
-                disp_hi,
-            );
-        },
-        .registerModeNoDisplacement => {
-            switch (rm) {
-                .ALAX_BXSI_BXSID8_BXSID16 => {
-                    source = Address.ax;
-                },
-                .CLCX_BXDI_BXDID8_BXDID16 => {
-                    source = Address.cx;
-                },
-                .DLDX_BPSI_BPSID8_BPSID16 => {
-                    source = Address.dx;
-                },
-                .BLBX_BPDI_BPDID8_BPDID16 => {
-                    source = Address.bx;
-                },
-                .AHSP_SI_SID8_SID16 => {
-                    source = Address.sp;
-                },
-                .CHBP_DI_DID8_DID16 => {
-                    source = Address.bp;
-                },
-                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                    source = Address.si;
-                },
-                .BHDI_BX_BXD8_BXD16 => {
-                    source = Address.di;
-                },
-            }
-        },
-    }
+//     switch (mod) {
+//         .memoryModeNoDisplacement,
+//         .memoryMode8BitDisplacement,
+//         .memoryMode16BitDisplacement,
+//         => {
+//             source_address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+//                 execution_unit,
+//                 Width.word,
+//                 mod,
+//                 rm,
+//                 disp_lo,
+//                 disp_hi,
+//             );
+//         },
+//         .registerModeNoDisplacement => {
+//             switch (rm) {
+//                 .ALAX_BXSI_BXSID8_BXSID16 => {
+//                     source = Address.ax;
+//                 },
+//                 .CLCX_BXDI_BXDID8_BXDID16 => {
+//                     source = Address.cx;
+//                 },
+//                 .DLDX_BPSI_BPSID8_BPSID16 => {
+//                     source = Address.dx;
+//                 },
+//                 .BLBX_BPDI_BPDID8_BPDID16 => {
+//                     source = Address.bx;
+//                 },
+//                 .AHSP_SI_SID8_SID16 => {
+//                     source = Address.sp;
+//                 },
+//                 .CHBP_DI_DID8_DID16 => {
+//                     source = Address.bp;
+//                 },
+//                 .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+//                     source = Address.si;
+//                 },
+//                 .BHDI_BX_BXD8_BXD16 => {
+//                     source = Address.di;
+//                 },
+//             }
+//         },
+//     }
 
-    if (mod == MOD.registerModeNoDisplacement) {
-        source_payload = SourceInfo{
-            .address = source,
-        };
-    } else {
-        source_payload = SourceInfo{ .address_calculation = source_address_calculation };
-    }
+//     if (mod == MOD.registerModeNoDisplacement) {
+//         source_payload = SourceInfo{
+//             .address = source,
+//         };
+//     } else {
+//         source_payload = SourceInfo{ .address_calculation = source_address_calculation };
+//     }
 
-    switch (sr) {
-        .ES => {
-            dest = Address.es;
-        },
-        .CS => {
-            dest = Address.cs;
-        },
-        .SS => {
-            dest = Address.ss;
-        },
-        .DS => {
-            dest = Address.ds;
-        },
-    }
+//     switch (sr) {
+//         .ES => {
+//             dest = Address.es;
+//         },
+//         .CS => {
+//             dest = Address.cs;
+//         },
+//         .SS => {
+//             dest = Address.ss;
+//         },
+//         .DS => {
+//             dest = Address.ds;
+//         },
+//     }
 
-    destination_payload = DestinationInfo{
-        .address = dest,
-    };
+//     destination_payload = DestinationInfo{
+//         .address = dest,
+//     };
 
-    return InstructionInfo{
-        .destination_info = destination_payload,
-        .source_info = source_payload,
-    };
-}
+//     return InstructionInfo{
+//         .destination_info = destination_payload,
+//         .source_info = source_payload,
+//     };
+// }
 
-/// Get source and destination for segment register to Reg/Mem operations.
-pub fn getSegToRegMemMovSourceAndDest(
-    execution_unit: *ExecutionUnit,
-    mod: MOD,
-    sr: SR,
-    rm: RM,
-    disp_lo: ?u8,
-    disp_hi: ?u8,
-) InstructionInfo {
-    const Address = RegisterNames;
-    var dest: Address = undefined;
-    var source: Address = undefined;
-    var dest_address_calculation: EffectiveAddressCalculation = undefined;
+// /// Get source and destination for segment register to Reg/Mem operations.
+// pub fn getSegToRegMemMovSourceAndDest(
+//     execution_unit: *ExecutionUnit,
+//     mod: MOD,
+//     sr: SR,
+//     rm: RM,
+//     disp_lo: ?u8,
+//     disp_hi: ?u8,
+// ) InstructionInfo {
+//     const Address = RegisterNames;
+//     var dest: Address = undefined;
+//     var source: Address = undefined;
+//     var dest_address_calculation: EffectiveAddressCalculation = undefined;
 
-    var destination_payload: DestinationInfo = undefined;
-    var source_payload: SourceInfo = undefined;
+//     var destination_payload: DestinationInfo = undefined;
+//     var source_payload: SourceInfo = undefined;
 
-    switch (sr) {
-        .ES => {
-            source = Address.es;
-        },
-        .CS => {
-            source = Address.cs;
-        },
-        .SS => {
-            source = Address.ss;
-        },
-        .DS => {
-            source = Address.ds;
-        },
-    }
+//     switch (sr) {
+//         .ES => {
+//             source = Address.es;
+//         },
+//         .CS => {
+//             source = Address.cs;
+//         },
+//         .SS => {
+//             source = Address.ss;
+//         },
+//         .DS => {
+//             source = Address.ds;
+//         },
+//     }
 
-    source_payload = SourceInfo{
-        .address = source,
-    };
+//     source_payload = SourceInfo{
+//         .address = source,
+//     };
 
-    switch (mod) {
-        .memoryModeNoDisplacement,
-        .memoryMode8BitDisplacement,
-        .memoryMode16BitDisplacement,
-        => {
-            dest_address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
-                execution_unit,
-                Width.word,
-                mod,
-                rm,
-                disp_lo,
-                disp_hi,
-            );
-        },
-        .registerModeNoDisplacement => {
-            switch (rm) {
-                .ALAX_BXSI_BXSID8_BXSID16 => {
-                    dest = Address.ax;
-                },
-                .CLCX_BXDI_BXDID8_BXDID16 => {
-                    dest = Address.cx;
-                },
-                .DLDX_BPSI_BPSID8_BPSID16 => {
-                    dest = Address.dx;
-                },
-                .BLBX_BPDI_BPDID8_BPDID16 => {
-                    dest = Address.bx;
-                },
-                .AHSP_SI_SID8_SID16 => {
-                    dest = Address.sp;
-                },
-                .CHBP_DI_DID8_DID16 => {
-                    dest = Address.bp;
-                },
-                .DHSI_DIRECTACCESS_BPD8_BPD16 => {
-                    dest = Address.si;
-                },
-                .BHDI_BX_BXD8_BXD16 => {
-                    dest = Address.di;
-                },
-            }
-        },
-    }
+//     switch (mod) {
+//         .memoryModeNoDisplacement,
+//         .memoryMode8BitDisplacement,
+//         .memoryMode16BitDisplacement,
+//         => {
+//             dest_address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+//                 execution_unit,
+//                 Width.word,
+//                 mod,
+//                 rm,
+//                 disp_lo,
+//                 disp_hi,
+//             );
+//         },
+//         .registerModeNoDisplacement => {
+//             switch (rm) {
+//                 .ALAX_BXSI_BXSID8_BXSID16 => {
+//                     dest = Address.ax;
+//                 },
+//                 .CLCX_BXDI_BXDID8_BXDID16 => {
+//                     dest = Address.cx;
+//                 },
+//                 .DLDX_BPSI_BPSID8_BPSID16 => {
+//                     dest = Address.dx;
+//                 },
+//                 .BLBX_BPDI_BPDID8_BPDID16 => {
+//                     dest = Address.bx;
+//                 },
+//                 .AHSP_SI_SID8_SID16 => {
+//                     dest = Address.sp;
+//                 },
+//                 .CHBP_DI_DID8_DID16 => {
+//                     dest = Address.bp;
+//                 },
+//                 .DHSI_DIRECTACCESS_BPD8_BPD16 => {
+//                     dest = Address.si;
+//                 },
+//                 .BHDI_BX_BXD8_BXD16 => {
+//                     dest = Address.di;
+//                 },
+//             }
+//         },
+//     }
 
-    if (mod == MOD.registerModeNoDisplacement) {
-        destination_payload = DestinationInfo{
-            .address = dest,
-        };
-    } else {
-        destination_payload = DestinationInfo{ .address_calculation = dest_address_calculation };
-    }
+//     if (mod == MOD.registerModeNoDisplacement) {
+//         destination_payload = DestinationInfo{
+//             .address = dest,
+//         };
+//     } else {
+//         destination_payload = DestinationInfo{ .address_calculation = dest_address_calculation };
+//     }
 
-    return InstructionInfo{
-        .destination_info = destination_payload,
-        .source_info = source_payload,
-    };
-}
+//     return InstructionInfo{
+//         .destination_info = destination_payload,
+//         .source_info = source_payload,
+//     };
+// }
 
 // pub fn getRegisterMemoryOpSourceAndDest(
 //     EU: *ExecutionUnit,
