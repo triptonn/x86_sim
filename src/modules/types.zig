@@ -126,17 +126,19 @@ pub const data_types = struct {
         address,
         address_calculation,
         immediate,
-        unsigned_immediate,
+        jump_distance,
         mem_addr,
         none,
+        unsigned_immediate,
     };
 
     pub const SourceInfo = union(SourceInfoIdentifiers) {
         address: RegisterNames,
         address_calculation: EffectiveAddressCalculation,
         immediate: i16,
-        unsigned_immediate: u16,
+        jump_distance: i16,
         mem_addr: u20,
         none: void,
+        unsigned_immediate: u16,
     };
 };

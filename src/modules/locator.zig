@@ -175,11 +175,63 @@ pub fn getInstructionSourceAndDest(
                 },
             }
         },
-        .direct_op,
-        .escape_op,
-        => return LocatorError.NotYetImplemented,
-        .identifier_add_op,
-        => {
+        .direct_op => {
+            const DirectOps = decoder.ScopedInstruction(.DirectOp);
+            const direct_ops: DirectOps = @enumFromInt(@intFromEnum(opcode));
+
+            const Address = RegisterNames;
+            switch (direct_ops) {
+
+                // zig fmt: off
+
+                .jo_jump_on_overflow,                       // OF=1
+                .jno_jump_on_not_overflow,                  // OF=0
+                .jb_jnae_jump_on_below_not_above_or_equal,  // CF=1
+                .jnb_jae_jump_on_not_below_above_or_equal,  // CF=0
+                .je_jz_jump_on_equal_zero,                  // ZF=1
+                .jne_jnz_jumb_on_not_equal_not_zero,        // ZF=0
+                .jbe_jna_jump_on_below_or_equal_above,      // (CF or ZF)=1
+                .jnbe_ja_jump_on_not_below_or_equal_above,  // (CF of ZF)=0
+                .js_jump_on_sign,                           // SF=1
+                .jns_jump_on_not_sign,                      // SF=0
+                .jp_jpe_jump_on_parity_parity_even,         // PF=1
+                .jnp_jpo_jump_on_not_parity_parity_odd,     // PF=0
+                .jl_jnge_jump_on_less_not_greater_or_equal, // (SF xor OF)=1
+                .jnl_jge_jump_on_not_less_greater_or_equal, // (SF xor OF)=0
+                .jle_jng_jump_on_less_or_equal_not_greater, // ((SF xor OF) or ZF)=1
+                .jnle_jg_jump_on_not_less_or_equal_greater, // ((SF xor OF) or ZF)=0
+                .jcxz_jump_on_cx_zero,                      // CX=0
+                .loopne_loopnz_loop_while_not_zero_equal,   //
+                .loope_loopz_loop_while_zero_equal,
+                .loop_loop_cx_times,
+                => {
+                    // zig fmt: off
+
+                    const signed_ip_inc_8: i8 = @bitCast(instruction_data.direct_op.ip_inc_8.?);
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .address = Address.none, // for jumps the 'destination' is always IP
+                        },
+                        .source_info = SourceInfo{
+                            .jump_distance = @intCast(signed_ip_inc_8),
+                        },
+                    };
+                },
+                .call_direct_intersegment,
+                .ret_within_seg_adding_immed16_to_sp,
+                .ret_intersegment_adding_immed16_to_sp,
+                .int_interrupt_type_specified,
+                .aam_ASCII_adjust_multiply,
+                .aad_ASCII_adjust_divide,
+                .call_direct_within_segment,
+                .jmp_direct_within_segment,
+                .jmp_direct_intersegment,
+                .jmp_direct_within_segment_short,
+                => return LocatorError.NotYetImplemented,
+            }
+        },
+        .escape_op => return LocatorError.NotYetImplemented,
+        .identifier_add_op => {
             const IdentifierAddOps = decoder.ScopedInstruction(.IdentifierAddOp);
             const identifier_add_ops: IdentifierAddOps = @enumFromInt(@intFromEnum(opcode));
 

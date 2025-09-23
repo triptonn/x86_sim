@@ -2920,136 +2920,143 @@ pub fn decode(
         BinaryInstructions.jmp_direct_intersegment,
         BinaryInstructions.jmp_direct_within_segment_short,
         => {
+            const DirectOps = ScopedInstruction(.DirectOp);
+            const direct_ops: DirectOps = @enumFromInt(@intFromEnum(opcode));
+
             const w: WValue = @enumFromInt((input[0] << 7) >> 7);
-            const disp_lo: ?u8 = switch (opcode) {
-                BinaryInstructions.call_direct_intersegment,
-                BinaryInstructions.aam_ASCII_adjust_multiply,
-                BinaryInstructions.aad_ASCII_adjust_divide,
+            const disp_lo: ?u8 = switch (direct_ops) {
+                .call_direct_intersegment,
+                .aam_ASCII_adjust_multiply,
+                .aad_ASCII_adjust_divide,
                 => input[1],
                 else => null,
             };
-            const disp_hi: ?u8 = switch (opcode) {
-                BinaryInstructions.call_direct_intersegment,
-                BinaryInstructions.aam_ASCII_adjust_multiply,
-                BinaryInstructions.aad_ASCII_adjust_divide,
+            const disp_hi: ?u8 = switch (direct_ops) {
+                .call_direct_intersegment,
+                .aam_ASCII_adjust_multiply,
+                .aad_ASCII_adjust_divide,
                 => input[2],
                 else => null,
             };
-            const data_8: ?u8 = switch (opcode) {
-                BinaryInstructions.int_interrupt_type_specified => input[1],
+            const data_8: ?u8 = switch (direct_ops) {
+                .int_interrupt_type_specified => input[1],
                 else => null,
             };
-            const data_lo: ?u8 = switch (opcode) {
-                BinaryInstructions.ret_within_seg_adding_immed16_to_sp,
-                BinaryInstructions.ret_intersegment_adding_immed16_to_sp,
+            const data_lo: ?u8 = switch (direct_ops) {
+                .ret_within_seg_adding_immed16_to_sp,
+                .ret_intersegment_adding_immed16_to_sp,
                 => input[1],
                 else => null,
             };
-            const data_hi: ?u8 = switch (opcode) {
-                BinaryInstructions.ret_within_seg_adding_immed16_to_sp,
-                BinaryInstructions.ret_intersegment_adding_immed16_to_sp,
+            const data_hi: ?u8 = switch (direct_ops) {
+                .ret_within_seg_adding_immed16_to_sp,
+                .ret_intersegment_adding_immed16_to_sp,
                 => input[2],
                 else => null,
             };
-            const ip_lo: ?u8 = switch (opcode) {
-                BinaryInstructions.jmp_direct_intersegment => input[1],
+            const ip_lo: ?u8 = switch (direct_ops) {
+                .jmp_direct_intersegment => input[1],
                 else => null,
             };
-            const ip_hi: ?u8 = switch (opcode) {
-                BinaryInstructions.jmp_direct_intersegment => input[2],
+            const ip_hi: ?u8 = switch (direct_ops) {
+                .jmp_direct_intersegment => input[2],
                 else => null,
             };
-            const seg_lo: ?u8 = switch (opcode) {
-                BinaryInstructions.call_direct_intersegment => input[3],
+            const seg_lo: ?u8 = switch (direct_ops) {
+                .call_direct_intersegment => input[3],
                 else => null,
             };
-            const seg_hi: ?u8 = switch (opcode) {
-                BinaryInstructions.call_direct_intersegment => input[4],
+            const seg_hi: ?u8 = switch (direct_ops) {
+                .call_direct_intersegment => input[4],
                 else => null,
             };
-            const cs_lo: ?u8 = switch (opcode) {
-                BinaryInstructions.jmp_direct_intersegment => input[3],
+            const cs_lo: ?u8 = switch (direct_ops) {
+                .jmp_direct_intersegment => input[3],
                 else => null,
             };
-            const cs_hi: ?u8 = switch (opcode) {
-                BinaryInstructions.jmp_direct_intersegment => input[4],
+            const cs_hi: ?u8 = switch (direct_ops) {
+                .jmp_direct_intersegment => input[4],
                 else => null,
             };
-            const ip_inc_lo: ?u8 = switch (opcode) {
-                BinaryInstructions.call_direct_within_segment,
-                BinaryInstructions.jmp_direct_within_segment,
+            const ip_inc_lo: ?u8 = switch (direct_ops) {
+                .call_direct_within_segment,
+                .jmp_direct_within_segment,
                 => input[1],
                 else => null,
             };
-            const ip_inc_hi: ?u8 = switch (opcode) {
-                BinaryInstructions.call_direct_within_segment,
-                BinaryInstructions.jmp_direct_within_segment,
+            const ip_inc_hi: ?u8 = switch (direct_ops) {
+                .call_direct_within_segment,
+                .jmp_direct_within_segment,
                 => input[2],
                 else => null,
             };
-            const ip_inc_8: ?u8 = switch (opcode) {
-                BinaryInstructions.jo_jump_on_overflow,
-                BinaryInstructions.jno_jump_on_not_overflow,
-                BinaryInstructions.jb_jnae_jump_on_below_not_above_or_equal,
-                BinaryInstructions.jnb_jae_jump_on_not_below_above_or_equal,
-                BinaryInstructions.je_jz_jump_on_equal_zero,
-                BinaryInstructions.jne_jnz_jumb_on_not_equal_not_zero,
-                BinaryInstructions.jbe_jna_jump_on_below_or_equal_above,
-                BinaryInstructions.jnbe_ja_jump_on_not_below_or_equal_above,
-                BinaryInstructions.js_jump_on_sign,
-                BinaryInstructions.jns_jump_on_not_sign,
-                BinaryInstructions.jp_jpe_jump_on_parity_parity_even,
-                BinaryInstructions.jnp_jpo_jump_on_not_parity_parity_odd,
-                BinaryInstructions.jl_jnge_jump_on_less_not_greater_or_equal,
-                BinaryInstructions.jnl_jge_jump_on_not_less_greater_or_equal,
-                BinaryInstructions.jle_jng_jump_on_less_or_equal_not_greater,
-                BinaryInstructions.jnle_jg_jump_on_not_less_or_equal_greater,
-                BinaryInstructions.loopne_loopnz_loop_while_not_zero_equal,
-                BinaryInstructions.loope_loopz_loop_while_zero_equal,
-                BinaryInstructions.loop_loop_cx_times,
-                BinaryInstructions.jcxz_jump_on_cx_zero,
-                BinaryInstructions.jmp_direct_within_segment_short,
+            const ip_inc_8: ?u8 = switch (direct_ops) {
+                .jo_jump_on_overflow,
+                .jno_jump_on_not_overflow,
+                .jb_jnae_jump_on_below_not_above_or_equal,
+                .jnb_jae_jump_on_not_below_above_or_equal,
+                .je_jz_jump_on_equal_zero,
+                .jne_jnz_jumb_on_not_equal_not_zero,
+                .jbe_jna_jump_on_below_or_equal_above,
+                .jnbe_ja_jump_on_not_below_or_equal_above,
+                .js_jump_on_sign,
+                .jns_jump_on_not_sign,
+                .jp_jpe_jump_on_parity_parity_even,
+                .jnp_jpo_jump_on_not_parity_parity_odd,
+                .jl_jnge_jump_on_less_not_greater_or_equal,
+                .jnl_jge_jump_on_not_less_greater_or_equal,
+                .jle_jng_jump_on_less_or_equal_not_greater,
+                .jnle_jg_jump_on_not_less_or_equal_greater,
+                .loopne_loopnz_loop_while_not_zero_equal,
+                .loope_loopz_loop_while_zero_equal,
+                .loop_loop_cx_times,
+                .jcxz_jump_on_cx_zero,
+                .jmp_direct_within_segment_short,
                 => input[1],
                 else => null,
             };
+
+            // zig fmt: off
+
+            // Note: 'above' and 'below' refer to the relationship of two unsigned values;
+            //       'greater' and 'less' refer to the relationship of two signed values;
 
             result = InstructionData{
                 .direct_op = DirectOp{
-                    .opcode = opcode,
-                    .mnemonic = switch (opcode) {
-                        BinaryInstructions.jo_jump_on_overflow => "jo",
-                        BinaryInstructions.jno_jump_on_not_overflow => "jno",
-                        BinaryInstructions.jb_jnae_jump_on_below_not_above_or_equal => "jb_jnae",
-                        BinaryInstructions.jnb_jae_jump_on_not_below_above_or_equal => "jnb_jae",
-                        BinaryInstructions.je_jz_jump_on_equal_zero => "je_jz",
-                        BinaryInstructions.jne_jnz_jumb_on_not_equal_not_zero => "jne_jnz",
-                        BinaryInstructions.jbe_jna_jump_on_below_or_equal_above => "jbe_jna",
-                        BinaryInstructions.jnbe_ja_jump_on_not_below_or_equal_above => "jnbe_ja",
-                        BinaryInstructions.js_jump_on_sign => "js",
-                        BinaryInstructions.jns_jump_on_not_sign => "jns",
-                        BinaryInstructions.jp_jpe_jump_on_parity_parity_even => "jp_jpe",
-                        BinaryInstructions.jnp_jpo_jump_on_not_parity_parity_odd => "jnp_jpo",
-                        BinaryInstructions.jl_jnge_jump_on_less_not_greater_or_equal => "jl_jnge",
-                        BinaryInstructions.jnl_jge_jump_on_not_less_greater_or_equal => "jnl_jge",
-                        BinaryInstructions.jle_jng_jump_on_less_or_equal_not_greater => "jle_jng",
-                        BinaryInstructions.jnle_jg_jump_on_not_less_or_equal_greater => "jnle_jg",
-                        BinaryInstructions.call_direct_intersegment => "call",
-                        BinaryInstructions.ret_within_seg_adding_immed16_to_sp => "ret",
-                        BinaryInstructions.ret_intersegment_adding_immed16_to_sp => "ret",
-                        BinaryInstructions.int_interrupt_type_specified => "int",
-                        BinaryInstructions.aam_ASCII_adjust_multiply => "aam",
-                        BinaryInstructions.aad_ASCII_adjust_divide => "aad",
-                        BinaryInstructions.loopne_loopnz_loop_while_not_zero_equal => "loopne_loopnz",
-                        BinaryInstructions.loope_loopz_loop_while_zero_equal => "loope_loopz",
-                        BinaryInstructions.loop_loop_cx_times => "loop",
-                        BinaryInstructions.jcxz_jump_on_cx_zero => "jcxz",
-                        BinaryInstructions.call_direct_within_segment => "call",
+                    .opcode = opcode,                                          // for testing purpose simply one of the possible mnemonics is printed, resulting in the same machine code
+                    .mnemonic = switch (direct_ops) {                          // Flag condition tested by conditional jump:
+                        .jo_jump_on_overflow => "jo",                          // OF=1
+                        .jno_jump_on_not_overflow => "jno",                    // OF=0
+                        .jb_jnae_jump_on_below_not_above_or_equal => "jb",     // CF=1
+                        .jnb_jae_jump_on_not_below_above_or_equal => "jae",    // CF=0
+                        .je_jz_jump_on_equal_zero => "jz",                     // ZF=1
+                        .jne_jnz_jumb_on_not_equal_not_zero => "jne",          // ZF=0
+                        .jbe_jna_jump_on_below_or_equal_above => "jna",        // (CF or ZF)=1
+                        .jnbe_ja_jump_on_not_below_or_equal_above => "ja",     // (CF of ZF)=0
+                        .js_jump_on_sign => "js",                              // SF=1
+                        .jns_jump_on_not_sign => "jns",                        // SF=0
+                        .jp_jpe_jump_on_parity_parity_even => "jpe",           // PF=1
+                        .jnp_jpo_jump_on_not_parity_parity_odd => "jpo",       // PF=0
+                        .jl_jnge_jump_on_less_not_greater_or_equal => "jl",    // (SF xor OF)=1
+                        .jnl_jge_jump_on_not_less_greater_or_equal => "jge",   // (SF xor OF)=0
+                        .jle_jng_jump_on_less_or_equal_not_greater => "jng",   // ((SF xor OF) or ZF)=1
+                        .jnle_jg_jump_on_not_less_or_equal_greater => "jg",    // ((SF xor OF) or ZF)=0
+                        .jcxz_jump_on_cx_zero => "jcxz",
+                        .call_direct_intersegment => "call",
+                        .ret_within_seg_adding_immed16_to_sp => "ret",
+                        .ret_intersegment_adding_immed16_to_sp => "ret",
+                        .int_interrupt_type_specified => "int",
+                        .aam_ASCII_adjust_multiply => "aam",
+                        .aad_ASCII_adjust_divide => "aad",
+                        .loopne_loopnz_loop_while_not_zero_equal => "loopne",
+                        .loope_loopz_loop_while_zero_equal => "loope",
+                        .loop_loop_cx_times => "loop",
+                        .call_direct_within_segment => "call",
 
-                        BinaryInstructions.jmp_direct_within_segment,
-                        BinaryInstructions.jmp_direct_intersegment,
-                        BinaryInstructions.jmp_direct_within_segment_short,
+                        .jmp_direct_within_segment,
+                        .jmp_direct_intersegment,
+                        .jmp_direct_within_segment_short,
                         => "jmp",
-                        else => return InstructionDecodeError.InstructionError,
                     },
                     .w = w,
                     .disp_lo = disp_lo,
@@ -3068,6 +3075,9 @@ pub fn decode(
                     .cs_hi = cs_hi,
                 },
             };
+
+            // zig fmt: on
+
             return result;
         },
 

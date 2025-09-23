@@ -46,8 +46,8 @@ const InstructionExecutionError = errors.InstructionExecutionError;
 const SimulatorError = errors.SimulatorError;
 
 /// global log level
-const LogLevel: std.log.Level = .debug;
-// const LogLevel: std.log.Level = .info;
+// const LogLevel: std.log.Level = .debug;
+const LogLevel: std.log.Level = .info;
 
 /// Checks if a displacement value fits inside a 8 bit signed integer
 /// or if a 16 bit signed integer is needed. Returns true if a 8 bit integer

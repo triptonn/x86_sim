@@ -64,14 +64,19 @@ fn prepareInstructionLine(
 
     const dest: []const u8 = dest_switch: switch (destination) {
         DestinationInfo.address => {
-            const res = try std.fmt.allocPrint(
-                allocator,
-                " {t}",
-                .{
-                    destination.address,
-                },
-            );
-            break :dest_switch res;
+            const Address = RegisterNames;
+            if (instruction_info.destination_info.address == Address.none) {
+                break :dest_switch "";
+            } else {
+                const res = try std.fmt.allocPrint(
+                    allocator,
+                    " {t}",
+                    .{
+                        destination.address,
+                    },
+                );
+                break :dest_switch res;
+            }
         },
         DestinationInfo.address_calculation => {
             const Address = RegisterNames;
@@ -328,6 +333,30 @@ fn prepareInstructionLine(
                 break :source_switch res;
             },
         },
+        SourceInfo.jump_distance => {
+            if ((source.jump_distance + 2) > 0) {
+                const res = try std.fmt.allocPrint(
+                    allocator,
+                    " $ + {d} + 0",
+                    .{source.jump_distance + 2},
+                );
+                break :source_switch res;
+            } else if ((source.jump_distance + 2) == 0) {
+                const res = try std.fmt.allocPrint(
+                    allocator,
+                    " $ + 0",
+                    .{},
+                );
+                break :source_switch res;
+            } else {
+                const res = try std.fmt.allocPrint(
+                    allocator,
+                    " $ - {d} + 0",
+                    .{-source.jump_distance - 2},
+                );
+                break :source_switch res;
+            }
+        },
         SourceInfo.unsigned_immediate => {
             switch (opcode) {
                 .mov_mem8_immed8 => {
@@ -369,7 +398,7 @@ fn prepareInstructionLine(
         SourceInfo.none => "",
     };
 
-    const sep: []const u8 = if (src.len > 0) "," else "";
+    const sep: []const u8 = if (src.len > 0 and dest.len > 0) "," else "";
 
     const result: []const u8 = try std.fmt.allocPrint(
         allocator,
