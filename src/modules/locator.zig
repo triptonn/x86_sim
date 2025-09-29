@@ -269,6 +269,17 @@ pub fn getInstructionSourceAndDest(
                 },
 
                 .int_interrupt_type_specified,
+                => {
+                    const data_8: u8 = instruction_data.direct_op.data_8.?;
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .none = {},
+                        },
+                        .source_info = SourceInfo{
+                            .unsigned_immediate = data_8,
+                        },
+                    };
+                },
                 .aam_ASCII_adjust_multiply,
                 .aad_ASCII_adjust_divide,
 
