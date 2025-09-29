@@ -194,6 +194,22 @@ fn prepareInstructionLine(
                 }
             }
         },
+        DestinationInfo.intrasegment => {
+            const res = try std.fmt.allocPrint(
+                allocator,
+                " {d}",
+                .{destination.intrasegment},
+            );
+            break :dest_switch res;
+        },
+        DestinationInfo.intersegment => {
+            const res = try std.fmt.allocPrint(
+                allocator,
+                " {d}",
+                .{destination.intersegment},
+            );
+            break :dest_switch res;
+        },
         DestinationInfo.mem_addr => {
             const res = try std.fmt.allocPrint(
                 allocator,

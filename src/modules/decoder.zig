@@ -717,8 +717,20 @@ pub const BinaryInstructions = enum(u8) {
     /// 16 bit Immediate to register di
     mov_di_immed16                              = 0xBF,
 
-    // TODO: Implement ret - return
+    /// Intra-segment return transfers control from a procedure
+    /// back to the instruction following the CALL that activated
+    /// the procedure, if the procedure was defined as near. It pops
+    /// the word at the top of the stack (pointed to by SP) into the
+    /// IP and increments SP by two.
+    /// An optional pop-value has been specified, return adds that
+    /// value to SP. May be used to discard parameters pushed onto the
+    /// stack before the execution of the call instruction.
     ret_within_seg_adding_immed16_to_sp         = 0xC2,
+    /// Intra-segment return transfers control from a procedure
+    /// back to the instruction following the CALL that activated
+    /// the procedure, if the procedure was defined as NEAR. Return
+    /// pops the word at the top of the stack (pointed to by SP) into
+    /// the IP and increments SP by two.
     ret_within_segment                          = 0xC3,
 
     /// Load pointer to ES
@@ -731,14 +743,51 @@ pub const BinaryInstructions = enum(u8) {
     /// Immediate to register/memory
     mov_mem16_immed16                           = 0xC7,
 
-    // TODO: Implement ret - return
+    /// Intersegment return transfers control from a procedure
+    /// back to the instruction following the CALL that activated
+    /// the procedure, if the procedure was defined as FAR. Return
+    /// pops the word at the top of the stack (pointed to by SP) into
+    /// the IP and increments SP by two. Then the new word at the top of
+    /// the stack is popped into CS, SP is again incremented by two.
+    /// An optional pop-value has been specified, return adds that
+    /// value to SP. May be used to discard parameters pushed onto the
+    /// stack before the execution of the call instruction.
     ret_intersegment_adding_immed16_to_sp       = 0xCA,
+    /// Intersegment return transfers control from a procedure
+    /// back to the instruction following the CALL that activated
+    /// the procedure, if the procedure was defined as FAR. Return
+    /// pops the word at the top of the stack (pointed to by SP) into
+    /// the IP and increments SP by two. Then the new word at the top of
+    /// the stack is popped into CS, SP is again incremented by two.
     ret_intersegment                            = 0xCB,
 
-    // TODO: Implement int - interrupt
+    /// Activates the interrupt procedure specified by the interrupt-type
+    /// operand. INT decrements the stack pointer by two, pushes the flags
+    /// onto the stack and clears the trap (TF) and interrupt-enable (IF)
+    /// flags to disable single-step and maskable interrupts. SP is
+    /// decremented by two and the CS register is pushed onto the stack.
+    /// The address of the interrupt pointer is calculated by multiplying
+    /// interrupt-type by four. The second word of the interrupt pointer
+    /// replaces CS. SP again is decremented by two and IP is pushed onto
+    /// the stack and is replaced by the first word of the interrupt pointer.
+    /// If interrupt-type = 3, the assembler generates a short (1 byte) form
+    /// of the instruction, known as the breakpoint interrupt.
     int_interrupt_type_3                        = 0xCC,
+    /// Activates the interrupt procedure specified by the interrupt-type
+    /// operand. INT decrements the stack pointer by two, pushes the flags
+    /// onto the stack and clears the trap (TF) and interrupt-enable (IF)
+    /// flags to disable single-step and maskable interrupts. SP is
+    /// decremented by two and the CS register is pushed onto the stack.
+    /// The address of the interrupt pointer is calculated by multiplying
+    /// interrupt-type by four. The second word of the interrupt pointer
+    /// replaces CS. SP again is decremented by two and IP is pushed onto
+    /// the stack and is replaced by the first word of the interrupt pointer.
     int_interrupt_type_specified                = 0xCD,
+
+
+    // TODO: Implement interrupt on overflow
     into_interrupt_on_overflow                  = 0xCE,
+    // TODO: Implement interrupt return
     iret_interrupt_return                       = 0xCF,
 
     // TODO: Implement rotate
@@ -748,7 +797,9 @@ pub const BinaryInstructions = enum(u8) {
     logical_regmem8_cl                          = 0xD2,
     logical_regmem16_cl                         = 0xD3,
 
-    // TODO: Implement ASCII adjust multiply
+    /// Divide AL by 10 (0x0A) and store the quotient in AH and the remainder
+    /// in AL. This converts the binary value in AX into two unpacked BCD
+    /// digits stored in AH (high order digit) and AL (low order digit).
     aam_ASCII_adjust_multiply                   = 0xD4,
 
     // TODO: Implmement ASCII adjust divide
@@ -3023,34 +3074,34 @@ pub fn decode(
 
             result = InstructionData{
                 .direct_op = DirectOp{
-                    .opcode = opcode,                                          // for testing purpose simply one of the possible mnemonics is printed, resulting in the same machine code
-                    .mnemonic = switch (direct_ops) {                          // Flag condition tested by conditional jump:
-                        .jo_jump_on_overflow => "jo",                          // OF=1
-                        .jno_jump_on_not_overflow => "jno",                    // OF=0
-                        .jb_jnae_jump_on_below_not_above_or_equal => "jb",     // CF=1
-                        .jnb_jae_jump_on_not_below_above_or_equal => "jae",    // CF=0
-                        .je_jz_jump_on_equal_zero => "jz",                     // ZF=1
-                        .jne_jnz_jumb_on_not_equal_not_zero => "jne",          // ZF=0
-                        .jbe_jna_jump_on_below_or_equal_above => "jna",        // (CF or ZF)=1
-                        .jnbe_ja_jump_on_not_below_or_equal_above => "ja",     // (CF of ZF)=0
-                        .js_jump_on_sign => "js",                              // SF=1
-                        .jns_jump_on_not_sign => "jns",                        // SF=0
-                        .jp_jpe_jump_on_parity_parity_even => "jpe",           // PF=1
-                        .jnp_jpo_jump_on_not_parity_parity_odd => "jpo",       // PF=0
-                        .jl_jnge_jump_on_less_not_greater_or_equal => "jl",    // (SF xor OF)=1
-                        .jnl_jge_jump_on_not_less_greater_or_equal => "jge",   // (SF xor OF)=0
-                        .jle_jng_jump_on_less_or_equal_not_greater => "jng",   // ((SF xor OF) or ZF)=1
-                        .jnle_jg_jump_on_not_less_or_equal_greater => "jg",    // ((SF xor OF) or ZF)=0
-                        .jcxz_jump_on_cx_zero => "jcxz",
+                    .opcode = opcode,                                           // for testing purpose simply one of the possible mnemonics is printed, resulting in the same machine code
+                    .mnemonic = switch (direct_ops) {                           // Flag condition tested by conditional jump:
+                        .jo_jump_on_overflow => "jo",                           // OF=1
+                        .jno_jump_on_not_overflow => "jno",                     // OF=0
+                        .jb_jnae_jump_on_below_not_above_or_equal => "jb",      // CF=1
+                        .jnb_jae_jump_on_not_below_above_or_equal => "jae",     // CF=0
+                        .je_jz_jump_on_equal_zero => "jz",                      // ZF=1
+                        .jne_jnz_jumb_on_not_equal_not_zero => "jne",           // ZF=0
+                        .jbe_jna_jump_on_below_or_equal_above => "jna",         // (CF or ZF)=1
+                        .jnbe_ja_jump_on_not_below_or_equal_above => "ja",      // (CF of ZF)=0
+                        .js_jump_on_sign => "js",                               // SF=1
+                        .jns_jump_on_not_sign => "jns",                         // SF=0
+                        .jp_jpe_jump_on_parity_parity_even => "jpe",            // PF=1
+                        .jnp_jpo_jump_on_not_parity_parity_odd => "jpo",        // PF=0
+                        .jl_jnge_jump_on_less_not_greater_or_equal => "jl",     // (SF xor OF)=1
+                        .jnl_jge_jump_on_not_less_greater_or_equal => "jge",    // (SF xor OF)=0
+                        .jle_jng_jump_on_less_or_equal_not_greater => "jng",    // ((SF xor OF) or ZF)=1
+                        .jnle_jg_jump_on_not_less_or_equal_greater => "jg",     // ((SF xor OF) or ZF)=0
+                        .jcxz_jump_on_cx_zero => "jcxz",                        // 
                         .call_direct_intersegment => "call",
                         .ret_within_seg_adding_immed16_to_sp => "ret",
                         .ret_intersegment_adding_immed16_to_sp => "ret",
                         .int_interrupt_type_specified => "int",
                         .aam_ASCII_adjust_multiply => "aam",
                         .aad_ASCII_adjust_divide => "aad",
-                        .loopne_loopnz_loop_while_not_zero_equal => "loopne",
-                        .loope_loopz_loop_while_zero_equal => "loope",
-                        .loop_loop_cx_times => "loop",
+                        .loopne_loopnz_loop_while_not_zero_equal => "loopne",   //
+                        .loope_loopz_loop_while_zero_equal => "loope",          //
+                        .loop_loop_cx_times => "loop",                          //
                         .call_direct_within_segment => "call",
 
                         .jmp_direct_within_segment,
@@ -3125,44 +3176,46 @@ pub fn decode(
         BinaryInstructions.cld_clear_direction,
         BinaryInstructions.std_set_direction,
         => {
+            const SingleByteOps = ScopedInstruction(.SingleByteOp);
+            const single_byte_ops: SingleByteOps = @enumFromInt(@intFromEnum(opcode));
             result = InstructionData{
                 .single_byte_op = SingleByteOp{
                     .opcode = opcode,
-                    .mnemonic = switch (opcode) {
-                        BinaryInstructions.daa_decimal_adjust_add => "daa",
-                        BinaryInstructions.das_decimal_adjust_sub => "das",
-                        BinaryInstructions.aaa_ASCII_adjust_add => "aaa",
-                        BinaryInstructions.aas_ASCII_adjust_sub => "aas",
-                        BinaryInstructions.cbw_byte_to_word => "cbw",
-                        BinaryInstructions.cwd_word_to_double_word => "cwd",
-                        BinaryInstructions.int_interrupt_type_3 => "int",
-                        BinaryInstructions.into_interrupt_on_overflow => "into",
-                        BinaryInstructions.iret_interrupt_return => "iret",
-                        BinaryInstructions.xlat_translate_byte_to_al => "xlat",
-                        BinaryInstructions.lock_bus_lock_prefix => "lock",
-                        BinaryInstructions.cmc_complement_carry => "cmc",
-                        BinaryInstructions.stc_set_carry => "stc",
-                        BinaryInstructions.cli_clear_interrupt => "cli",
-                        BinaryInstructions.sti_set_interrupt => "sti",
-                        BinaryInstructions.cld_clear_direction => "cld",
-                        BinaryInstructions.std_set_direction => "std",
-                        BinaryInstructions.in_al_dx,
-                        BinaryInstructions.in_ax_dx,
+                    .mnemonic = switch (single_byte_ops) {
+                        .daa_decimal_adjust_add => "daa",
+                        .das_decimal_adjust_sub => "das",
+                        .aaa_ASCII_adjust_add => "aaa",
+                        .aas_ASCII_adjust_sub => "aas",
+                        .cbw_byte_to_word => "cbw",
+                        .cwd_word_to_double_word => "cwd",
+                        .int_interrupt_type_3 => "int",
+                        .into_interrupt_on_overflow => "into",
+                        .iret_interrupt_return => "iret",
+                        .xlat_translate_byte_to_al => "xlat",
+                        .lock_bus_lock_prefix => "lock",
+                        .cmc_complement_carry => "cmc",
+                        .stc_set_carry => "stc",
+                        .cli_clear_interrupt => "cli",
+                        .sti_set_interrupt => "sti",
+                        .cld_clear_direction => "cld",
+                        .std_set_direction => "std",
+                        .in_al_dx,
+                        .in_ax_dx,
                         => "in",
-                        BinaryInstructions.out_al_dx,
-                        BinaryInstructions.out_ax_dx,
+                        .out_al_dx,
+                        .out_ax_dx,
                         => "out",
-                        BinaryInstructions.ret_within_segment,
-                        BinaryInstructions.ret_intersegment,
+                        .ret_within_segment,
+                        .ret_intersegment,
                         => "ret",
-                        BinaryInstructions.wait,
-                        BinaryInstructions.pushf,
-                        BinaryInstructions.popf,
-                        BinaryInstructions.sahf,
-                        BinaryInstructions.lahf,
-                        BinaryInstructions.halt,
+                        .wait,
+                        .pushf,
+                        .popf,
+                        .sahf,
+                        .lahf,
+                        .halt,
                         => @tagName(opcode),
-                        else => return InstructionDecodeError.InstructionError,
+                        else => return InstructionDecodeError.NotYetImplemented,
                     },
                     .w = null,
                     .z = null,
@@ -3184,11 +3237,14 @@ pub fn decode(
         BinaryInstructions.scas_byte,
         BinaryInstructions.scas_word,
         => {
+            const SingleByteOps = ScopedInstruction(.SingleByteOp);
+            const single_byte_ops: SingleByteOps = @enumFromInt(@intFromEnum(opcode));
+
             const w: WValue = @enumFromInt((input[0] << 7) >> 7);
             result = InstructionData{
                 .single_byte_op = SingleByteOp{
                     .opcode = opcode,
-                    .mnemonic = switch (opcode) {
+                    .mnemonic = switch (single_byte_ops) {
                         .movs_byte,
                         .movs_word,
                         => "movs",

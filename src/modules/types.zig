@@ -111,6 +111,8 @@ pub const data_types = struct {
     const DestinationInfoIdentifiers = enum {
         address,
         address_calculation,
+        intersegment,
+        intrasegment,
         mem_addr,
         none,
     };
@@ -118,6 +120,8 @@ pub const data_types = struct {
     pub const DestinationInfo = union(DestinationInfoIdentifiers) {
         address: RegisterNames,
         address_calculation: EffectiveAddressCalculation,
+        intersegment: u20,
+        intrasegment: i16,
         mem_addr: u20,
         none: void,
     };

@@ -79,6 +79,11 @@ pub const RegisterNames = enum {
     none,
 };
 
+/// Returns the destination and source operands of a asm-86 instruction as a
+/// InstructionInfo union. If the destination and source cannot be computed
+/// a LocatorError is returned specifying what failed. A ExecutionUnit reference,
+/// the opcode and the InstructionData union from the decoder are needed as
+/// parameters.
 pub fn getInstructionSourceAndDest(
     EU: *ExecutionUnit,
     opcode: BinaryInstructions,
@@ -205,7 +210,6 @@ pub fn getInstructionSourceAndDest(
                 .loope_loopz_loop_while_zero_equal,
                 .loop_loop_cx_times,
                 => {
-                    // zig fmt: off
 
                     const signed_ip_inc_8: i8 = @bitCast(instruction_data.direct_op.ip_inc_8.?);
                     return InstructionInfo{
@@ -217,17 +221,63 @@ pub fn getInstructionSourceAndDest(
                         },
                     };
                 },
-                .call_direct_intersegment,
+                .call_direct_intersegment,                  // SP decremented by 2, CS is pushed onto the stack. CS is replaced by the segment word contained in the instruction. SP is again decremented by two. IP is pushed onto the stack and is replaced by the offset word contained in the instruction.
+                => {
+                    const seg_lo: u8 = instruction_data.direct_op.seg_lo.?;
+                    const seg_hi: u8 = instruction_data.direct_op.seg_hi.?;
+                    const disp_lo: u8 = instruction_data.direct_op.disp_lo.?;
+                    const disp_hi: u8 = instruction_data.direct_op.disp_hi.?;
+                    const offset: u16 = (@as(u16, disp_hi) << 8) + disp_lo;
+                    const segment: u16 = (@as(u16, seg_hi) << 8) + seg_lo;
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .intersegment = (@as(u20, segment) << 4) + offset,
+                        },
+                        .source_info = SourceInfo{
+                            .none = {},
+                        },
+                    };
+                },
+                .call_direct_within_segment,                // SP decremented by 2, IP is pushed onto the stack. Relative displacement (up to +-32k) of the target procedure from the CALL instruction is then added to IP. 
+                => {
+                    const ip_inc_lo: u8 = instruction_data.direct_op.ip_inc_lo.?;
+                    const ip_inc_hi: u8 = instruction_data.direct_op.ip_inc_hi.?;
+                    const offset: i16 = @bitCast((@as(u16, ip_inc_hi) << 8) + ip_inc_lo);
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .intrasegment = offset,
+                        },
+                        .source_info = SourceInfo{
+                            .none = {},
+                        },
+                    };
+                },
                 .ret_within_seg_adding_immed16_to_sp,
                 .ret_intersegment_adding_immed16_to_sp,
+                => {
+                    const data_lo: u8 = instruction_data.direct_op.data_lo.?;
+                    const data_hi: u8 = instruction_data.direct_op.data_hi.?;
+                    const immed_16: i16 = @bitCast((@as(u16, data_hi) << 8) + data_lo);
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .none = {},
+                        },
+                        .source_info = SourceInfo{
+                            .immediate = immed_16,
+                        },
+                    };
+                },
+
                 .int_interrupt_type_specified,
                 .aam_ASCII_adjust_multiply,
                 .aad_ASCII_adjust_divide,
-                .call_direct_within_segment,
+
                 .jmp_direct_within_segment,
                 .jmp_direct_intersegment,
                 .jmp_direct_within_segment_short,
                 => return LocatorError.NotYetImplemented,
+
+                // zig fmt: off
             }
         },
         .escape_op => return LocatorError.NotYetImplemented,
