@@ -373,6 +373,14 @@ fn prepareInstructionLine(
                 break :source_switch res;
             }
         },
+        SourceInfo.intersegment_direct_jump => {
+            const res = try std.fmt.allocPrint(
+                allocator,
+                " {d}",
+                .{(@as(u20, source.intersegment_direct_jump[1]) << 4) + source.intersegment_direct_jump[0]},
+            );
+            break :source_switch res;
+        },
         SourceInfo.unsigned_immediate => {
             switch (opcode) {
                 .mov_mem8_immed8 => {
@@ -486,7 +494,7 @@ pub fn runAssemblyTest(
     const log = std.log.scoped(.runAssemblyTest);
 
     log.info("\n+++Testing+Phase++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", .{});
-    log.info("Assembler generates .asm file and compares it with the original binary input...", .{});
+    log.info("Assembling .asm file with NASM and comparing with the original binary input...", .{});
 
     const cwd_path: []const u8 = try std.process.getCwdAlloc(allocator);
     defer allocator.free(cwd_path);

@@ -210,7 +210,6 @@ pub fn getInstructionSourceAndDest(
                 .loope_loopz_loop_while_zero_equal,
                 .loop_loop_cx_times,
                 => {
-
                     const signed_ip_inc_8: i8 = @bitCast(instruction_data.direct_op.ip_inc_8.?);
                     return InstructionInfo{
                         .destination_info = DestinationInfo{
@@ -221,7 +220,7 @@ pub fn getInstructionSourceAndDest(
                         },
                     };
                 },
-                .call_direct_intersegment,                  // SP decremented by 2, CS is pushed onto the stack. CS is replaced by the segment word contained in the instruction. SP is again decremented by two. IP is pushed onto the stack and is replaced by the offset word contained in the instruction.
+                .call_direct_intersegment,
                 => {
                     const seg_lo: u8 = instruction_data.direct_op.seg_lo.?;
                     const seg_hi: u8 = instruction_data.direct_op.seg_hi.?;
@@ -238,7 +237,7 @@ pub fn getInstructionSourceAndDest(
                         },
                     };
                 },
-                .call_direct_within_segment,                // SP decremented by 2, IP is pushed onto the stack. Relative displacement (up to +-32k) of the target procedure from the CALL instruction is then added to IP. 
+                .call_direct_within_segment,
                 => {
                     const ip_inc_lo: u8 = instruction_data.direct_op.ip_inc_lo.?;
                     const ip_inc_hi: u8 = instruction_data.direct_op.ip_inc_hi.?;
@@ -267,7 +266,6 @@ pub fn getInstructionSourceAndDest(
                         },
                     };
                 },
-
                 .int_interrupt_type_specified,
                 => {
                     const data_8: u8 = instruction_data.direct_op.data_8.?;
@@ -282,11 +280,56 @@ pub fn getInstructionSourceAndDest(
                 },
                 .aam_ASCII_adjust_multiply,
                 .aad_ASCII_adjust_divide,
-
-                .jmp_direct_within_segment,
-                .jmp_direct_intersegment,
-                .jmp_direct_within_segment_short,
-                => return LocatorError.NotYetImplemented,
+                => {
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .none = {},
+                        },
+                        .source_info = SourceInfo{
+                            .none = {},
+                        }
+                    };
+                },
+                .jmp_direct_within_segment => {
+                    const ip_inc_lo: u8 = instruction_data.direct_op.ip_inc_lo.?;
+                    const ip_inc_hi: u16 = @as(u16, instruction_data.direct_op.ip_inc_hi.?) << 8;
+                    const ip_inc_16: i16 = @bitCast(ip_inc_hi + ip_inc_lo);
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .none = {},
+                        },
+                        .source_info = SourceInfo{
+                            .jump_distance = ip_inc_16,
+                        },
+                    };
+                },
+                .jmp_direct_intersegment => {
+                    const ip_lo: u8 = instruction_data.direct_op.ip_lo.?;
+                    const ip_hi: u16 = @as(u16, instruction_data.direct_op.ip_hi.?) << 8;
+                    const ip_16: u16 = ip_hi + ip_lo;
+                    const cs_lo: u8 = instruction_data.direct_op.cs_lo.?;
+                    const cs_hi: u16 = @as(u16, instruction_data.direct_op.cs_hi.?) << 8;
+                    const cs_16: u16 = cs_hi + cs_lo;
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .none = {},
+                        },
+                        .source_info = SourceInfo{
+                            .intersegment_direct_jump = [_]u16{ip_16, cs_16},
+                        },
+                    };
+                },
+                .jmp_direct_within_segment_short => {
+                    const ip_inc_8: i16 = @intCast(instruction_data.direct_op.ip_inc_8.?);
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .none = {},
+                        },
+                        .source_info = SourceInfo{
+                            .jump_distance = ip_inc_8,
+                        },
+                    };
+                },
 
                 // zig fmt: off
             }

@@ -554,22 +554,55 @@ pub const BinaryInstructions = enum(u8) {
     pop_si                                      = 0x5E,
     pop_di                                      = 0x5F,
 
-    // TODO: Implement jumps
+    // Conditional transfers ///////////////////////////////////////////////////
+    // The conditional transfer instructions are jumps that may or may not
+    // transfer control depending on the state of the CPU flags at the time the
+    // instruction is executed. These 18 instructions each test a different
+    // combination of flags for a condition. If the condition is 'true', then
+    // control is transferred to the target specified in the instruction. If the
+    // condition is 'false', then control passes to the instruction that follows
+    // the conditional jump. All conditional jumps are SHORT, that is, the
+    // target must be in the current code segment and within -128 to +127 bytes
+    // of the first byte of the next instruction (JMP 00H jumps to the first
+    // byte of the next instruction). Since the jump is made by adding the
+    // relative displacement of the target to the IP, all conditional jumps are
+    // self-relative and are appropriate for position-independent routines.
+    // NOTE: 'above' and 'below' refer to the relationship of two unsigned
+    // values; 'greater' and 'less' refer to the relationship of two signed
+    // values;
+    ////////////////////////////////////////////////////////////////////////////
+
+    /// Jump if overflow (OF=1)
     jo_jump_on_overflow                         = 0x70,
+    /// Jump if not overflow (OF=0)
     jno_jump_on_not_overflow                    = 0x71,
+    /// Jump if below/not above nor equal (CF=1)
     jb_jnae_jump_on_below_not_above_or_equal    = 0x72,
+    /// Jump if above or equal/not below (CF=0)
     jnb_jae_jump_on_not_below_above_or_equal    = 0x73,
+    /// Jump if equal or zero (ZF=1)
     je_jz_jump_on_equal_zero                    = 0x74,
+    /// Jump if not equal or not zero (ZF=0)
     jne_jnz_jumb_on_not_equal_not_zero          = 0x75,
+    /// Jump if below or equal/not above (CF or ZF)=1
     jbe_jna_jump_on_below_or_equal_above        = 0x76,
+    /// Jump if above/not below nor equal (CF or ZF)=0
     jnbe_ja_jump_on_not_below_or_equal_above    = 0x77,
+    /// Jump if sign (SF=1)
     js_jump_on_sign                             = 0x78,
+    /// Jump if not sign (SF=0)
     jns_jump_on_not_sign                        = 0x79,
+    /// Jump if parity/parity equal (PF=1)
     jp_jpe_jump_on_parity_parity_even           = 0x7A,
+    /// Jump if not parity/parity odd (PF=0)
     jnp_jpo_jump_on_not_parity_parity_odd       = 0x7B,
+    /// Jump if less/not greater nor equal (SF xor OF)=1
     jl_jnge_jump_on_less_not_greater_or_equal   = 0x7C,
+    /// Jump if greater or equal/not less (SF xor OF)=0
     jnl_jge_jump_on_not_less_greater_or_equal   = 0x7D,
+    /// Jump if greater/not less nor equal ((SF xor OF) or ZF)=0
     jle_jng_jump_on_less_or_equal_not_greater   = 0x7E,
+    /// Jump if not less/greater or eqal ((SF xor OF) or ZF)=1
     jnle_jg_jump_on_not_less_or_equal_greater   = 0x7F,
 
     /// Immediate 8 bit value <action> to/with/from 8 bit register/memory operation (DATA-8).
@@ -801,8 +834,11 @@ pub const BinaryInstructions = enum(u8) {
     /// in AL. This converts the binary value in AX into two unpacked BCD
     /// digits stored in AH (high order digit) and AL (low order digit).
     aam_ASCII_adjust_multiply                   = 0xD4,
-
-    // TODO: Implmement ASCII adjust divide
+    /// Modifies the numerator in AL before(!) dividing two valid unpacked
+    /// decimal operands so that the quotient produced by the division will be
+    /// a valid unpacked decimal number. AH must be zero for the subsequent
+    /// DIV to produce the correct result. The quotient is returned in AL and
+    /// the ramainder is returned in AH; both high-order half-bytes are zeroed.
     aad_ASCII_adjust_divide                     = 0xD5,
 
     // TODO: Implement xlat
@@ -818,12 +854,22 @@ pub const BinaryInstructions = enum(u8) {
     esc_external_opcode_110_yyy_source          = 0xDE,
     esc_external_opcode_111_yyy_source          = 0xDF,
 
-    // TODO: Implement loops
+    /// LOOPNE and LOOPNZ (Loop While Not Equal and Loop While Not Zero) are
+    /// synonyms for the same instruction. CX is decremented by 1, and control
+    /// is transferred to the target operand if CX is not 0 and if ZF is clear;
+    /// otherwise the next sequential instruction is executed.
     loopne_loopnz_loop_while_not_zero_equal     = 0xE0,
+    /// LOOPE and LOOPZ (Loop While Equal and Loop While Zerol) different
+    /// mnemonics for the same instruction. CX is decremented by 1, and
+    /// control is transferred to the target operand if CX is not 0 and if ZF
+    /// is set; otherwise the instruction following LOOPE/LOOPZ is executed.
     loope_loopz_loop_while_zero_equal           = 0xE1,
+    /// LOOP decrements CX by 1 and transfers control to the target operand if
+    /// CX is not 0; otherwise the instruction following the LOOP is executed.
     loop_loop_cx_times                          = 0xE2,
-
-    // TODO: Implement jump
+    /// JCXZ (Jump If CX Zero) transfers control to the target operand if CX
+    /// is 0. This instruction is useful at the beginning of a loop to bypass
+    /// the loop if CX has a zero value, i.e., to execute the loop zero times.
     jcxz_jump_on_cx_zero                        = 0xE3,
 
     // TODO: Implement in fixed port
@@ -835,16 +881,41 @@ pub const BinaryInstructions = enum(u8) {
     out_ax_immed8                               = 0xE7,
 
     /// SP is decremented by two and IP is pushed onto the stack.
-    /// The relative displacement (up to +- 32k) of the target prodedure
+    /// The relative displacement (up to +- 32k) of the target procedure
     /// from the call instruction is then added to the IP. This form of
     /// call instruction is self-relative and is appropriate for
     /// position-independent (dynamically relocatable) routines in which
     /// the call and its target are in the same segment and are moved together.
     call_direct_within_segment                  = 0xE8,
 
-    // TODO: Implement jmp
+    // JMP /////////////////////////////////////////////////////////////////////
+    // Unconditionally transfers control to the target location. Unlike a
+    // CALL instruction, JMP does not save any information on the stack, and
+    // no return to the instruction followint he JMP is expected. Like CALL,
+    // the address of the target operand may be obtained from the instruction
+    // itself (direct JMP) or from memory or a register referenced by the
+    // instruction (indirect JMP).
+    ////////////////////////////////////////////////////////////////////////////
+
+    /// An intra-segment direct JMP changes the instruction pointer by adding
+    /// relative (meaning signed) displacement of the target from the JMP
+    /// instruction. If the assembler can determine that the target is not
+    /// within 127 bytes but within +- 32k bytes it generates a NEAR JMP.
+    /// Intra-segment direct JMPS are self-relative and are appropriate in
+    /// position-independent (dynamically relocatable) routines in which the JMP
+    /// and its target are in the same segment and are moved together.
     jmp_direct_within_segment                   = 0xE9,
+    /// An inter-segment direct JMP replaces IP and CS with values contained in
+    /// the instruction.
     jmp_direct_intersegment                     = 0xEA,
+    /// An intra-segment direct JMP changes the instruction pointer by adding
+    /// relative (meaning signed) displacement of the target from the JMP
+    /// instruction. If the assembler can determine that the target is within
+    /// 127 bytes of the JMP, it automatically generates a two-byte form of
+    /// instruction called a SHORT JMP. Intra-segment direct JMPS are
+    /// self-relative and are appropriate in position-independent (dynamically
+    /// relocatable) routines in which the JMP and its target are in the same
+    /// segment and are moved together.
     jmp_direct_within_segment_short             = 0xEB,
 
     // TODO: Implement in variable port
@@ -1884,9 +1955,6 @@ pub fn decode(
                 },
             };
             const d: ?DValue = switch (opcode) {
-                .test_regmem8_reg8,
-                .test_regmem16_reg16,
-                .xchg_reg8_regmem8,
                 .xchg_reg16_regmem16,
                 .lea_reg16_mem16,
                 .load_es_regmem16,
