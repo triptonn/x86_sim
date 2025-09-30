@@ -722,11 +722,29 @@ pub fn getInstructionSourceAndDest(
                     };
                 },
 
-                // TODO: Next step is to add InstructionInfo returns for these opcodes
-                .test_regmem8_reg8,
-                .test_regmem16_reg16,
                 .xchg_reg8_regmem8,
                 .xchg_reg16_regmem16,
+                => {
+                    const ea_calc: EffectiveAddressCalculation = BusInterfaceUnit.calculateEffectiveAddress(
+                        EU,
+                        w.?,
+                        mod,
+                        rm,
+                        disp_lo,
+                        disp_hi,
+                    );
+                    const register: Address = registerNameFromReg(w.?, reg);
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .address = register,
+                        },
+                        .source_info = SourceInfo{
+                            .address_calculation = ea_calc,
+                        },
+                    };
+                },
+                .test_regmem8_reg8,
+                .test_regmem16_reg16,
                 .lea_reg16_mem16,
                 .load_ds_regmem16,
                 .load_es_regmem16,
@@ -784,16 +802,6 @@ pub fn getInstructionSourceAndDest(
                     };
                 },
                 .nop_xchg_ax_ax,
-                => {
-                    return InstructionInfo{
-                        .destination_info = DestinationInfo{
-                            .none = {},
-                        },
-                        .source_info = SourceInfo{
-                            .none = {},
-                        },
-                    };
-                },
                 .xchg_ax_cx,
                 .xchg_ax_dx,
                 .xchg_ax_bx,

@@ -618,10 +618,16 @@ pub const BinaryInstructions = enum(u8) {
     test_regmem8_reg8                           = 0x84,
     test_regmem16_reg16                         = 0x85,
 
-    // TODO: Implmement xchg
+    /// XCHG (exchange) switches the contents of the source and destination byte
+    /// operands. When used in conjunction with the LOCK prefix, XCHG can test
+    /// and set a semphore that controls access to a resource shared by multiple
+    /// processors.
     xchg_reg8_regmem8                           = 0x86,
+    /// XCHG (exchange) switches the contents of the source and destination word
+    /// operands. When used in conjunction with the LOCK prefix, XCHG can test
+    /// and set a semphore that controls access to a resource shared by multiple
+    /// processors.
     xchg_reg16_regmem16                         = 0x87,
-
     /// 8 bit Register/memory to/from register with Reg defining the source
     /// and R/M defining the destination. If R/M is .DHSI_DIRECTACCESS_BPD8_BPD16
     /// (0b110) a 16 bit displacement follows, so the instruction length is 4 bytes.
@@ -749,7 +755,6 @@ pub const BinaryInstructions = enum(u8) {
     mov_si_immed16                              = 0xBE,
     /// 16 bit Immediate to register di
     mov_di_immed16                              = 0xBF,
-
     /// Intra-segment return transfers control from a procedure
     /// back to the instruction following the CALL that activated
     /// the procedure, if the procedure was defined as near. It pops
@@ -765,15 +770,13 @@ pub const BinaryInstructions = enum(u8) {
     /// pops the word at the top of the stack (pointed to by SP) into
     /// the IP and increments SP by two.
     ret_within_segment                          = 0xC3,
-
     /// Load pointer to ES
     load_es_regmem16                            = 0xC4,
     /// Load pointer to DS
     load_ds_regmem16                            = 0xC5,
-
-    /// Immediate to register/memory
+    /// Immediate 8 bit to register/memory
     mov_mem8_immed8                             = 0xC6,
-    /// Immediate to register/memory
+    /// Immediate 16 bit to register/memory
     mov_mem16_immed16                           = 0xC7,
 
     /// Intersegment return transfers control from a procedure
@@ -793,7 +796,6 @@ pub const BinaryInstructions = enum(u8) {
     /// the IP and increments SP by two. Then the new word at the top of
     /// the stack is popped into CS, SP is again incremented by two.
     ret_intersegment                            = 0xCB,
-
     /// Activates the interrupt procedure specified by the interrupt-type
     /// operand. INT decrements the stack pointer by two, pushes the flags
     /// onto the stack and clears the trap (TF) and interrupt-enable (IF)
@@ -871,15 +873,22 @@ pub const BinaryInstructions = enum(u8) {
     /// is 0. This instruction is useful at the beginning of a loop to bypass
     /// the loop if CX has a zero value, i.e., to execute the loop zero times.
     jcxz_jump_on_cx_zero                        = 0xE3,
-
-    // TODO: Implement in fixed port
+    /// Transfers a byte or a word from an input port  to the AL register. The
+    /// port number is specified with an immediate byte constant, allowing
+    /// access to ports numbered 0 through 255.
     in_al_immed8                                = 0xE4,
+    /// Transfers a byte or a word from an input port  to the AX register. The
+    /// port number is specified with an immediate byte constant, allowing
+    /// access to ports numbered 0 through 255.
     in_ax_immed8                                = 0xE5,
-
-    // TODO: Implement out fixed port
+    /// Transfers a byte or a word from the AL register to an output port.
+    /// The port number is specified with an immediate byte constant, allowing
+    /// access to ports numbered 0 through 255.
     out_al_immed8                               = 0xE6,
+    /// Transfers a byte or a word from the AX register to an output port.
+    /// The port number is specified with an immediate byte constant, allowing
+    /// access to ports numbered 0 through 255.
     out_ax_immed8                               = 0xE7,
-
     /// SP is decremented by two and IP is pushed onto the stack.
     /// The relative displacement (up to +- 32k) of the target procedure
     /// from the call instruction is then added to the IP. This form of
@@ -919,6 +928,9 @@ pub const BinaryInstructions = enum(u8) {
     jmp_direct_within_segment_short             = 0xEB,
 
     // TODO: Implement in variable port
+    /// The port number is specified with a number previously placed in the DX
+    /// register, allowing variable access (by changing the value in DX) to
+    /// ports numbered 0 through 65,535.
     in_al_dx                                    = 0xEC,
     in_ax_dx                                    = 0xED,
 
@@ -1350,7 +1362,11 @@ pub fn getInstructionLength(
         BinaryInstructions.xor_al_immed8,
         BinaryInstructions.cmp_al_immed8,
         BinaryInstructions.test_al_immed8,
+        BinaryInstructions.in_al_immed8,
+        BinaryInstructions.in_ax_immed8,
         BinaryInstructions.in_al_dx,
+        BinaryInstructions.out_al_immed8,
+        BinaryInstructions.out_ax_immed8,
         BinaryInstructions.out_al_dx,
         => 2, // opcode + data_8
         BinaryInstructions.add_ax_immed16,
@@ -1743,10 +1759,6 @@ pub fn getInstructionLength(
         BinaryInstructions.lods_word,
         BinaryInstructions.scas_byte,
         BinaryInstructions.scas_word,
-        BinaryInstructions.in_al_immed8,
-        BinaryInstructions.in_ax_immed8,
-        BinaryInstructions.out_al_immed8,
-        BinaryInstructions.out_ax_immed8,
         BinaryInstructions.repne_repnz_not_equal_zero,
         BinaryInstructions.rep_repe_repz_equal_zero,
         => 1, // opcode
@@ -1795,12 +1807,14 @@ pub fn decode(
         BinaryInstructions.out_al_immed8,
         BinaryInstructions.out_ax_immed8,
         => {
+            const AccumulatorOps = ScopedInstruction(.AccumulatorOp);
+            const accumulator_ops: AccumulatorOps = @enumFromInt(@intFromEnum(opcode));
             const w: WValue = @enumFromInt((input[0] << 7) >> 7);
 
             result = InstructionData{
                 .accumulator_op = AccumulatorOp{
                     .opcode = opcode,
-                    .mnemonic = switch (opcode) {
+                    .mnemonic = switch (accumulator_ops) {
                         .add_al_immed8,
                         .add_ax_immed16,
                         => "add",
@@ -1923,10 +1937,13 @@ pub fn decode(
         BinaryInstructions.load_es_regmem16,
         BinaryInstructions.load_ds_regmem16,
         => {
+            const RegisterMemoryToFromRegisterOps = ScopedInstruction(.RegisterMemoryToFromRegisterOp);
+            const register_memory_to_from_register_ops: RegisterMemoryToFromRegisterOps = @enumFromInt(@intFromEnum(opcode));
+
             const mod: ModValue = @enumFromInt(input[1] >> 6);
             const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
             const reg: RegValue = @enumFromInt((input[1] << 2) >> 5);
-            const mnemonic: []const u8 = switch (opcode) {
+            const mnemonic: []const u8 = switch (register_memory_to_from_register_ops) {
                 .add_regmem8_reg8,
                 .add_regmem16_reg16,
                 .add_reg8_regmem8,
@@ -1984,11 +2001,9 @@ pub fn decode(
                 => "les",
                 .load_ds_regmem16,
                 => "lds",
-                else => {
-                    return InstructionDecodeError.InstructionError;
-                },
             };
             const d: ?DValue = switch (opcode) {
+                .xchg_reg8_regmem8,
                 .xchg_reg16_regmem16,
                 .lea_reg16_mem16,
                 .load_es_regmem16,
@@ -2152,18 +2167,7 @@ pub fn decode(
             };
             return result;
         },
-        BinaryInstructions.nop_xchg_ax_ax => {
-            const reg: RegValue = @enumFromInt((input[0] << 5) >> 5);
-
-            result = InstructionData{
-                .register_op = RegisterOp{
-                    .opcode = opcode,
-                    .mnemonic = "nop",
-                    .reg = reg,
-                },
-            };
-            return result;
-        },
+        BinaryInstructions.nop_xchg_ax_ax,
         BinaryInstructions.xchg_ax_cx,
         BinaryInstructions.xchg_ax_dx,
         BinaryInstructions.xchg_ax_bx,
