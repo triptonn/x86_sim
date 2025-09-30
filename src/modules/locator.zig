@@ -331,7 +331,7 @@ pub fn getInstructionSourceAndDest(
                     };
                 },
 
-                // zig fmt: off
+                // zig fmt: on
             }
         },
         .escape_op => return LocatorError.NotYetImplemented,
@@ -395,8 +395,88 @@ pub fn getInstructionSourceAndDest(
                 },
             };
         },
-        .identifier_inc_op,
-        => return LocatorError.NotYetImplemented,
+        .identifier_inc_op => {
+            const identifier: IncSet = instruction_data.identifier_inc_op.identifier;
+            const w: ?Width = instruction_data.identifier_inc_op.w;
+            const mod: MOD = instruction_data.identifier_inc_op.mod;
+            const rm: RM = instruction_data.identifier_inc_op.rm;
+            const disp_lo: ?u8 = instruction_data.identifier_inc_op.disp_lo;
+            const disp_hi: ?u8 = instruction_data.identifier_inc_op.disp_hi;
+            switch (identifier) {
+                IncSet.inc => {
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                                EU,
+                                w.?,
+                                mod,
+                                rm,
+                                disp_lo,
+                                disp_hi,
+                            ),
+                        },
+                        .source_info = SourceInfo{
+                            .none = {},
+                        },
+                    };
+                },
+                IncSet.dec => {
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                                EU,
+                                w.?,
+                                mod,
+                                rm,
+                                disp_lo,
+                                disp_hi,
+                            ),
+                        },
+                        .source_info = SourceInfo{
+                            .none = {},
+                        },
+                    };
+                },
+                IncSet.call_within,
+                IncSet.call_intersegment,
+                IncSet.jmp_within,
+                IncSet.jmp_intersegment,
+                => {
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .indirect_target = BusInterfaceUnit.calculateEffectiveAddress(
+                                EU,
+                                Width.word,
+                                mod,
+                                rm,
+                                disp_lo,
+                                disp_hi,
+                            ),
+                        },
+                        .source_info = SourceInfo{
+                            .none = {},
+                        },
+                    };
+                },
+                IncSet.push => {
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .none = {},
+                        },
+                        .source_info = SourceInfo{
+                            .push_word = BusInterfaceUnit.calculateEffectiveAddress(
+                                EU,
+                                Width.word,
+                                mod,
+                                rm,
+                                disp_lo,
+                                disp_hi,
+                            ),
+                        },
+                    };
+                },
+            }
+        },
         .identifier_rol_op => {
             const Address = RegisterNames;
             const v: Variable = instruction_data.identifier_rol_op.v;
@@ -538,7 +618,7 @@ pub fn getInstructionSourceAndDest(
             };
         },
         .register_memory_op => {
-            const Address = RegisterNames;
+            // const Address = RegisterNames;
             const mod: MOD = instruction_data.register_memory_op.mod;
             const rm: RM = instruction_data.register_memory_op.rm;
             const disp_lo: ?u8 = instruction_data.register_memory_op.disp_lo;
@@ -546,7 +626,7 @@ pub fn getInstructionSourceAndDest(
 
             return InstructionInfo{
                 .destination_info = DestinationInfo{
-                    .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                    .pop_word = BusInterfaceUnit.calculateEffectiveAddress(
                         EU,
                         Width.word,
                         mod,
@@ -556,7 +636,8 @@ pub fn getInstructionSourceAndDest(
                     ),
                 },
                 .source_info = SourceInfo{
-                    .address = Address.sp,
+                    // .address = Address.sp,
+                    .none = {},
                 },
             };
         },
@@ -754,14 +835,50 @@ pub fn getInstructionSourceAndDest(
                 },
                 .push_es,
                 .pop_es,
+                => {
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .address = Address.es,
+                        },
+                        .source_info = SourceInfo{
+                            .none = {},
+                        },
+                    };
+                },
                 .push_cs,
+                => {
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .address = Address.cs,
+                        },
+                        .source_info = SourceInfo{
+                            .none = {},
+                        },
+                    };
+                },
                 .push_ss,
                 .pop_ss,
+                => {
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .address = Address.ss,
+                        },
+                        .source_info = SourceInfo{
+                            .none = {},
+                        },
+                    };
+                },
                 .push_ds,
                 .pop_ds,
                 => {
-                    // TODO: Add missing SegmentRegisterOp cases to getInstructionSourceAndDest()
-                    return LocatorError.NotYetImplemented;
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .address = Address.ds,
+                        },
+                        .source_info = SourceInfo{
+                            .none = {},
+                        },
+                    };
                 },
                 .mov_segreg_regmem16 => return InstructionInfo{
                     .destination_info = DestinationInfo{

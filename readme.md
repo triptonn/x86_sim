@@ -23,18 +23,18 @@ Using the information [provided by Intel](https://archive.org/details/bitsavers_
 Test data is available [here](https://github.com/cmuratori/computer_enhance).
 
 #### ASM-86 Implementation State
-[x] Accumulator instructions
-[ ] Escape instructions
-[x] Register/memory to/from register instructions
-[x] Register/memory instructions     
-[x] Register instructions
-[ ] Immediate to Register
-[ ] Immediate to Memory
-[ ] Segment register instructions
-[ ] Logic operations
-[ ] Arithmetic operations
-[ ] Unconditional transfers
-[ ] Conditional transfers
+- [x] Accumulator instructions
+- [ ] Escape instructions
+- [x] Register/memory to/from register instructions
+- [x] Register/memory instructions
+- [x] Register instructions
+- [ ] Immediate to Register
+- [ ] Immediate to Memory
+- [ ] Segment register instructions
+- [ ] Logic operations
+- [ ] Arithmetic operations
+- [ ] Unconditional transfers
+- [ ] Conditional transfers
 
 ## Learnings
 - How to write performant code accross all languages (Thanks Casey Muratory!)

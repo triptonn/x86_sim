@@ -194,6 +194,14 @@ fn prepareInstructionLine(
                 }
             }
         },
+        .indirect_target => {
+            const res = try std.fmt.allocPrint(
+                allocator,
+                " NOT_PRINTABLE",
+                .{},
+            );
+            break :dest_switch res;
+        },
         DestinationInfo.intrasegment => {
             const res = try std.fmt.allocPrint(
                 allocator,
@@ -217,6 +225,99 @@ fn prepareInstructionLine(
                 .{destination.mem_addr},
             );
             break :dest_switch res;
+        },
+        DestinationInfo.pop_word => {
+            const Address = RegisterNames;
+
+            const base = destination.pop_word.base;
+            const index = destination.pop_word.index;
+            const displacement = destination.pop_word.displacement;
+            const displacement_value = destination.pop_word.displacement_value;
+            const signed_displacement_value = destination.pop_word.signed_displacement_value;
+
+            const only_displacement = base == Address.none;
+            const no_index: bool = index == Address.none;
+            const no_displacement: bool = displacement == DisplacementFormat.none;
+
+            if (no_displacement) {
+                if (no_index) {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " word [{t}]",
+                        .{base.?},
+                    );
+                    break :dest_switch res;
+                } else {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " word [{t} + {t}]",
+                        .{
+                            base.?,
+                            index.?,
+                        },
+                    );
+                    break :dest_switch res;
+                }
+            } else {
+                if (only_displacement) {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " word [{d}]",
+                        .{displacement_value.?},
+                    );
+                    break :dest_switch res;
+                } else if (no_index and signed_displacement_value.? >= 0) {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " word [{t} + {d}]",
+                        .{
+                            base.?,
+                            signed_displacement_value.?,
+                        },
+                    );
+                    break :dest_switch res;
+                } else if (no_index) {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " word [{t} - {d}]",
+                        .{
+                            base.?,
+                            -signed_displacement_value.?,
+                        },
+                    );
+                    break :dest_switch res;
+                } else if (signed_displacement_value.? >= 0) {
+                    switch (opcode) {
+                        else => {
+                            const res = try std.fmt.allocPrint(
+                                allocator,
+                                " word [{t} + {t} + {d}]",
+                                .{
+                                    base.?,
+                                    index.?,
+                                    signed_displacement_value.?,
+                                },
+                            );
+                            break :dest_switch res;
+                        },
+                    }
+                } else {
+                    switch (opcode) {
+                        else => {
+                            const res = try std.fmt.allocPrint(
+                                allocator,
+                                " word [{t} + {t} - {d}]",
+                                .{
+                                    base.?,
+                                    index.?,
+                                    -signed_displacement_value.?,
+                                },
+                            );
+                            break :dest_switch res;
+                        },
+                    }
+                }
+            }
         },
         DestinationInfo.none => "",
     };
@@ -418,6 +519,99 @@ fn prepareInstructionLine(
                 },
             );
             break :source_switch res;
+        },
+        SourceInfo.push_word => {
+            const Address = RegisterNames;
+
+            const base = source.push_word.base;
+            const index = source.push_word.index;
+            const displacement = source.push_word.displacement;
+            const displacement_value = source.push_word.displacement_value;
+            const signed_displacement_value = source.push_word.signed_displacement_value;
+
+            const only_displacement = base == Address.none;
+            const no_index: bool = index == Address.none;
+            const no_displacement: bool = displacement == DisplacementFormat.none;
+
+            if (no_displacement) {
+                if (no_index) {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " word [{t}]",
+                        .{base.?},
+                    );
+                    break :source_switch res;
+                } else {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " word [{t} + {t}]",
+                        .{
+                            base.?,
+                            index.?,
+                        },
+                    );
+                    break :source_switch res;
+                }
+            } else {
+                if (only_displacement) {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " word [{d}]",
+                        .{displacement_value.?},
+                    );
+                    break :source_switch res;
+                } else if (no_index and signed_displacement_value.? >= 0) {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " word [{t} + {d}]",
+                        .{
+                            base.?,
+                            signed_displacement_value.?,
+                        },
+                    );
+                    break :source_switch res;
+                } else if (no_index) {
+                    const res = try std.fmt.allocPrint(
+                        allocator,
+                        " word [{t} - {d}]",
+                        .{
+                            base.?,
+                            -signed_displacement_value.?,
+                        },
+                    );
+                    break :source_switch res;
+                } else if (signed_displacement_value.? >= 0) {
+                    switch (opcode) {
+                        else => {
+                            const res = try std.fmt.allocPrint(
+                                allocator,
+                                " word [{t} + {t} + {d}]",
+                                .{
+                                    base.?,
+                                    index.?,
+                                    signed_displacement_value.?,
+                                },
+                            );
+                            break :source_switch res;
+                        },
+                    }
+                } else {
+                    switch (opcode) {
+                        else => {
+                            const res = try std.fmt.allocPrint(
+                                allocator,
+                                " word [{t} + {t} - {d}]",
+                                .{
+                                    base.?,
+                                    index.?,
+                                    -signed_displacement_value.?,
+                                },
+                            );
+                            break :source_switch res;
+                        },
+                    }
+                }
+            }
         },
         SourceInfo.none => "",
     };

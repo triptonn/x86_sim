@@ -296,7 +296,6 @@ pub fn main() !void {
         const scope = decoder.instructionScope(opcode);
         switch (scope) {
             .AccumulatorOp,
-            .RegisterMemoryOp,
             .RegisterOp,
             .SegmentRegisterOp,
             .SingleByteOp,
@@ -310,6 +309,7 @@ pub fn main() !void {
             .IdentifierRolOp,
             .ImmediateToMemoryOp,
             .ImmediateToRegisterOp,
+            .RegisterMemoryOp,
             .RegisterMemoryToFromRegisterOp,
             => {
                 const mod: ModValue = @enumFromInt(BIU.getIndex(1) >> 6);

@@ -1005,8 +1005,42 @@ pub const BinaryInstructions = enum(u8) {
     // TODO: Implement std - set direction
     std_set_direction                           = 0xFD,
 
-    // TODO: Implement Register/memory
+
+    // Identifier Inc Operations ///////////////////////////////////////////////
+    //
+    //
+    ////////////////////////////////////////////////////////////////////////////
+
+    /// Carries an identifier in the second byte to distinguish between:
+    /// - INC: Adds one to the destination operand. The operand byte is treated
+    /// as an unsigned binary number.
+    /// - DEC: Subtracts one from the destination byte.
     regmem8                                     = 0xFE,
+    /// Carries an identifier in the second byte to distinguish between:
+    /// - INC: Adds one to the destination operand. The operand word is treated
+    /// as an unsigned binary number.
+    /// - DEC: Subtracts one from the destination word.
+    /// - CALL indirect intra-segment: SP is decremented by two and IP is pushed
+    /// onto the stack. The offset of the target procedure is obtained from the
+    /// memory word or 16-bit general register referenced in the instruction and
+    /// replaces IP.
+    /// - CALL indirect inter-segment: SP is decremented by two, and CS is pushed
+    /// onto the stack. CS is then replaced by the content of the second word of
+    /// the doubleword memory pointer referenced by the instruction. SP again is
+    /// decremented by two, and IP is pushed onto the stack and is replaced by
+    /// the content of the first word of the doubleword pointer referenced by
+    /// the instruction.
+    /// - JMP indirect intra-segment: Either through memory or through a 16-bit
+    /// general register. In the first case, the content of the word referenced
+    /// by the instruction replaces the IP. In the second case, the new IP value
+    /// is taken from the register named in the instruction.
+    /// - JMP indirect inter-segment: Only through memory. The first word of the
+    /// doubleword pointer referenced by the instruction replaces IP and the
+    /// second word replaces CS.
+    /// - PUSH: Decrements SP by two and then transfers a word from the source
+    /// operand to the top of the stack now pointed to by SP. PUSH often is used
+    /// to place paramters on the stack before calling a procedure; more
+    /// generally, it is the basic means of storing temporary data on the stack.
     regmem16                                    = 0xFF,
 };
 
@@ -2008,13 +2042,13 @@ pub fn decode(
             const mod: ModValue = @enumFromInt(input[1] >> 6);
             const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
             const disp_lo: ?u8 = switch (mod) {
-                .memoryModeNoDisplacement => if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
+                .memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[2] else null,
                 .memoryMode8BitDisplacement => input[2],
                 .memoryMode16BitDisplacement => input[2],
                 .registerModeNoDisplacement => null,
             };
             const disp_hi: ?u8 = switch (mod) {
-                .memoryModeNoDisplacement => if (rm != RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[3] else null,
+                .memoryModeNoDisplacement => if (rm == RmValue.DHSI_DIRECTACCESS_BPD8_BPD16) input[3] else null,
                 .memoryMode8BitDisplacement => null,
                 .memoryMode16BitDisplacement => input[3],
                 .registerModeNoDisplacement => null,
@@ -2890,7 +2924,7 @@ pub fn decode(
         BinaryInstructions.regmem8,
         BinaryInstructions.regmem16,
         => {
-            const mod: ModValue = @enumFromInt(input[0] >> 6);
+            const mod: ModValue = @enumFromInt(input[1] >> 6);
             const identifier: IncSet = @enumFromInt((input[1] << 2) >> 5);
             const rm: RmValue = @enumFromInt((input[1] << 5) >> 5);
             const disp_lo: ?u8 = switch (mod) {

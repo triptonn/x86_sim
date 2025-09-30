@@ -111,18 +111,22 @@ pub const data_types = struct {
     const DestinationInfoIdentifiers = enum {
         address,
         address_calculation,
+        indirect_target,
         intersegment,
         intrasegment,
         mem_addr,
+        pop_word,
         none,
     };
 
     pub const DestinationInfo = union(DestinationInfoIdentifiers) {
         address: RegisterNames,
         address_calculation: EffectiveAddressCalculation,
+        indirect_target: EffectiveAddressCalculation,
         intersegment: u20,
         intrasegment: i16,
         mem_addr: u20,
+        pop_word: EffectiveAddressCalculation,
         none: void,
     };
 
@@ -130,10 +134,11 @@ pub const data_types = struct {
         address,
         address_calculation,
         immediate,
-        jump_distance,
         intersegment_direct_jump,
+        jump_distance,
         mem_addr,
         none,
+        push_word,
         unsigned_immediate,
     };
 
@@ -141,10 +146,11 @@ pub const data_types = struct {
         address: RegisterNames,
         address_calculation: EffectiveAddressCalculation,
         immediate: i16,
-        jump_distance: i16,
         intersegment_direct_jump: [2]u16,
+        jump_distance: i16,
         mem_addr: u20,
         none: void,
+        push_word: EffectiveAddressCalculation,
         unsigned_immediate: u16,
     };
 };
