@@ -1364,10 +1364,8 @@ pub fn getInstructionLength(
         BinaryInstructions.test_al_immed8,
         BinaryInstructions.in_al_immed8,
         BinaryInstructions.in_ax_immed8,
-        BinaryInstructions.in_al_dx,
         BinaryInstructions.out_al_immed8,
         BinaryInstructions.out_ax_immed8,
-        BinaryInstructions.out_al_dx,
         => 2, // opcode + data_8
         BinaryInstructions.add_ax_immed16,
         BinaryInstructions.or_ax_immed16,
@@ -1378,9 +1376,12 @@ pub fn getInstructionLength(
         BinaryInstructions.xor_ax_immed16,
         BinaryInstructions.cmp_ax_immed16,
         BinaryInstructions.test_ax_immed16,
-        BinaryInstructions.in_ax_dx,
-        BinaryInstructions.out_ax_dx,
         => 3, // opcode + data_lo + data_hi
+        BinaryInstructions.in_al_dx,
+        BinaryInstructions.in_ax_dx,
+        BinaryInstructions.out_al_dx,
+        BinaryInstructions.out_ax_dx,
+        => 1, // opcode + data_lo + data_hi
         BinaryInstructions.mov_al_mem8,
         BinaryInstructions.mov_ax_mem16,
         BinaryInstructions.mov_mem8_al,

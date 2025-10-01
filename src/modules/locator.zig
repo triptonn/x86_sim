@@ -114,10 +114,6 @@ pub fn getInstructionSourceAndDest(
                 .cmp_ax_immed16,
                 .test_al_immed8,
                 .test_ax_immed16,
-                .in_al_immed8,
-                .in_ax_immed8,
-                .out_al_immed8,
-                .out_ax_immed8,
                 => {
                     const Address = RegisterNames;
                     const w = instruction_data.accumulator_op.w;
@@ -133,6 +129,37 @@ pub fn getInstructionSourceAndDest(
                             },
                             .source_info = SourceInfo{
                                 .immediate = @intCast(signed_immed8),
+                            },
+                        };
+                    } else {
+                        return InstructionInfo{
+                            .destination_info = DestinationInfo{
+                                .address = Address.ax,
+                            },
+                            .source_info = SourceInfo{
+                                .immediate = @bitCast((@as(u16, data_hi.?) << 8) + @as(u16, data_lo.?)),
+                            },
+                        };
+                    }
+                },
+                .in_al_immed8,
+                .in_ax_immed8,
+                .out_al_immed8,
+                .out_ax_immed8,
+                => {
+                    const Address = RegisterNames;
+                    const w = instruction_data.accumulator_op.w;
+                    const data_8: ?u8 = instruction_data.accumulator_op.data_8;
+                    const data_lo: ?u8 = instruction_data.accumulator_op.data_lo;
+                    const data_hi: ?u8 = instruction_data.accumulator_op.data_hi;
+
+                    if (w == Width.byte) {
+                        return InstructionInfo{
+                            .destination_info = DestinationInfo{
+                                .address = Address.al,
+                            },
+                            .source_info = SourceInfo{
+                                .immediate = @intCast(data_8.?),
                             },
                         };
                     } else {
@@ -736,10 +763,10 @@ pub fn getInstructionSourceAndDest(
                     const register: Address = registerNameFromReg(w.?, reg);
                     return InstructionInfo{
                         .destination_info = DestinationInfo{
-                            .address = register,
+                            .address_calculation = ea_calc,
                         },
                         .source_info = SourceInfo{
-                            .address_calculation = ea_calc,
+                            .address = register,
                         },
                     };
                 },
@@ -946,8 +973,60 @@ pub fn getInstructionSourceAndDest(
                 },
             }
         },
-        .single_byte_op,
-        => return LocatorError.NotYetImplemented,
+        .single_byte_op => {
+            const SingleByteOps = decoder.ScopedInstruction(.SingleByteOp);
+            const single_byte_ops: SingleByteOps = @enumFromInt(@intFromEnum(opcode));
+
+            const Address = RegisterNames;
+
+            switch (single_byte_ops) {
+                .in_al_dx,
+                => {
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .address = Address.al,
+                        },
+                        .source_info = SourceInfo{
+                            .address = Address.dx,
+                        },
+                    };
+                },
+                .in_ax_dx,
+                => {
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .address = Address.ax,
+                        },
+                        .source_info = SourceInfo{
+                            .address = Address.dx,
+                        },
+                    };
+                },
+                .out_al_dx,
+                => {
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .address = Address.dx,
+                        },
+                        .source_info = SourceInfo{
+                            .address = Address.al,
+                        },
+                    };
+                },
+                .out_ax_dx,
+                => {
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .address = Address.dx,
+                        },
+                        .source_info = SourceInfo{
+                            .address = Address.ax,
+                        },
+                    };
+                },
+                else => return LocatorError.NotYetImplemented,
+            }
+        },
     }
 }
 
