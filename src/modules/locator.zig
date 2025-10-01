@@ -770,11 +770,33 @@ pub fn getInstructionSourceAndDest(
                         },
                     };
                 },
-                .test_regmem8_reg8,
-                .test_regmem16_reg16,
                 .lea_reg16_mem16,
                 .load_ds_regmem16,
                 .load_es_regmem16,
+                => {
+                    const register: Address = registerNameFromReg(
+                        Width.word,
+                        reg,
+                    );
+
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .address = register,
+                        },
+                        .source_info = SourceInfo{
+                            .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                                EU,
+                                Width.word,
+                                mod,
+                                rm,
+                                disp_lo,
+                                disp_hi,
+                            ),
+                        },
+                    };
+                },
+                .test_regmem8_reg8,
+                .test_regmem16_reg16,
                 => return LocatorError.NotYetImplemented,
             }
         },
@@ -1021,6 +1043,17 @@ pub fn getInstructionSourceAndDest(
                         },
                         .source_info = SourceInfo{
                             .address = Address.ax,
+                        },
+                    };
+                },
+                .xlat_translate_byte_to_al,
+                => {
+                    return InstructionInfo{
+                        .destination_info = DestinationInfo{
+                            .none = {},
+                        },
+                        .source_info = SourceInfo{
+                            .none = {},
                         },
                     };
                 },

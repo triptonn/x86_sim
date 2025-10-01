@@ -842,8 +842,15 @@ pub const BinaryInstructions = enum(u8) {
     /// DIV to produce the correct result. The quotient is returned in AL and
     /// the ramainder is returned in AH; both high-order half-bytes are zeroed.
     aad_ASCII_adjust_divide                     = 0xD5,
-
-    // TODO: Implement xlat
+    /// Translate replaces a byte in the AL register with a byte from a 256-byte,
+    /// user-coded translation table. Register BX is assumed to point to the
+    /// beginning of the table. The byte in AL is used as an index into the
+    /// table and is replaced by the byte at the offset in the table
+    /// corresponding to AL's binary varlue. The first byte in the table has an
+    /// offset of 0. For example if AL contains 5H, and the sixth element of
+    /// the translation table contains 33H, then AL will contain 33H following
+    /// the instruction. XLAT is useful for translating characters from one code
+    /// to another, the classic example being ASCII to EBCDIC or the revers.
     xlat_translate_byte_to_al                   = 0xD7,
 
     // TODO: Implement esc
