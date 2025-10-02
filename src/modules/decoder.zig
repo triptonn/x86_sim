@@ -676,18 +676,28 @@ pub const BinaryInstructions = enum(u8) {
     call_direct_intersegment                    = 0x9A,
 
     // TODO: Implement wait
-    wait                                        = 0x9B,
-
-    // TODO: Implement push flags
+    wait
+                                            = 0x9B,
+    /// Decrements SP by two and then transfers all flags to the word at the
+    /// top of the stack pointed to by SP. The flags themselves are not
+    /// affected.
     pushf                                       = 0x9C,
-
-    // TODO: Implement pop flags
+    /// Transfers specific bits from the word at the current top of the stack (
+    /// pointed to by SP) into flags, replacing whatever values the flags
+    /// previously contained. SP is then incremented by two to point to the new
+    /// top of the stack. PUSHF and POPF allow a procedure to save and restore
+    /// a calling program's flags. They also allow a program to change the
+    /// setting of TF (there is no instruction for updating this flag directly).
+    /// The change is accomplished by pushing the flags, altering bit 8 of the
+    /// memory-image and then popping the flags.
     popf                                        = 0x9D,
-
-    // TODO: Implement store ah into flags sahf
+    /// Store register AH into flags transfers bits 7, 6, 4, 2 and 0 from
+    /// register AH into SF, ZF, AF, PF and CF, replacing whatever values these
+    /// flags previously had. OF, DF, IF and TF are not affected.
     sahf                                        = 0x9E,
-
-    // TODO: Implement load ah with flags lahf
+    /// Load register AH from flags copies SF, ZF, AF, PF and CF into
+    /// bits 7, 6, 4, 2 and 0 of register AH. The content of bits 5, 3 and 1
+    /// is undefined; the flags themselves are not affected.
     lahf                                        = 0x9F,
 
     /// Memory to accumulator
@@ -2840,9 +2850,9 @@ pub fn decode(
                                 .rm = rm,
                                 .disp_lo = disp_lo,
                                 .disp_hi = disp_hi,
-                                .data_8 = if (w == WValue.byte) input[4] else null,
-                                .data_lo = if (w == WValue.word) input[4] else null,
-                                .data_hi = if (w == WValue.word) input[5] else null,
+                                .data_8 = if (identifier == TestSet.TEST and w == WValue.byte) input[4] else null,
+                                .data_lo = if (identifier == TestSet.TEST and w == WValue.word) input[4] else null,
+                                .data_hi = if (identifier == TestSet.TEST and w == WValue.word) input[5] else null,
                             },
                         };
                         return result;
@@ -2857,9 +2867,9 @@ pub fn decode(
                                 .rm = rm,
                                 .disp_lo = null,
                                 .disp_hi = null,
-                                .data_8 = if (w == WValue.byte) input[2] else null,
-                                .data_lo = if (w == WValue.word) input[2] else null,
-                                .data_hi = if (w == WValue.word) input[3] else null,
+                                .data_8 = if (identifier == TestSet.TEST and w == WValue.byte) input[2] else null,
+                                .data_lo = if (identifier == TestSet.TEST and w == WValue.word) input[2] else null,
+                                .data_hi = if (identifier == TestSet.TEST and w == WValue.word) input[3] else null,
                             },
                         };
                         return result;
@@ -2867,7 +2877,6 @@ pub fn decode(
                 },
                 .memoryMode8BitDisplacement => {
                     const disp_lo: u8 = input[2];
-
                     result = InstructionData{
                         .identifier_test_op = IdentifierTestOp{
                             .opcode = opcode,
@@ -2878,9 +2887,9 @@ pub fn decode(
                             .rm = rm,
                             .disp_lo = disp_lo,
                             .disp_hi = null,
-                            .data_8 = if (w == WValue.byte) input[3] else null,
-                            .data_lo = if (w == WValue.word) input[3] else null,
-                            .data_hi = if (w == WValue.word) input[4] else null,
+                            .data_8 = if (identifier == TestSet.TEST and w == WValue.byte) input[3] else null,
+                            .data_lo = if (identifier == TestSet.TEST and w == WValue.word) input[3] else null,
+                            .data_hi = if (identifier == TestSet.TEST and w == WValue.word) input[4] else null,
                         },
                     };
                     return result;
@@ -2899,9 +2908,9 @@ pub fn decode(
                             .rm = rm,
                             .disp_lo = disp_lo,
                             .disp_hi = disp_hi,
-                            .data_8 = if (w == WValue.byte) input[4] else null,
-                            .data_lo = if (w == WValue.word) input[4] else null,
-                            .data_hi = if (w == WValue.word) input[5] else null,
+                            .data_8 = if (identifier == TestSet.TEST and w == WValue.byte) input[4] else null,
+                            .data_lo = if (identifier == TestSet.TEST and w == WValue.word) input[4] else null,
+                            .data_hi = if (identifier == TestSet.TEST and w == WValue.word) input[5] else null,
                         },
                     };
                 },
@@ -2916,9 +2925,9 @@ pub fn decode(
                             .rm = rm,
                             .disp_lo = null,
                             .disp_hi = null,
-                            .data_8 = if (w == WValue.byte) input[2] else null,
-                            .data_lo = if (w == WValue.word) input[2] else null,
-                            .data_hi = if (w == WValue.word) input[3] else null,
+                            .data_8 = if (identifier == TestSet.TEST and w == WValue.byte) input[2] else null,
+                            .data_lo = if (identifier == TestSet.TEST and w == WValue.word) input[2] else null,
+                            .data_hi = if (identifier == TestSet.TEST and w == WValue.word) input[3] else null,
                         },
                     };
                     return result;

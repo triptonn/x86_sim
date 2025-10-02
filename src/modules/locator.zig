@@ -569,22 +569,16 @@ pub fn getInstructionSourceAndDest(
                     .IDIV,
                     => DestinationInfo{ .none = {} },
                 },
-                .source_info = src: switch (identifier) {
-                    .NOT,
-                    .NEG,
-                    => SourceInfo{ .none = {} },
-                    .TEST,
-                    .MUL,
-                    .IMUL,
-                    .DIV,
-                    .IDIV,
-                    => switch (identifier_test_ops) {
-                        .logical_regmem8_immed8 => break :src SourceInfo{
-                            .immediate = @bitCast(@as(u16, data_8.?)),
-                        },
-                        .logical_regmem16_immed16 => break :src SourceInfo{
-                            .immediate = @bitCast((@as(u16, data_hi.?) << 8) + data_lo.?),
-                        },
+                .source_info = switch (identifier) {
+                    .TEST => return SourceInfo{
+                        .address_calculation = BusInterfaceUnit.calculateEffectiveAddress(
+                            EU,
+                            w,
+                            mod,
+                            rm,
+                            disp_lo,
+                            disp_hi,
+                        ),
                     },
                 },
             };
@@ -1047,6 +1041,14 @@ pub fn getInstructionSourceAndDest(
                     };
                 },
                 .xlat_translate_byte_to_al,
+                .lahf,
+                .sahf,
+                .popf,
+                .pushf,
+                .aaa_ASCII_adjust_add,
+                .daa_decimal_adjust_add,
+                .aas_ASCII_adjust_sub,
+                .das_decimal_adjust_sub,
                 => {
                     return InstructionInfo{
                         .destination_info = DestinationInfo{
